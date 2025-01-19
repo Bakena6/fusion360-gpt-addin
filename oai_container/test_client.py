@@ -12,6 +12,8 @@ class GptClient:
     def __init__(self):
 
         self.connect()
+        time.sleep(1)
+        self.start()
 
 
     def call_function(self, name, function_args):
@@ -33,49 +35,52 @@ class GptClient:
 
         return result
 
-
-
     def connect(self):
         """connect to assistant manager class on seperate process"""
 
         address = ('localhost', 6000)
-        with Client(address, authkey=b'fusion260') as conn:
+        self.conn = Client(address, authkey=b'fusion260')
+            #self.conn = conn
 
-            for i in range(10):
-                print(f"{i}: RUN")
 
-                # user message, natural language
-                message = input("enter message: ")
-                print(f"  sending initial mesage: {message}")
+    def start(self):
+        for i in range(10):
+            print(f"{i}: RUN")
 
-                message_confirmation = conn.send(message)
-                print(f"  message sent,  waiting for result...")
+            # user message, natural language
+            message = input("enter message: ")
+            print(f"  sending mesage: {message}")
 
-                # continue to run as loong thread is open
-                run_complete = False
-                while run_complete == False:
+            message_confirmation = self.conn.send(message)
+            print(f"  message sent,  waiting for result...")
 
-                    # result from server
-                    api_result = conn.recv()
-                    api_result = json.loads(api_result)
+            # continue to run as loong thread is open
+            run_complete = False
+            while run_complete == False:
 
-                    response_type = api_result["response_type"]
-                    run_status = api_result["run_status"]
+                # result from server
+                api_result = self.conn.recv()
+                api_result = json.loads(api_result)
 
-                    if response_type == "message":
-                        print(f"message: {api_result}")
+                response_type = api_result["response_type"]
+                run_status = api_result["run_status"]
 
-                    elif response_type == "tool_call":
+                if response_type == "message":
+                    print(f"message: {api_result}")
 
-                        function_name = api_result["function_name"]
-                        function_args = api_result["function_args"]
+                elif response_type == "tool_call":
 
-                        function_result = self.call_function(function_name, function_args)
-                        #time.sleep(1)
-                        conn.send(function_result)
+                    function_name = api_result["function_name"]
+                    function_args = api_result["function_args"]
 
-                    if run_status == "completed":
-                        run_complete = True
+                    function_result = self.call_function(function_name, function_args)
+                    #time.sleep(1)
+                    self.conn.send(function_result)
+
+                if run_status == "completed":
+                    run_complete = True
+
+
 
 
 

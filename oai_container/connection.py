@@ -29,8 +29,6 @@ ASSISTANT_ID = default_config["ASSISTANT_ID"]
 #client = OpenAI(api_key=OPEN_AI_API_KEY)
 client = OpenAI()
 
-
-
 class Assistant:
     """
     get assistant and create new thread
@@ -55,17 +53,12 @@ class Assistant:
         self.start_server()
 
 
-
     def format_str(self, string, n_char):
+        """uniform print spacing """
         string = str(string)
-
         spacer_len = max(n_char - len(string), 0)
-
         spacer = " " *spacer_len 
-
         return f"{string}{spacer}"
-
-
 
 
 
@@ -111,6 +104,8 @@ class Assistant:
                         if self.run.status == "requires_action":
                             print(f"  TYPE: {self.run.required_action.type}, N STEPS: { len(run_steps.data) } ")
 
+                            # TODO figure out how to only query new steps
+                            # completed and inprogress steps
                             for step in run_steps.data:
 
                                 print(f"   N TOOL CALLS: { len(step.step_details.tool_calls) }")
@@ -120,7 +115,8 @@ class Assistant:
                                 print(f"   STEP STATUS: {step.status}")
                                 #print(step)
 
-                                #print(step.status)
+                                # return data for all tool calls in a step
+                                tool_call_results = []
                                 for tool_call in step.step_details.tool_calls:
                                     #tool_call_status
 
@@ -133,21 +129,22 @@ class Assistant:
                                         "function_name": function_name,
                                         "function_args": function_args
                                     }
+
                                     conn.send(json.dumps(fusion_call))
 
                                     # Fusion360 function results
-                                    function_results = conn.recv()
+                                    function_result = conn.recv()
 
-                                    tool_outputs = [{
+                                    tool_call_results.append({
                                         "tool_call_id" : tool_call.id,
-                                        "output": function_results
-                                    }]
+                                        "output": function_result
+                                    })
 
-                                    print(f"    FUNC RESULTS: {tool_outputs}")
+                                    print(f"    FUNC RESULTS: {function_result}")
 
-                                    self.submit_tool_call(tool_outputs)
-                                    self.get_run_status()
-
+                                # submit results for all tool calls in step
+                                self.submit_tool_call(tool_call_results)
+                                self.get_run_status()
 
                         n_calls += 1
 

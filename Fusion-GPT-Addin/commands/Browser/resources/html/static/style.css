@@ -1,0 +1,65 @@
+
+
+
+/* Hover effect for the button */
+.input-container button:hover {
+    background-color: #45a049; /* Darker shade of green when hovered */
+}
+
+.input-container textarea {
+    width: 100%;
+    padding: 10px;
+    font-size: 40px;
+    border: 2px solid #ccc;
+    border-radius: 5px;
+    box-sizing: border-box;
+    margin-bottom: 15px; /* Space between the textarea and the button row */
+}
+
+.button-row {
+    display: flex;        /* Use Flexbox to arrange buttons in a row */
+    justify-content: flex-start; /* Align buttons to the start of the container */
+    margin-bottom: 15px; /* Space between the textarea and the button row */
+    gap: 10px;            /* Space between the buttons */
+}
+
+.input-container button {
+    padding: 10px 20px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+
+
+.text-output {
+    margin-top: 10px;
+    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    padding: 5px;
+}
+
+.text-with-copy {
+    display: flex;
+    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.message-response {
+    margin-left: 10px;
+    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
+    font-style: italic;
+    color: #666;
+}
+
+.text-output button {
+    padding: 5px 10px;
+    cursor: pointer;
+}
