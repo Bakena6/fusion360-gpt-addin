@@ -26,6 +26,8 @@ os.environ['OPENAI_API_KEY'] =  OPENAI_API_KEY
 
 ASSISTANT_ID = default_config["ASSISTANT_ID"]
 
+LOCAL_TOOLS_PATH = default_config["LOCAL_TOOLS_PATH"]
+
 #client = OpenAI(api_key=OPEN_AI_API_KEY)
 client = OpenAI()
 
@@ -44,13 +46,12 @@ class Assistant:
         self.assistant_id = assistant_id
         print(f'assistant_id: {assistant_id}')
 
-
         # TODO eventualy, user should be able to restart thred from Fusion
         # start assistant thread (conversation)
         self.start_thread()
 
         # run local process server, how Fusion connects
-        self.start_server()
+        #self.start_server()
 
 
     def format_str(self, string, n_char):
@@ -60,11 +61,34 @@ class Assistant:
         spacer = " " *spacer_len 
         return f"{string}{spacer}"
 
+
+    def update_tools(self):
+        """
+        update assistant tools
+        """
+        # run on local host, Fusion client must connect to this address
+        with open(LOCAL_TOOLS_PATH, "r") as f:
+            tools = json.load(f)
+
+        #print(tools)
+        updated_tools = []
+        for tool in tools:
+            updated_tools.append({"type": "function", "function": tool})
+
+        updated_assistant = client.beta.assistants.update(
+            self.assistant_id,
+            tools=updated_tools,
+        )
+
+        #print(updated_assistant)
+
+
     def start_server(self):
         # run on local host, Fusion client must connect to this address
         address = ('localhost', 6000) # family is deduced to be 'AF_INET'
 
         with Listener(address, authkey=b'fusion260') as listener:
+
             with listener.accept() as conn:
                 print('CONNECTION ACCEPTED FROM', listener.last_accepted)
 
@@ -80,98 +104,200 @@ class Assistant:
                     # add message to thread
                     self.add_message(message_text)
 
-                    # once message(s) are added, run
-                    self.create_run()
 
+                    #stream_results = self.parse_stream(stream)
                     # waiting for run
-                    self.run = self.get_run_status()
+                    #self.run = self.get_run_status()
 
-                    run_messages = self.get_messages()
+                    #run_messages = self.get_messages()
 
+                    # once message(s) are added, run
+                    self.stream = self.create_run()
+
+
+                    event_type = ""
+                    message_text = ""
+
+                    while event_type != "thread.run.completed":
+                        print(f"THREAD START")
+
+                        for event in self.stream:
+                            event_type = event.event
+                            print(event_type)
+
+                            if event_type == "thread.run.created":
+                                # set run id for tool call result calls
+                                self.run = event.data
+                                self.run_id = event.data.id
+
+                            elif event_type == "thread.message.completed":
+                                print("THREAD.MESSAGE.COMPLETED")
+                                print(event)
+
+                                content = event.data.content
+                                for content_block in content:
+                                    text = content_block.text.value
+                                    message_text += text
+
+                                #print(event.data.content.text.value)
+                            elif event_type == "thread.run.step.delta":
+                                step_details = event.data.delta.step_details
+                                #print(step_details)
+
+                            elif event_type == "thread.run.requires_action":
+                                print("THREAD.RUN.REQUIRES_ACTION")
+                                print(event.data.required_action)
+
+                                tool_calls = event.data.required_action.submit_tool_outputs.tool_calls
+                                print(tool_calls)
+
+                                # return data for all tool calls in a step
+                                tool_call_results = []
+                                for tool_call in tool_calls:
+                                    #tool_call_status
+
+                                    function_name = tool_call.function.name
+                                    function_args = tool_call.function.arguments
+
+                                    if function_name == None:
+                                        continue
+
+                                    print(f"    CALL TOOL: {function_name}, {function_args}")
+
+                                    fusion_call = {
+                                        "run_status": self.run.status,
+                                        "response_type": "tool_call",
+                                        "function_name": function_name,
+                                        "function_args": function_args
+                                    }
+                                    print(fusion_call)
+
+                                    conn.send(json.dumps(fusion_call))
+
+                                    # Fusion360 function results
+                                    function_result = conn.recv()
+
+                                    tool_call_results.append({
+                                        "tool_call_id" : tool_call.id,
+                                        "output": function_result
+                                    })
+
+                                    print(f"    FUNC RESULTS: {function_result}")
+
+                                ## submit results for all tool calls in step
+                                self.stream = self.submit_tool_call(tool_call_results)
+                                print("TOOL CALL RESUTS FINISHED")
+                                #for e in self.stream:
+                                #    print(e.event)
+
+
+                            elif event_type == "thread.run.step.completed":
+                                print("THREAD.RUN.STEP.COMPLETED")
+                                #print(event.data)
+
+                            elif event_type == "thread.run.completed":
+                                print("THREAD.RUN.COMPLETED")
+
+                                fusion_call = {
+                                    "run_status": "thread.run.completed",
+                                    "response_type": "message",
+                                    "text": message_text
+                                }
+
+                                conn.send(json.dumps(fusion_call))
+
+
+
+
+
+                    #return
                     # calls in current thread
-                    n_calls = 0
-                    while self.run.status != "completed":
-                        print(f"  N CALL: {n_calls}")
-                        self.run = self.get_run_status()
-                        #print(f"  RUN STATUS: {self.run.status}")
+                    #n_calls = 0
+                    #while self.run.status != "completed":
 
-                        run_messages = self.get_messages()
-                        run_steps = self.get_run_steps()
+                    #    print(f"  N CALL: {n_calls}")
+                    #    self.run = self.get_run_status()
+                    #    #print(f"  RUN STATUS: {self.run.status}")
 
-                        if self.run.status == "requires_action":
+                    #    run_messages = self.get_messages()
+                    #    run_steps = self.get_run_steps()
 
-                            print(f"  TYPE: {self.run.required_action.type}, N STEPS: { len(run_steps.data) } ")
+                    #    if self.run.status == "requires_action":
 
-                            # TODO figure out how to only query new steps
-                            # completed and inprogress steps
-                            for step in run_steps.data:
+                    #        print(f"  TYPE: {self.run.required_action.type}, N STEPS: { len(run_steps.data) } ")
 
-                                print("setp.step_details")
-                                print(step.step_details)
+                    #        # TODO figure out how to only query new steps
+                    #        # completed and inprogress steps
+                    #        for step in run_steps.data:
 
-                                if step.status == "completed":
-                                    continue
+                    #            #print("setp.step_details")
+                    #            print(step.step_details)
 
-                                if step.step_details.type == "message_creation":
-                                    print("MESSAGE CREATION")
+                    #            if step.status == "completed":
+                    #                continue
 
-                                if step.step_details.type == "tool_calls":
+                    #            if step.step_details.type == "message_creation":
+                    #                print("MESSAGE CREATION")
 
-                                    print(f"   N TOOL CALLS: { len(step.step_details.tool_calls) }")
+                    #            if step.step_details.type == "tool_calls":
 
-                                    print(f"   STEP STATUS: {step.status}")
-                                    #print(step)
+                    #                print(f"   N TOOL CALLS: { len(step.step_details.tool_calls) }")
+                    #                print(f"   STEP STATUS: {step.status}")
+                    #                #print(step)
 
-                                    # return data for all tool calls in a step
-                                    tool_call_results = []
-                                    for tool_call in step.step_details.tool_calls:
-                                        #tool_call_status
+                    #                # return data for all tool calls in a step
+                    #                tool_call_results = []
+                    #                for tool_call in step.step_details.tool_calls:
+                    #                    #tool_call_status
 
-                                        function_name = tool_call.function.name
-                                        function_args = tool_call.function.arguments
-                                        print(f"    CALL TOOL: {function_name}, {function_args}")
-                                        fusion_call = {
-                                            "run_status": self.run.status,
-                                            "response_type": "tool_call",
-                                            "function_name": function_name,
-                                            "function_args": function_args
-                                        }
+                    #                    function_name = tool_call.function.name
+                    #                    function_args = tool_call.function.arguments
+                    #                    print(f"    CALL TOOL: {function_name}, {function_args}")
+                    #                    fusion_call = {
+                    #                        "run_status": self.run.status,
+                    #                        "response_type": "tool_call",
+                    #                        "function_name": function_name,
+                    #                        "function_args": function_args
+                    #                    }
 
-                                        conn.send(json.dumps(fusion_call))
+                    #                    conn.send(json.dumps(fusion_call))
 
-                                        # Fusion360 function results
-                                        function_result = conn.recv()
+                    #                    # Fusion360 function results
+                    #                    function_result = conn.recv()
 
-                                        tool_call_results.append({
-                                            "tool_call_id" : tool_call.id,
-                                            "output": function_result
-                                        })
+                    #                    tool_call_results.append({
+                    #                        "tool_call_id" : tool_call.id,
+                    #                        "output": function_result
+                    #                    })
 
-                                        print(f"    FUNC RESULTS: {function_result}")
+                    #                    print(f"    FUNC RESULTS: {function_result}")
 
-                                    # submit results for all tool calls in step
-                                    self.submit_tool_call(tool_call_results)
-                                    self.get_run_status()
+                    #                # submit results for all tool calls in step
+                    #                self.submit_tool_call(tool_call_results)
+                    #                self.get_run_status()
 
-                        n_calls += 1
+                    #    n_calls += 1
 
 
 
-                    if self.run.status == "completed":
-                        fusion_call = {
-                            "run_status": self.run.status,
-                            "response_type": "message",
-                            "text": message_text
-                        }
-                        conn.send(json.dumps(fusion_call))
+                    #if self.run.status == "completed":
+                    #    fusion_call = {
+                    #        "run_status": self.run.status,
+                    #        "response_type": "message",
+                    #        "text": message_text
+                    #    }
+                    #    conn.send(json.dumps(fusion_call))
 
-                    #function_results = conn.recv()
-                    #print(f"  function results: {function_results}")
-                    #print(f"  done")
+                    ##function_results = conn.recv()
+                    ##print(f"  function results: {function_results}")
+                    ##print(f"  done")
 
-                    i +=1
-                    if i > 50:
-                        break
+                    #i +=1
+                    #if i > 50:
+                    #    break
+
+
+
 
 
     def start_thread(self):
@@ -202,16 +328,46 @@ class Assistant:
         print(f'  MESSAGE ADDED: {message.id}')
 
 
+    def parse_stream(self, stream):
+
+        for event in stream:
+
+            event_type = event.event
+            print(event_type)
+
+            if event_type == "thread.message.completed":
+                print("THREAD.MESSAGE.COMPLETED")
+                print(event.data.content.text.value)
+
+            elif event_type == "thread.run.requires_action":
+                print("THREAD.RUN.REQUIRES_ACTION")
+                print(event.data)
+
+            elif event_type == "thread.run.step.completed":
+                print("THREAD.RUN.STEP.COMPLETED")
+                #print(event.data)
+
+            elif event_type == "thread.run.completed":
+                print("THREAD.RUN.COMPLETED")
+                #print(event.data)
+
+
+
     def create_run(self):
         """create initial run"""
 
-        self.run = self.client.beta.threads.runs.create(
+        stream = self.client.beta.threads.runs.create(
             thread_id=self.thread_id,
-            assistant_id=self.assistant_id
+            assistant_id=self.assistant_id,
+            stream=True
         )
 
-        self.run_id = self.run.id
-        print(f"  CREATE RUN: status: {self.run.status}")
+        return stream
+
+        #self.run = run
+        #self.run_id = self.run.id
+        #print(f"  CREATE RUN: status: {self.run.status}")
+
 
 
     def get_run_status(self):
@@ -308,13 +464,15 @@ class Assistant:
         """
 
         # function reply
-        self.run = self.client.beta.threads.runs.submit_tool_outputs(
+        stream = self.client.beta.threads.runs.submit_tool_outputs(
             thread_id=self.thread_id,
             run_id=self.run_id,
-            tool_outputs=response_list
+            tool_outputs=response_list,
+            stream=True,
         )
+        return stream
 
-        print(f'  TOOL CALL SUBMITTED: status: {self.run.status}')
+        #print(f'  TOOL CALL SUBMITTED: status: {self.run.status}')
 
 
     def execute_message(self, message):
@@ -375,6 +533,25 @@ class Assistant:
 if __name__ == "__main__":
 
     assistant = Assistant(assistant_id =ASSISTANT_ID)
+    assistant.start_server()
+
+    #assistant.update_tools()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
