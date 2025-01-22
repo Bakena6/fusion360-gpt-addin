@@ -60,10 +60,7 @@ class Assistant:
         spacer = " " *spacer_len 
         return f"{string}{spacer}"
 
-
-
     def start_server(self):
-
         # run on local host, Fusion client must connect to this address
         address = ('localhost', 6000) # family is deduced to be 'AF_INET'
 
@@ -102,49 +99,59 @@ class Assistant:
                         run_steps = self.get_run_steps()
 
                         if self.run.status == "requires_action":
+
                             print(f"  TYPE: {self.run.required_action.type}, N STEPS: { len(run_steps.data) } ")
 
                             # TODO figure out how to only query new steps
                             # completed and inprogress steps
                             for step in run_steps.data:
 
-                                print(f"   N TOOL CALLS: { len(step.step_details.tool_calls) }")
+                                print("setp.step_details")
+                                print(step.step_details)
+
                                 if step.status == "completed":
                                     continue
 
-                                print(f"   STEP STATUS: {step.status}")
-                                #print(step)
+                                if step.step_details.type == "message_creation":
+                                    print("MESSAGE CREATION")
 
-                                # return data for all tool calls in a step
-                                tool_call_results = []
-                                for tool_call in step.step_details.tool_calls:
-                                    #tool_call_status
+                                if step.step_details.type == "tool_calls":
 
-                                    function_name = tool_call.function.name
-                                    function_args = tool_call.function.arguments
-                                    print(f"    CALL TOOL: {function_name}, {function_args}")
-                                    fusion_call = {
-                                        "run_status": self.run.status,
-                                        "response_type": "tool_call",
-                                        "function_name": function_name,
-                                        "function_args": function_args
-                                    }
+                                    print(f"   N TOOL CALLS: { len(step.step_details.tool_calls) }")
 
-                                    conn.send(json.dumps(fusion_call))
+                                    print(f"   STEP STATUS: {step.status}")
+                                    #print(step)
 
-                                    # Fusion360 function results
-                                    function_result = conn.recv()
+                                    # return data for all tool calls in a step
+                                    tool_call_results = []
+                                    for tool_call in step.step_details.tool_calls:
+                                        #tool_call_status
 
-                                    tool_call_results.append({
-                                        "tool_call_id" : tool_call.id,
-                                        "output": function_result
-                                    })
+                                        function_name = tool_call.function.name
+                                        function_args = tool_call.function.arguments
+                                        print(f"    CALL TOOL: {function_name}, {function_args}")
+                                        fusion_call = {
+                                            "run_status": self.run.status,
+                                            "response_type": "tool_call",
+                                            "function_name": function_name,
+                                            "function_args": function_args
+                                        }
 
-                                    print(f"    FUNC RESULTS: {function_result}")
+                                        conn.send(json.dumps(fusion_call))
 
-                                # submit results for all tool calls in step
-                                self.submit_tool_call(tool_call_results)
-                                self.get_run_status()
+                                        # Fusion360 function results
+                                        function_result = conn.recv()
+
+                                        tool_call_results.append({
+                                            "tool_call_id" : tool_call.id,
+                                            "output": function_result
+                                        })
+
+                                        print(f"    FUNC RESULTS: {function_result}")
+
+                                    # submit results for all tool calls in step
+                                    self.submit_tool_call(tool_call_results)
+                                    self.get_run_status()
 
                         n_calls += 1
 
@@ -250,7 +257,6 @@ class Assistant:
         return run
 
 
-
     def get_run_steps(self):
         """check if run is complete and get message"""
 
@@ -294,6 +300,7 @@ class Assistant:
             print(f"   MSG: {msg_role}: {msg_text}")
 
         return messages
+
     def submit_tool_call(self, response_list: list):
         """
         send tool call responses
@@ -308,55 +315,6 @@ class Assistant:
         )
 
         print(f'  TOOL CALL SUBMITTED: status: {self.run.status}')
-
-
-    def parse_run_steps(self):
-        run_steps = self.run_steps
-        client = self.client
-
-        print('-----------')
-        for index, step in enumerate(run_steps):
-            print(f'{index}: STEP STATUS: {step.status}, STEP TYPE: {step.type}')
-
-            if step.type == 'tool_calls':
-                tool_calls = step.step_details.tool_calls
-                for call_index, call in enumerate(tool_calls):
-                    print(f'  TOOL CALL {call_index}: {call}')
-
-            if step.type == 'message_creation':
-                print(f'{step.step_details.message_creation}')
-
-            print(' ')
-
-
-        run_step = run_steps.data[0]
-
-        thread_id = run_step.thread_id
-        step_status = run_step.status
-        step_type = run_step.type
-        step_details = run_step.step_details
-
-        print(f'STEP STATUS  : {step_status}, STEP TYPE    : {step_type}')
-        #print(f'STEP DETAILS : {step_details}')
-
-        if step_type == 'tool_calls':
-            tool_calls = run_step.step_details.tool_calls
-            self.tool_calls = tool_calls
-            #print(f'TOOL_CALLS : {tool_calls}')
-            return {'resp_type': 'tool_calls', 'value': tool_calls}
-
-        elif step_type == 'message_creation':
-            message_id = run_step.step_details.message_creation.message_id
-            #print(f'MESSAGE_ID : {message_id}')
-            message = client.beta.threads.messages.retrieve( message_id=message_id, thread_id=thread_id)
-            message_text = ''
-            for msg in message.content:
-                message_text += msg.text.value
-            self.message_text = message_text
-
-            return {'resp_type': 'message', 'value': message_text}
-
-
 
 
     def execute_message(self, message):
