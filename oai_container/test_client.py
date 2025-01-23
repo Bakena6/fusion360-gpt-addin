@@ -82,9 +82,6 @@ class GptClient:
 
 
 
-
-
-
     def get_root_component_name(self):
         return "rootComp"
 

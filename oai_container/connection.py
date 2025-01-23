@@ -139,10 +139,36 @@ class Assistant:
                                     text = content_block.text.value
                                     message_text += text
 
+                            elif event_type == "thread.message.delta":
+                                delta_text = event.data.delta.content[0].text.value
+                                print(delta_text)
+
+                                #delta_text = "info"
+
+                                fusion_call = {
+                                    "run_status": "delta",
+                                    "response_type": "delta",
+                                    "message": delta_text
+                                }
+
+                                conn.send(json.dumps(fusion_call))
+
                                 #print(event.data.content.text.value)
                             elif event_type == "thread.run.step.delta":
-                                step_details = event.data.delta.step_details
-                                #print(step_details)
+
+                                #step_details = event.data.delta.step_details.tool_calls[0].arguments
+                                step_details = event.data.delta.step_details.tool_calls[0].arguments
+
+                                print(step_details)
+
+                                fusion_call = {
+                                    "run_status": "delta",
+                                    "response_type": "delta",
+                                    "message": step_details
+                                }
+
+                                conn.send(json.dumps(fusion_call))
+
 
                             elif event_type == "thread.run.requires_action":
                                 print("THREAD.RUN.REQUIRES_ACTION")
