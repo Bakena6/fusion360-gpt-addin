@@ -104,16 +104,8 @@ class Assistant:
                     # add message to thread
                     self.add_message(message_text)
 
-
-                    #stream_results = self.parse_stream(stream)
-                    # waiting for run
-                    #self.run = self.get_run_status()
-
-                    #run_messages = self.get_messages()
-
                     # once message(s) are added, run
                     self.stream = self.create_run()
-
 
                     event_type = ""
                     message_text = ""
@@ -123,48 +115,102 @@ class Assistant:
 
                         for event in self.stream:
                             event_type = event.event
+                            data = event.data
                             print(event_type)
 
                             if event_type == "thread.run.created":
+
                                 # set run id for tool call result calls
                                 self.run = event.data
                                 self.run_id = event.data.id
 
-                            elif event_type == "thread.message.completed":
-                                print("THREAD.MESSAGE.COMPLETED")
-                                print(event)
+                                content = {
+                                    "run_id": self.run_id,
+                                };
 
+                                fusion_call = {
+                                    "run_status": "in_progress",
+                                    "event": event_type,
+                                    "content": content
+                                }
+                                conn.send(json.dumps(fusion_call))
+
+
+                            elif event_type == "thread.message.created":
+                                content = {
+                                    "message_id": data.id,
+                                    "run_id": data.run_id,
+                                    "event": event_type,
+                                };
+
+                                fusion_call = {
+                                    "run_status": "in_progress",
+                                    "event": event_type,
+                                    "content": content
+                                }
+
+                                conn.send(json.dumps(fusion_call))
+
+                            elif event_type == "thread.run.step.created":
+                                content = {
+                                    "step_id": data.id,
+                                    "run_id": data.run_id,
+                                    "status": data.status,
+                                    "event": event_type,
+                                };
+                                fusion_call = {
+                                    "run_status": "in_progress",
+                                    "event": event_type,
+                                    "content": content
+                                }
+                                conn.send(json.dumps(fusion_call))
+
+
+                            elif event_type == "thread.message.completed":
                                 content = event.data.content
                                 for content_block in content:
                                     text = content_block.text.value
                                     message_text += text
 
+
                             elif event_type == "thread.message.delta":
+                                #print(event.data.delta)
                                 delta_text = event.data.delta.content[0].text.value
-                                print(delta_text)
+                                message_id = event.data.id
 
-                                #delta_text = "info"
-
-                                fusion_call = {
-                                    "run_status": "delta",
-                                    "response_type": "delta",
-                                    "message": delta_text
+                                content = {
+                                    "message_id": message_id,
+                                    "message": delta_text,
+                                    "event": event_type,
                                 }
 
+                                fusion_call = {
+                                    "run_status": "in_progress",
+                                    "event": event_type,
+                                    "content": content
+                                }
                                 conn.send(json.dumps(fusion_call))
 
-                                #print(event.data.content.text.value)
+
                             elif event_type == "thread.run.step.delta":
 
-                                #step_details = event.data.delta.step_details.tool_calls[0].arguments
-                                step_details = event.data.delta.step_details.tool_calls[0].arguments
+                                function = event.data.delta.step_details.tool_calls[0].function
+                                print(function)
 
-                                print(step_details)
+                                step_id = event.data.id
+
+                                content = {
+                                    "step_id": step_id,
+                                    "function_name": function.name,
+                                    "function_args": function.arguments,
+                                    "function_outputs": function.output,
+                                    "event": event_type,
+                                }
 
                                 fusion_call = {
-                                    "run_status": "delta",
-                                    "response_type": "delta",
-                                    "message": step_details
+                                    "run_status": "in_progress",
+                                    "event": event_type,
+                                    "content": content
                                 }
 
                                 conn.send(json.dumps(fusion_call))
@@ -193,10 +239,10 @@ class Assistant:
                                     fusion_call = {
                                         "run_status": self.run.status,
                                         "response_type": "tool_call",
+                                        "event": event_type,
                                         "function_name": function_name,
                                         "function_args": function_args
                                     }
-                                    print(fusion_call)
 
                                     conn.send(json.dumps(fusion_call))
 
@@ -213,20 +259,48 @@ class Assistant:
                                 ## submit results for all tool calls in step
                                 self.stream = self.submit_tool_call(tool_call_results)
                                 print("TOOL CALL RESUTS FINISHED")
-                                #for e in self.stream:
-                                #    print(e.event)
 
 
                             elif event_type == "thread.run.step.completed":
-                                print("THREAD.RUN.STEP.COMPLETED")
                                 #print(event.data)
+
+                                step_details = event.data.step_details
+                                step_type = step_details.type
+
+                                # skip response for mesage completion
+                                if step_type == "message_creation":
+                                    continue
+
+                                function = step_details.tool_calls[0].function
+                                print(function)
+
+                                step_id = event.data.id
+
+                                content = {
+                                    "step_id": step_id,
+                                    "function_name": function.name,
+                                    "function_args": function.arguments,
+                                    "function_outputs": function.output,
+                                    "event": event_type,
+                                }
+
+                                fusion_call = {
+                                    "run_status": "in_progress",
+                                    "event": event_type,
+                                    "content": content
+                                }
+
+                                conn.send(json.dumps(fusion_call))
+
 
                             elif event_type == "thread.run.completed":
                                 print("THREAD.RUN.COMPLETED")
+                                #print(event.data)
 
                                 fusion_call = {
                                     "run_status": "thread.run.completed",
                                     "response_type": "message",
+                                    "event": event_type,
                                     "text": message_text
                                 }
 
@@ -234,93 +308,6 @@ class Assistant:
 
 
 
-
-
-                    #return
-                    # calls in current thread
-                    #n_calls = 0
-                    #while self.run.status != "completed":
-
-                    #    print(f"  N CALL: {n_calls}")
-                    #    self.run = self.get_run_status()
-                    #    #print(f"  RUN STATUS: {self.run.status}")
-
-                    #    run_messages = self.get_messages()
-                    #    run_steps = self.get_run_steps()
-
-                    #    if self.run.status == "requires_action":
-
-                    #        print(f"  TYPE: {self.run.required_action.type}, N STEPS: { len(run_steps.data) } ")
-
-                    #        # TODO figure out how to only query new steps
-                    #        # completed and inprogress steps
-                    #        for step in run_steps.data:
-
-                    #            #print("setp.step_details")
-                    #            print(step.step_details)
-
-                    #            if step.status == "completed":
-                    #                continue
-
-                    #            if step.step_details.type == "message_creation":
-                    #                print("MESSAGE CREATION")
-
-                    #            if step.step_details.type == "tool_calls":
-
-                    #                print(f"   N TOOL CALLS: { len(step.step_details.tool_calls) }")
-                    #                print(f"   STEP STATUS: {step.status}")
-                    #                #print(step)
-
-                    #                # return data for all tool calls in a step
-                    #                tool_call_results = []
-                    #                for tool_call in step.step_details.tool_calls:
-                    #                    #tool_call_status
-
-                    #                    function_name = tool_call.function.name
-                    #                    function_args = tool_call.function.arguments
-                    #                    print(f"    CALL TOOL: {function_name}, {function_args}")
-                    #                    fusion_call = {
-                    #                        "run_status": self.run.status,
-                    #                        "response_type": "tool_call",
-                    #                        "function_name": function_name,
-                    #                        "function_args": function_args
-                    #                    }
-
-                    #                    conn.send(json.dumps(fusion_call))
-
-                    #                    # Fusion360 function results
-                    #                    function_result = conn.recv()
-
-                    #                    tool_call_results.append({
-                    #                        "tool_call_id" : tool_call.id,
-                    #                        "output": function_result
-                    #                    })
-
-                    #                    print(f"    FUNC RESULTS: {function_result}")
-
-                    #                # submit results for all tool calls in step
-                    #                self.submit_tool_call(tool_call_results)
-                    #                self.get_run_status()
-
-                    #    n_calls += 1
-
-
-
-                    #if self.run.status == "completed":
-                    #    fusion_call = {
-                    #        "run_status": self.run.status,
-                    #        "response_type": "message",
-                    #        "text": message_text
-                    #    }
-                    #    conn.send(json.dumps(fusion_call))
-
-                    ##function_results = conn.recv()
-                    ##print(f"  function results: {function_results}")
-                    ##print(f"  done")
-
-                    #i +=1
-                    #if i > 50:
-                    #    break
 
 
 
@@ -387,13 +374,7 @@ class Assistant:
             assistant_id=self.assistant_id,
             stream=True
         )
-
         return stream
-
-        #self.run = run
-        #self.run_id = self.run.id
-        #print(f"  CREATE RUN: status: {self.run.status}")
-
 
 
     def get_run_status(self):
@@ -465,7 +446,7 @@ class Assistant:
 
 
     def get_messages(self):
-        '''get messages from thread'''
+        """get messages from thread"""
 
         messages = self.client.beta.threads.messages.list(
             thread_id=self.thread_id,
@@ -532,7 +513,7 @@ class Assistant:
 
 
     def get_steps(self):
-        '''print most recent run steps'''
+        """print most recent run steps"""
         print(self.get_run_steps().model_dump_json(indent=4))
 
 
@@ -546,22 +527,11 @@ class Assistant:
 
 
 
-#def get_gpt(initial_message):
-#
-#    # hardcode assitant id, resuces api calls for now
-#    assistant_id = config.ASSASTANT_ID
-#
-#    gpt = Assistant(assistant_id, initial_message)
-#
-#    return gpt
-
-
 if __name__ == "__main__":
 
     assistant = Assistant(assistant_id =ASSISTANT_ID)
     assistant.start_server()
 
-    #assistant.update_tools()
 
 
 
