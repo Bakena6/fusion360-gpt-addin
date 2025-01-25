@@ -31,6 +31,7 @@ LOCAL_TOOLS_PATH = default_config["LOCAL_TOOLS_PATH"]
 #client = OpenAI(api_key=OPEN_AI_API_KEY)
 client = OpenAI()
 
+
 class Assistant:
     """
     get assistant and create new thread
@@ -152,6 +153,8 @@ class Assistant:
                                 conn.send(json.dumps(fusion_call))
 
                             elif event_type == "thread.run.step.created":
+                                print(data)
+
                                 content = {
                                     "step_id": data.id,
                                     "run_id": data.run_id,
@@ -174,7 +177,7 @@ class Assistant:
 
 
                             elif event_type == "thread.message.delta":
-                                #print(event.data.delta)
+                                print(event.data)
                                 delta_text = event.data.delta.content[0].text.value
                                 message_id = event.data.id
 
@@ -203,7 +206,7 @@ class Assistant:
                                     "step_id": step_id,
                                     "function_name": function.name,
                                     "function_args": function.arguments,
-                                    "function_outputs": function.output,
+                                    "function_output": function.output,
                                     "event": event_type,
                                 }
 
@@ -241,7 +244,7 @@ class Assistant:
                                         "response_type": "tool_call",
                                         "event": event_type,
                                         "function_name": function_name,
-                                        "function_args": function_args
+                                        "function_args": function_args,
                                     }
 
                                     conn.send(json.dumps(fusion_call))
@@ -280,7 +283,7 @@ class Assistant:
                                     "step_id": step_id,
                                     "function_name": function.name,
                                     "function_args": function.arguments,
-                                    "function_outputs": function.output,
+                                    "function_output": function.output,
                                     "event": event_type,
                                 }
 
@@ -377,36 +380,6 @@ class Assistant:
         return stream
 
 
-    def get_run_status(self):
-        """
-        Poll for run status
-        after a run update, status should move to 'queued'
-        then then 'in_progress', breakes when status changes
-        from 'in_progress'
-        """
-
-        #time.sleep(.5)
-        # poll the run status
-        for i in range(25):
-
-            # poll run status
-            run = self.client.beta.threads.runs.retrieve(
-                thread_id=self.thread_id,
-                run_id=self.run_id,
-            )
-
-            print(f"  RUN STATUS {i}: {run.status}")
-
-            # wait for status change event
-            if run.status not in ['queued', 'in_progress']:
-                break
-
-            time.sleep(1)
-
-        self.run = run
-        return run
-
-
     def run_status(self):
         """get run status"""
         # get run status
@@ -482,10 +455,10 @@ class Assistant:
         #print(f'  TOOL CALL SUBMITTED: status: {self.run.status}')
 
 
-    def execute_message(self, message):
-        self.create_message(message)
-        self.create_run()
-        return None
+    #def execute_message(self, message):
+    #    self.create_message(message)
+    #    self.create_run()
+    #    return None
 
 
     def execute_steps(self):
@@ -512,9 +485,9 @@ class Assistant:
         print(f'RESP RUN STATUS: run_id: {run.id}, status: {run.status}')
 
 
-    def get_steps(self):
-        """print most recent run steps"""
-        print(self.get_run_steps().model_dump_json(indent=4))
+    #def get_steps(self):
+    #    """print most recent run steps"""
+    #    print(self.get_run_steps().model_dump_json(indent=4))
 
 
     def cancel_run(self):
@@ -531,6 +504,7 @@ if __name__ == "__main__":
 
     assistant = Assistant(assistant_id =ASSISTANT_ID)
     assistant.start_server()
+    #assistant.update_tools()
 
 
 
