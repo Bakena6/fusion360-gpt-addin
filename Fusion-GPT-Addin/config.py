@@ -17,6 +17,7 @@ user_config.read(config_path)
 default_config = user_config["DEFAULT"]
 
 PYTHON_ENV_PATH = default_config["PYTHON_ENV_PATH"]
+LOCAL_TOOLS_PATH = default_config["LOCAL_TOOLS_PATH"]
 
 # Set to False to remove most log messages from text palette
 DEBUG = True
@@ -35,7 +36,7 @@ my_panel_id = f"{ADDIN_NAME}_panel_2"
 my_panel_name = ADDIN_NAME
 my_panel_after = ''
 
-sample_pallette_id = "gpt_addin"
+palette_id = "gpt_addin"
 
 STATE_DATA = { }
 

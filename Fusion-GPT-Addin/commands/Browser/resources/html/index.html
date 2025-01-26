@@ -1,32 +1,47 @@
 
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>GPT Addin</title>
+    <head>
+        <meta charset="UTF-8">
+        <title>GPT Addin</title>
 
-    <script src="static/palette.js"></script>
-    <link rel="stylesheet" type="text/css" href="static/style.css">
+        <script src="static/palette.js"></script>
+        <link rel="stylesheet" type="text/css" href="static/style.css">
 
+    </head>
 
-</head>
-<body>
-<div>
+    <body>
 
+        <div id=main>
 
-<div class="input-container">
+            <div class="output-container"> </div>
 
-    <textarea id="promptTextInput" placeholder="Enter your text here" rows="8" spellcheck="true"></textarea>
+            <div class="input-container">
 
-    <div class="button-row">
-        <button type="button" onclick="submitPrompt()">Submit</button>
-        <button type="button" onclick="createThread()">Create Thread</button>
-        <button type="button" onclick="runLast()">Run Last</button>
-        <button type="button" onclick="testTools()">Test Tools</button>
-        <button type="button" onclick="getSteps()">Get Steps</button>
-    </div>
-</div>
+                <textarea spellcheck="true" id="promptTextInput" placeholder="Enter your text here" rows="4"></textarea>
 
 
-</div>
-</body>
+                <div class="button-row">
+                    <button type="button" onclick="getTools()">Show Tools</button>
+
+
+                    <button type="button" class="control-button" onclick="uploadTools()">Upload Tools</button>
+
+
+                    <span>    </span>
+                    <button id="submitButton" type="button" class="control-button" onclick="thread.submitPrompt()">Submit</button>
+
+                </div><!--end button row-->
+
+
+
+                <div id="toolTestContainer"> </div>
+
+
+            </div> 
+
+
+            <!--end main-->
+        </div>
+
+    </body>
 </html>

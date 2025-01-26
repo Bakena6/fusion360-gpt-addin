@@ -24,10 +24,9 @@ import time
 
 from ... import config
 from ...lib import fusion360utils as futil
-
 import importlib
 
-# custom module
+# custom modules
 from ...lib.sutil import fusion_interface
 
 app = adsk.core.Application.get()
@@ -37,7 +36,7 @@ PALETTE_NAME = 'STSi-Fusion-GPT'
 IS_PROMOTED = False
 
 # Using "global" variables by referencing values from /config.py
-PALETTE_ID = config.sample_pallette_id
+PALETTE_ID = config.palette_id
 
 # Specify the full path to the local html. You can also use a web URL
 # such as 'https://www.autodesk.com/'
@@ -48,6 +47,8 @@ PALETTE_URL = PALETTE_URL.replace('\\', '/')
 
 # Set a default docking behavior for the palette
 PALETTE_DOCKING = adsk.core.PaletteDockingStates.PaletteDockStateRight
+#PALETTE_DOCKING = adsk.core.PaletteDockingStates.PaletteDockStateFloating
+
 CMD_NAME = os.path.basename(os.path.dirname(__file__))
 CMD_ID = f'{config.COMPANY_NAME}_{config.ADDIN_NAME}_{CMD_NAME}'
 CMD_Description = 'Browser Input'
@@ -68,16 +69,13 @@ ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resource
 # Holds references to event handlers
 local_handlers = []
 
-DESIGN =  {}
-STATE_DATA = {
-    'model_attrs': {}
-}
+
 
 # Fusion360 interface, methodods availible to OpenAI Assistant
 fusion_itf = fusion_interface.FusionInterface(app, ui)
+
 # connects to Assistant Interface running on external process
 server_itf = fusion_interface.GptClient(fusion_itf)
-
 
 def print(string):
     futil.log(str(string))
@@ -149,6 +147,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
     palettes = ui.palettes
     palette = palettes.itemById(PALETTE_ID)
+
     if palette is None:
         palette = palettes.add(
             id=PALETTE_ID,
@@ -157,8 +156,8 @@ def command_execute(args: adsk.core.CommandEventArgs):
             isVisible=True,
             showCloseButton=True,
             isResizable=True,
-            width=900,
-            height=200,
+            width=1000,
+            height=2000,
             useNewWebBrowser=True
         )
         futil.add_handler(palette.closed, palette_closed)
@@ -170,6 +169,8 @@ def command_execute(args: adsk.core.CommandEventArgs):
         palette.dockingState = PALETTE_DOCKING
 
     palette.isVisible = True
+
+
 
 # Use this to handle a user closing your palette.
 def palette_closed(args: adsk.core.UserInterfaceGeneralEventArgs):
@@ -194,11 +195,6 @@ def palette_navigating(args: adsk.core.NavigationEventArgs):
 
 
 
-
-
-
-
-STATE_DATA = {}
 def palette_incoming(html_args: adsk.core.HTMLEventArgs):
     """
      handles events sent from javascript in palette
@@ -208,86 +204,52 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
     message_data = json.loads(html_args.data)
     message_action = html_args.action
 
-    # connects to Assistant Interface running on external process
-    
-
-    print("message_data")
-    print(message_data)
+    importlib.reload(fusion_interface)
+    fusion_itf = fusion_interface.FusionInterface(app, ui)
 
     if message_action == "error":
-        print(message_dat)
+        print(message_data)
 
-    elif message_action == "create_thread":
-        """get gpt thread and create instance"""
-        #initial_message = gpt_main.get_initial_values()
-        #gpt = gpt_init.get_gpt(initial_message)
-        #STATE_DATA['gpt'] = gpt
+    elif message_action == "connect":
+        server_itf.connect()
+        #connect to server
+        print("SERVER CONNECTED")
+
+    # upload function/ prompt to Assistant
+    elif message_action == "upload_tools":
+        server_itf.upload_tools()
+
+    elif message_action == "get_tools":
+        """
+        get available tools, display in window
+        """
+        methods = fusion_itf.get_tools()
+
+        html_args.returnData = json.dumps(methods)
+
+
+    elif message_action == "execute_tool_call":
+
+        function_name = message_data["function_name"]
+        function_args = message_data["function_args"]
+
+        # convert to dict if passed as str when manually testing
+        if isinstance(function_args, str):
+            function_args = json.loads(function_args)
+
+        method = getattr(fusion_itf, function_name, None)
+
+        if callable(method):
+            result = method(**function_args)
+
+        html_args.returnData = ''
+
 
     elif message_action == "submit_prompt":
 
         prompt_text = message_data['promptText']
-
-        server_itf.send_message(prompt_text)
-
-        print(prompt_text)
-
-
-        #try:
-        #    # send initial prompt
-        #    gpt.execute_message(prompt_text)
-        #except:
-        #    gpt.cancel_run()
-        #    return
-
-        #return_val = ''
-        #call_num = 0
-        #run_status = 'in_progress'
-
-        #try:
-        #    while run_status != 'completed':
-
-        #        # execute steps
-        #        step_resp = gpt.execute_steps()
-
-        #        resp_type = step_resp['resp_type']
-        #        resp_val = step_resp['value']
-        #        STATE_DATA['last_resp'] = resp_val
-        #        return_args = {'message_text': 'none'}
-
-        #        if resp_type == 'tool_calls':
-        #            function_resps = gpt_main.run_functions(resp_val)
-        #            gpt.send_func_response(function_resps)
-        #            return_val += json.dumps(resp_val)
-
-        #        if resp_type == 'message':
-        #             return_val += resp_val
-
-        #        time.sleep(4)
-        #        run_status = gpt.run_status()
-        #        print(run_status)
-
-        #        if run_status == 'failed':
-        #            break
-
-        #        call_num += 1
-        #        if call_num > 20:
-        #            print('broke')
-        #            break
-
-        #    html_args.returnData = json.dumps({'resp_val': return_val})
-        #except:
-        #    gpt.cancel_run()
-        #    return
-
-    elif message_action == "run_last":
-        '''run last promt response'''
-        pass
-
-    elif message_action == "test_tools":
-        pass
-
-    elif message_action == "get_steps":
-        pass
+        if prompt_text != "":
+            server_itf.send_message(prompt_text)
 
 
 
@@ -295,7 +257,6 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
 # This function will be called when the user clicks the OK button in the command dialog.
 def command_execute_o(args: adsk.core.CommandEventArgs):
     futil.log(f'{CMD_NAME} Command Execute Event')
-
 
 
 # This function will be called when the user completes the command.
