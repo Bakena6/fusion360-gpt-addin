@@ -84,23 +84,28 @@ class Assistant:
         update assistant tools
         """
 
-        #fusion_interface.
+        # base assistant prompt
+        with open("system_instructions.txt") as f:
+            instructions = f.read()
 
-        # run on local host, Fusion client must connect to this address
-        with open(LOCAL_TOOLS_PATH, "r") as f:
-            tools = json.load(f)
-
-        #print(tools)
+        # functions
+        tools = json.loads(tools)
         updated_tools = []
         for tool in tools:
             updated_tools.append({"type": "function", "function": tool})
 
+
+        tool7 = updated_tools[7]
+        print(json.dumps(tool7, indent=4))
+
+
         updated_assistant = client.beta.assistants.update(
             self.assistant_id,
             tools=updated_tools,
+            instructions=instructions,
         )
 
-        #print(updated_assistant)
+        print(updated_assistant)
 
 
     def start_thread(self):
@@ -128,13 +133,27 @@ class Assistant:
 
                 i = 0
                 while True:
-                    print(f"\n")
                     print(f"{i} WAITING...")
 
                     # wait for message from user
-                    message_text = conn.recv()
-                    print(f" MESSAGE RECIEVED: {message_text}")
-                    #if message_text == "update_
+                    message_raw = conn.recv()
+
+                    message = json.loads(message_raw)
+
+                    message_type = message["message_type"]
+
+                    #print(f" MESSAGE RECIEVED: {message['content'] }")
+                    print(f" MESSAGE RECIEVED")
+
+
+                    if message_type == "thread_update":
+                        message_text = message["content"]
+
+                    # update Assistant meta data
+                    elif message_type == "tool_update":
+                        tools = message["content"]
+                        self.update_tools(tools)
+                        continue
 
                     # add message to thread
                     self.add_message(message_text)
@@ -422,49 +441,6 @@ class Assistant:
         return run
 
 
-    #def get_run_steps(self):
-    #    """check if run is complete and get message"""
-
-    #    run_steps = self.client.beta.threads.runs.steps.list(
-    #        thread_id=self.thread_id,
-    #        run_id=self.run_id,
-    #        order="asc",
-    #        limit=20
-    #    )
-
-    #    self.run_steps = run_steps
-
-    #    #for step in run_steps.data[::-1]:
-    #    for step in run_steps.data:
-
-    #        info = ""
-    #        if step.type == "tool_calls":
-    #            info = step.step_details.tool_calls[0].function.name
-
-    #        print(f"   STEP: {step.id}, {step.type}, {step.status}, {info} {step.id}")
-
-
-    #    return run_steps
-
-
-    #def get_messages(self):
-    #    """get messages from thread"""
-
-    #    messages = self.client.beta.threads.messages.list(
-    #        thread_id=self.thread_id,
-    #        # query on the most recent message
-    #        order="asc",
-    #        limit=10
-    #    )
-
-    #    #message_text = run_messages.data[0].content[0].text.value
-    #    for message in messages.data:
-    #        msg_text = message.content[0].text.value
-    #        msg_role = message.role
-
-    #        print(f"   MSG: {msg_role}: {msg_text}")
-
-    #    return messages
 
     def submit_tool_call(self, response_list: list):
         """
@@ -481,19 +457,8 @@ class Assistant:
         )
         return stream
 
-        #print(f'  TOOL CALL SUBMITTED: status: {self.run.status}')
 
 
-    #def execute_message(self, message):
-    #    self.create_message(message)
-    #    self.create_run()
-    #    return None
-
-
-    #def execute_steps(self):
-    #    self.get_run_steps()
-    #    steps_resp = self.parse_run_steps()
-    #    return steps_resp
 
 
     def send_func_response(self, response_list: list):
