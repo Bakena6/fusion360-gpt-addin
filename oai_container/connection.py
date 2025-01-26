@@ -11,6 +11,9 @@ import subprocess
 import sys
 import time
 from openai import OpenAI
+import adsk
+
+
 
 user_config = configparser.ConfigParser()
 # path to config file containing open ai API keys, Python env path
@@ -30,6 +33,20 @@ LOCAL_TOOLS_PATH = default_config["LOCAL_TOOLS_PATH"]
 
 #client = OpenAI(api_key=OPEN_AI_API_KEY)
 client = OpenAI()
+
+
+from pathlib import Path
+
+## local fusion interface package, added here to uploaded functions/prompt to assistant via API
+#project_root = Path(__file__).parents[1]
+#print("project_root")
+#fusion_interface_path = os.path.join(project_root, "Fusion-GPT-Addin/lib/sutil")
+#
+#if fusion_interface_path not in sys.path:
+#    sys.path.append(fusion_interface_path)
+#    #print("PATH ADDED")
+#import fusion_interface
+#print(fusion_interface)
 
 
 class Assistant:
@@ -54,7 +71,6 @@ class Assistant:
         # run local process server, how Fusion connects
         #self.start_server()
 
-
     def format_str(self, string, n_char):
         """uniform print spacing """
         string = str(string)
@@ -63,10 +79,13 @@ class Assistant:
         return f"{string}{spacer}"
 
 
-    def update_tools(self):
+    def update_tools(self, tools):
         """
         update assistant tools
         """
+
+        #fusion_interface.
+
         # run on local host, Fusion client must connect to this address
         with open(LOCAL_TOOLS_PATH, "r") as f:
             tools = json.load(f)
@@ -82,6 +101,20 @@ class Assistant:
         )
 
         #print(updated_assistant)
+
+
+    def start_thread(self):
+        """
+        start thread (conversation) with Assistant API
+        """
+        # create new thread
+        self.thread = self.client.beta.threads.create()
+
+        self.thread_id = self.thread.id
+
+        ## laste run step
+        self.run_steps = None
+        print(f'THREAD CREATED: {self.thread.id}')
 
 
     def start_server(self):
@@ -101,6 +134,7 @@ class Assistant:
                     # wait for message from user
                     message_text = conn.recv()
                     print(f" MESSAGE RECIEVED: {message_text}")
+                    #if message_text == "update_
 
                     # add message to thread
                     self.add_message(message_text)
@@ -124,6 +158,7 @@ class Assistant:
                                 # set run id for tool call result calls
                                 self.run = event.data
                                 self.run_id = event.data.id
+                                print(data)
 
                                 content = {
                                     "run_id": self.run_id,
@@ -138,6 +173,8 @@ class Assistant:
 
 
                             elif event_type == "thread.message.created":
+                                print(event)
+
                                 content = {
                                     "message_id": data.id,
                                     "run_id": data.run_id,
@@ -153,12 +190,17 @@ class Assistant:
                                 conn.send(json.dumps(fusion_call))
 
                             elif event_type == "thread.run.step.created":
-                                print(data)
+                                step_type = data.type
+
+                                print(f"step_type: {step_type}")
+
+                                step_details = data.step_details
 
                                 content = {
                                     "step_id": data.id,
                                     "run_id": data.run_id,
                                     "status": data.status,
+                                    "step_type": step_type,
                                     "event": event_type,
                                 };
                                 fusion_call = {
@@ -169,15 +211,13 @@ class Assistant:
                                 conn.send(json.dumps(fusion_call))
 
 
-                            elif event_type == "thread.message.completed":
-                                content = event.data.content
-                                for content_block in content:
-                                    text = content_block.text.value
-                                    message_text += text
+                            elif event_type == "thread.run.step.in_progress":
+                                #print(data)
+                                pass
 
 
                             elif event_type == "thread.message.delta":
-                                print(event.data)
+                                #print(event.data)
                                 delta_text = event.data.delta.content[0].text.value
                                 message_id = event.data.id
 
@@ -198,7 +238,7 @@ class Assistant:
                             elif event_type == "thread.run.step.delta":
 
                                 function = event.data.delta.step_details.tool_calls[0].function
-                                print(function)
+                                #print(function)
 
                                 step_id = event.data.id
 
@@ -218,13 +258,19 @@ class Assistant:
 
                                 conn.send(json.dumps(fusion_call))
 
+                            elif event_type == "thread.message.completed":
+                                content = event.data.content
+                                for content_block in content:
+                                    text = content_block.text.value
+                                    message_text += text
+
 
                             elif event_type == "thread.run.requires_action":
                                 print("THREAD.RUN.REQUIRES_ACTION")
                                 print(event.data.required_action)
 
                                 tool_calls = event.data.required_action.submit_tool_outputs.tool_calls
-                                print(tool_calls)
+                                #print(tool_calls)
 
                                 # return data for all tool calls in a step
                                 tool_call_results = []
@@ -275,7 +321,7 @@ class Assistant:
                                     continue
 
                                 function = step_details.tool_calls[0].function
-                                print(function)
+                                #print(function)
 
                                 step_id = event.data.id
 
@@ -311,23 +357,6 @@ class Assistant:
 
 
 
-
-
-
-
-
-    def start_thread(self):
-        """
-        start thread (conversation) with Assistant API
-        """
-        # create new thread
-        self.thread = self.client.beta.threads.create()
-
-        self.thread_id = self.thread.id
-
-        ## laste run step
-        self.run_steps = None
-        print(f'THREAD CREATED: {self.thread.id}')
 
 
     def add_message(self, message_text: str):
@@ -393,49 +422,49 @@ class Assistant:
         return run
 
 
-    def get_run_steps(self):
-        """check if run is complete and get message"""
+    #def get_run_steps(self):
+    #    """check if run is complete and get message"""
 
-        run_steps = self.client.beta.threads.runs.steps.list(
-            thread_id=self.thread_id,
-            run_id=self.run_id,
-            order="asc",
-            limit=20
-        )
+    #    run_steps = self.client.beta.threads.runs.steps.list(
+    #        thread_id=self.thread_id,
+    #        run_id=self.run_id,
+    #        order="asc",
+    #        limit=20
+    #    )
 
-        self.run_steps = run_steps
+    #    self.run_steps = run_steps
 
-        #for step in run_steps.data[::-1]:
-        for step in run_steps.data:
+    #    #for step in run_steps.data[::-1]:
+    #    for step in run_steps.data:
 
-            info = ""
-            if step.type == "tool_calls":
-                info = step.step_details.tool_calls[0].function.name
+    #        info = ""
+    #        if step.type == "tool_calls":
+    #            info = step.step_details.tool_calls[0].function.name
 
-            print(f"   STEP: {step.id}, {step.type}, {step.status}, {info} {step.id}")
-
-
-        return run_steps
+    #        print(f"   STEP: {step.id}, {step.type}, {step.status}, {info} {step.id}")
 
 
-    def get_messages(self):
-        """get messages from thread"""
+    #    return run_steps
 
-        messages = self.client.beta.threads.messages.list(
-            thread_id=self.thread_id,
-            # query on the most recent message
-            order="asc",
-            limit=10
-        )
 
-        #message_text = run_messages.data[0].content[0].text.value
-        for message in messages.data:
-            msg_text = message.content[0].text.value
-            msg_role = message.role
+    #def get_messages(self):
+    #    """get messages from thread"""
 
-            print(f"   MSG: {msg_role}: {msg_text}")
+    #    messages = self.client.beta.threads.messages.list(
+    #        thread_id=self.thread_id,
+    #        # query on the most recent message
+    #        order="asc",
+    #        limit=10
+    #    )
 
-        return messages
+    #    #message_text = run_messages.data[0].content[0].text.value
+    #    for message in messages.data:
+    #        msg_text = message.content[0].text.value
+    #        msg_role = message.role
+
+    #        print(f"   MSG: {msg_role}: {msg_text}")
+
+    #    return messages
 
     def submit_tool_call(self, response_list: list):
         """
@@ -461,12 +490,10 @@ class Assistant:
     #    return None
 
 
-    def execute_steps(self):
-        self.get_run_steps()
-
-        steps_resp = self.parse_run_steps()
-
-        return steps_resp
+    #def execute_steps(self):
+    #    self.get_run_steps()
+    #    steps_resp = self.parse_run_steps()
+    #    return steps_resp
 
 
     def send_func_response(self, response_list: list):
