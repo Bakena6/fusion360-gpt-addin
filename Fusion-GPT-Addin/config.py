@@ -6,18 +6,18 @@
 # It allows for access across multiple event handlers and modules
 
 # read openai/system specific config vars
-import configparser
+#import configparser
 import os
 
-user_config = configparser.ConfigParser()
+#user_config = configparser.ConfigParser()
 # path to config file containing open ai API keys, Python env path
-config_path = os.path.join(os.path.dirname(__file__), "fusion_config.env")
-user_config.read(config_path)
+#config_path = os.path.join(os.path.dirname(__file__), "fusion_config.env")
+#user_config.read(config_path)
 
-default_config = user_config["DEFAULT"]
+#default_config = user_config["DEFAULT"]
 
-PYTHON_ENV_PATH = default_config["PYTHON_ENV_PATH"]
-LOCAL_TOOLS_PATH = default_config["LOCAL_TOOLS_PATH"]
+#PYTHON_ENV_PATH = default_config["PYTHON_ENV_PATH"]
+#LOCAL_TOOLS_PATH = default_config["LOCAL_TOOLS_PATH"]
 
 # Set to False to remove most log messages from text palette
 DEBUG = True

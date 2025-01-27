@@ -5,7 +5,6 @@ import sys
 from .Browser import entry as browser
 # global config settings
 from .. import config
-
 from ..lib import fusion360utils as futil
 
 
@@ -16,8 +15,8 @@ commands = [
 ]
 
 # add user python env to path
-if config.PYTHON_ENV_PATH not in sys.path:
-    sys.path.append(config.PYTHON_ENV_PATH)
+#if config.PYTHON_ENV_PATH not in sys.path:
+#    sys.path.append(config.PYTHON_ENV_PATH)
 
 
 

@@ -197,7 +197,7 @@ def palette_navigating(args: adsk.core.NavigationEventArgs):
 
 def palette_incoming(html_args: adsk.core.HTMLEventArgs):
     """
-     handles events sent from javascript in palette
+    handles events sent from javascript in palette
     """
 
     # read message sent from browser input javascript function
@@ -241,6 +241,7 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
 
         if callable(method):
             result = method(**function_args)
+            print(result)
 
         html_args.returnData = ''
 

@@ -14,24 +14,14 @@ import time
 
 import functools
 
-# TODO find some way to do this without try/except
-# this module is imported by 'connection.py' in 'oai_container
-# it needs access to the function docstrings 
-# in order to update the available functions in the "Assistant"
-# import issues when run outside of fusion environment 
-try:
+from ... import config
+from ...lib import fusion360utils as futil
 
-    from ... import config
-    from ...lib import fusion360utils as futil
-
-    # send info to html palette
-    PALETTE_ID = config.palette_id
-    app = adsk.core.Application.get()
-    ui = app.userInterface
-    palette = ui.palettes.itemById(PALETTE_ID)
-
-except Exception as e:
-    print(f"{e}")
+# send info to html palette
+PALETTE_ID = config.palette_id
+app = adsk.core.Application.get()
+ui = app.userInterface
+palette = ui.palettes.itemById(PALETTE_ID)
 
 def print(string):
     """redefine print for fusion env"""
@@ -333,9 +323,6 @@ class FusionInterface:
 
 
 
-
-
-
 class FusionSubmodule:
     """
     methods colletion
@@ -368,6 +355,8 @@ class FusionSubmodule:
 
         return methods
 
+
+
     def _find_component_by_name(self, component_name:str="comp1"):
         """
         called from methods, not Assistant directly
@@ -375,7 +364,6 @@ class FusionSubmodule:
 
         # Access the active design
         app = adsk.core.Application.get()
-        ui = app.userInterface
         design = adsk.fusion.Design.cast(app.activeProduct)
         rootComp = design.rootComponent
 
@@ -391,6 +379,7 @@ class FusionSubmodule:
 
         return targetComponent
 
+
     def _find_sketch_by_name(self, component, sketch_name):
 
         # Find the target sketch
@@ -401,7 +390,6 @@ class FusionSubmodule:
                 break
 
         return targetSketch
-
 
 
 
@@ -420,7 +408,6 @@ class StateData(FusionSubmodule):
         """
         try:
             app = adsk.core.Application.get()
-            ui = app.userInterface
             design = adsk.fusion.Design.cast(app.activeProduct)
 
             # Access the active design
@@ -428,64 +415,11 @@ class StateData(FusionSubmodule):
                 # Return the name of the root component
                 return design.rootComponent.name
             else:
-                ui.messageBox('No active design found.')
                 return None
 
         except Exception as e:
-            ui.messageBox('Failed:\n{}'.format(e))
             return None
 
-    def find_component_by_name(self, component_name: str = "comp1"):
-        """
-        {
-          "name": "find_component_by_name",
-          "description": "Searches for a component in the active Fusion 360 design. The component_name can be a single name or a hierarchical path represented by names separated by colons, indicating a path from a parent component to a nested child component.",
-
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "component_name": {
-                "type": "string",
-                "description": "The name or hierarchical path of the component to search for, with names separated by colons if applicable."
-              }
-            },
-            "required": ["component_name"]
-          }
-        }
-        """
-        try:
-            # Get the active design
-            app = adsk.core.Application.get()
-            ui = app.userInterface
-            design = adsk.fusion.Design.cast(app.activeProduct)
-
-            if not design:
-                ui.messageBox('No active Fusion 360 design', 'No Design')
-                return None
-
-            # Split the function_name on colons to get the component hierarchy
-            component_names = function_name.split(':')
-
-            # Start with the root component
-            current_component = design.rootComponent
-
-            # Iterate through the hierarchy
-            for name in component_names:
-                found = False
-                for occ in current_component.allOccurrences:
-                    if occ.component.name == name:
-                        current_component = occ.component
-                        found = True
-                        break
-                if not found:
-                    return None  # Component in the hierarchy not found
-
-            return current_component
-
-        except:
-            if ui:
-                ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
-            return None
 
     def get_design_as_json(self) -> str:
         """
@@ -764,33 +698,33 @@ class SketchMethods(FusionSubmodule):
 
     def create_sketch(self, component_name: str="comp1", sketch_name: str ="sketch1", sketch_plane: str ="xy"):
         """
-        {
-          "name": "create_sketch",
-          "description": "Creates a sketch within a specified component on a specified plane in Fusion 360. The plane can be xy, xz, or yz.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "component_name": {
-                "type": "string",
-                "description": "The name of the component where the sketch will be created."
-              },
-              "sketch_name": {
-                "type": "string",
-                "description": "The name for the new sketch to be created."
-              },
-              "sketch_plane": {
-                "type": "string",
-                "enum": ["xy", "xz", "yz"],
-                "description": "The plane on which the sketch will be created. Possible values are 'xy', 'xz', 'yz'. Default is 'xy'."
+            {
+              "name": "create_sketch",
+              "description": "Creates a sketch within a specified component on a specified plane in Fusion 360. The plane can be xy, xz, or yz.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "component_name": {
+                    "type": "string",
+                    "description": "The name of the component where the sketch will be created."
+                  },
+                  "sketch_name": {
+                    "type": "string",
+                    "description": "The name for the new sketch to be created."
+                  },
+                  "sketch_plane": {
+                    "type": "string",
+                    "enum": ["xy", "xz", "yz"],
+                    "description": "The plane on which the sketch will be created. Possible values are 'xy', 'xz', 'yz'. Default is 'xy'."
+                  }
+                },
+                "required": ["component_name", "sketch_name"],
+                "returns": {
+                  "type": "string",
+                  "description": "A message indicating the success or failure of the sketch creation."
+                }
               }
-            },
-            "required": ["component_name", "sketch_name"],
-            "returns": {
-              "type": "string",
-              "description": "A message indicating the success or failure of the sketch creation."
             }
-          }
-        }
         """
 
         try:
@@ -1262,12 +1196,7 @@ class SketchMethods(FusionSubmodule):
         try:
             # Access the active design.
             app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 application not found."
-
             design = adsk.fusion.Design.cast(app.activeProduct)
-            if not design:
-                return "Error: No active Fusion 360 design found."
 
             # Locate the target component by name (using a local helper method).
             targetComponent = self._find_component_by_name(component_name)
@@ -1312,6 +1241,7 @@ class SketchMethods(FusionSubmodule):
                         selectedProfile,
                         adsk.fusion.FeatureOperations.NewBodyFeatureOperation
                     )
+
                     # Set the extent as a one-side distance.
                     extInput.setDistanceExtent(False, distanceVal)
                     extrudes.add(extInput)
@@ -1324,6 +1254,9 @@ class SketchMethods(FusionSubmodule):
 
         except Exception as e:
             return f"Error: An unexpected exception occurred: {e}"
+
+
+
 class SetData(FusionSubmodule):
     ### Internal ###
 
@@ -1331,29 +1264,33 @@ class SetData(FusionSubmodule):
     ### =================== CREEATE OBJECTS ======================== ###
     def create_new_component(self, parent_component_name: str="comp1", component_name: str="comp2") -> str:
         """
-        {
-            "name": "create_new_component",
-            "description": "Creates a new component inside a specified parent component in Fusion 360. The parent component is identified by its name. If the parent component name matches the root component of the design, the new component is created in the root component.",
-            "parameters": {
-              "type": "object",
-              "properties": {
-                "parent_component_name": {
-                  "type": "string",
-                  "description": "The name of the parent component where the new component will be created."
-                },
-                "component_name": {
-                  "type": "string",
-                  "description": "The name to be assigned to the new component."
+            {
+                "name": "create_new_component",
+                "description": "Creates a new component inside a specified parent component in Fusion 360. The parent component is identified by its name. If the parent component name matches the root component of the design, the new component is created in the root component.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "parent_component_name": {
+                            "type": "string",
+                            "description": "The name of the parent component where the new component will be created."
+                        },
+                        "component_name": {
+                            "type": "string",
+                            "description": "The name to be assigned to the new component."
+                        }
+                    },
+                    "required": ["parent_component_name", "component_name"],
+                    "returns": {
+                        "type": "string",
+                        "description": "Name of successfully created new component"
+                    }
+
                 }
-              },
-              "required": ["parent_component_name", "component_name"]
             }
-        }
         """
         try:
             # Access the active design
             app = adsk.core.Application.get()
-            ui = app.userInterface
             design = adsk.fusion.Design.cast(app.activeProduct)
             rootComp = design.rootComponent
 
@@ -1450,33 +1387,32 @@ class SetData(FusionSubmodule):
     ### ================== IMPORT ============================ ###
     def import_fusion_component(self, parent_component_name: str, file_path: str) -> str:
         """
-        {
-          "name": "import_fusion_component",
-          "description": "Imports a FusionArchive file into a specified parent component within the current Fusion 360 design.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "parent_component_name": {
-                "type": "string",
-                "description": "The name of the parent component in the current design where the FusionArchive file will be imported."
-              },
-              "file_path": {
-                "type": "string",
-                "description": "The local file path to the FusionArchive file to be imported."
+            {
+              "name": "import_fusion_component",
+              "description": "Imports a FusionArchive file into a specified parent component within the current Fusion 360 design.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "parent_component_name": {
+                    "type": "string",
+                    "description": "The name of the parent component in the current design where the FusionArchive file will be imported."
+                  },
+                  "file_path": {
+                    "type": "string",
+                    "description": "The local file path to the FusionArchive file to be imported."
+                  }
+                },
+                "required": ["parent_component_name", "file_path"],
+                "returns": {
+                  "type": "string",
+                  "description": "A message indicating the success or failure of the import operation."
+                }
               }
-            },
-            "required": ["parent_component_name", "file_path"],
-            "returns": {
-              "type": "string",
-              "description": "A message indicating the success or failure of the import operation."
             }
-          }
-        }
         """
         try:
             # Access the active design
             app = adsk.core.Application.get()
-            ui = app.userInterface
             design = adsk.fusion.Design.cast(app.activeProduct)
             rootComp = design.rootComponent
 
@@ -1499,25 +1435,25 @@ class SetData(FusionSubmodule):
 
     def import_dxf_to_component(self, target_component : str, dxf_file_path: str):
         """
-        {
-          "name": "import_dxf_to_component",
-          "description": "Imports a DXF file into a specified target component on its XY plane in Fusion 360. The function renames the new sketch to match the name of the DXF file, excluding the file extension.",
+            {
+              "name": "import_dxf_to_component",
+              "description": "Imports a DXF file into a specified target component on its XY plane in Fusion 360. The function renames the new sketch to match the name of the DXF file, excluding the file extension.",
 
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "target_component": {
-                "type": "string",
-                "description": "The target component in Fusion 360 where the DXF file will be imported."
-              },
-              "dxf_file_path": {
-                "type": "string",
-                "description": "The file path of the DXF file to be imported."
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "target_component": {
+                    "type": "string",
+                    "description": "The target component in Fusion 360 where the DXF file will be imported."
+                  },
+                  "dxf_file_path": {
+                    "type": "string",
+                    "description": "The file path of the DXF file to be imported."
+                  }
+                },
+                "required": ["target_component", "dxf_file_path"]
               }
-            },
-            "required": ["target_component", "dxf_file_path"]
-          }
-        }
+            }
         """
 
         newSketch = None
@@ -1562,34 +1498,31 @@ class SetData(FusionSubmodule):
     ### ================= MODIFY OBJECTS ===================== ###
     def rename_model_parameter(self, old_name: str, new_name: str) -> str:
         """
-        {
-          "name": "rename_model_parameter",
-          "description": "Renames a model parameter in the active Fusion 360 design from old_name to new_name. Model parameters are typically associated with features and construction geometry. If the parameter does not exist or cannot be renamed, an error message is returned.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "old_name": {
-                "type": "string",
-                "description": "The existing name of the model parameter to rename."
-              },
-              "new_name": {
-                "type": "string",
-                "description": "The new name you want to give to the model parameter."
+            {
+              "name": "rename_model_parameter",
+              "description": "Renames a model parameter in the active Fusion 360 design from old_name to new_name. Model parameters are typically associated with features and construction geometry. If the parameter does not exist or cannot be renamed, an error message is returned.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "old_name": {
+                    "type": "string",
+                    "description": "The existing name of the model parameter to rename."
+                  },
+                  "new_name": {
+                    "type": "string",
+                    "description": "The new name you want to give to the model parameter."
+                  }
+                },
+                "required": ["old_name", "new_name"],
+                "returns": {
+                  "type": "string",
+                  "description": "A message indicating whether the parameter was successfully renamed."
+                }
               }
-            },
-            "required": ["old_name", "new_name"],
-            "returns": {
-              "type": "string",
-              "description": "A message indicating whether the parameter was successfully renamed."
             }
-          }
-        }
         """
         try:
             app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 application not found."
-
             product = app.activeProduct
             if not product or not isinstance(product, adsk.fusion.Design):
                 return "Error: No active Fusion 360 design found."
@@ -1614,43 +1547,41 @@ class SetData(FusionSubmodule):
 
     def rename_model_parameters(self, old_new_names: list) -> str:
         """
-        {
-          "name": "rename_model_parameters",
-          "description": "Renames multiple model parameters in the active Fusion 360 design. Accepts an array of objects, each containing an old_name and a new_name. Returns a summary indicating which renames succeeded or failed.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "old_new_names": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "old_name": {
-                      "type": "string",
-                      "description": "The current name of the model parameter."
+            {
+              "name": "rename_model_parameters",
+              "description": "Renames multiple model parameters in the active Fusion 360 design. Accepts an array of objects, each containing an old_name and a new_name. Returns a summary indicating which renames succeeded or failed.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "old_new_names": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "old_name": {
+                          "type": "string",
+                          "description": "The current name of the model parameter."
+                        },
+                        "new_name": {
+                          "type": "string",
+                          "description": "The new name you wish to assign to the model parameter."
+                        }
+                      },
+                      "required": ["old_name", "new_name"]
                     },
-                    "new_name": {
-                      "type": "string",
-                      "description": "The new name you wish to assign to the model parameter."
-                    }
-                  },
-                  "required": ["old_name", "new_name"]
+                    "description": "An array of old_name / new_name pairs for the parameters you want to rename."
+                  }
                 },
-                "description": "An array of old_name / new_name pairs for the parameters you want to rename."
+                "required": ["old_new_names"],
+                "returns": {
+                  "type": "string",
+                  "description": "A summary message indicating the success or failure of each parameter rename."
+                }
               }
-            },
-            "required": ["old_new_names"],
-            "returns": {
-              "type": "string",
-              "description": "A summary message indicating the success or failure of each parameter rename."
             }
-          }
-        }
         """
         try:
             app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 application not found."
 
             product = app.activeProduct
             if not product or not isinstance(product, adsk.fusion.Design):
@@ -1691,50 +1622,43 @@ class SetData(FusionSubmodule):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
-    #@fusion_call
-    def rename_component(self, component: str, new_name: str) -> str:
-        """
-        {
-          "name": "rename_component",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "component": {
-                "type": "string",
-                "description": "The name of the Fusion 360 component to be renamed."
-              },
-              "new_name": {
-                "type": "string",
-                "description": "The new name to assign to the component."
-              }
-            },
-            "required": [
-              "component",
-              "new_name"
-            ]
-          },
-          "description": "Renames a specified component in Fusion 360 to a new name."
-        }
 
+
+    def rename_component(self, component_name: str, new_name: str) -> str:
+        """
+            {
+              "name": "rename_component",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "component_name": {
+                    "type": "string",
+                    "description": "The name of the Fusion 360 component to be renamed."
+                  },
+                  "new_name": {
+                    "type": "string",
+                    "description": "The new name to assign to the component."
+                  }
+                },
+                "required": [
+                  "component",
+                  "new_name"
+                ]
+              },
+              "description": "Renames a specified component in Fusion 360 to a new name."
+            }
         """
 
         try:
-            # Access the active design
-            app = adsk.core.Application.get()
-            ui = app.userInterface
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            rootComp = design.rootComponent
-
-            component = self.find_component_by_name(component)
+            targetComponent = self._find_component_by_name(component_name)
             # Set the new name for the component
-            component.name = new_name
+            targetComponent.name = new_name
             return new_name
-
         except Exception as e:
             return 'Failed to rename the component:\n{}'.format(new_name)
 
 
-    def delete_component(self, component_name: str) -> str:
+    def delete_component(self, component_name: str="comp1") -> str:
         """
         {
             "name": "delete_component",
@@ -1752,22 +1676,10 @@ class SetData(FusionSubmodule):
         }
         """
         try:
-            # Access the active design
-            app = adsk.core.Application.get()
-            ui = app.userInterface
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            rootComp = design.rootComponent
 
-            # Find and delete the target component
-            targetComponent = None
-            for occ in rootComp.allOccurrences:
-                if occ.component.name == component_name:
-                    targetComponent = occ
-                    break
-
+            targetComponent = self._find_component_by_name(component_name)
             if not targetComponent:
-                ui.messageBox(f'Component "{component_name}" not found')
-                return
+                return f'Error: Component "{component_name}" not found.'
 
             # Delete the component
             targetComponent.deleteMe()
@@ -1777,15 +1689,206 @@ class SetData(FusionSubmodule):
         except Exception as e:
             return 'Failed to delete the component:\n{}'.format(component_name)
 
+    def delete_sketch(self, component_name: str="comp1", sketch_name: str="sketch1") -> str:
+        """
+        {
+            "name": "delete_sketch",
+            "description": "Deletes a sketch from the current Fusion 360 design based on the given component and sketch names.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "component_name": {
+                        "type": "string",
+                        "description": "The name of the Fusion 360 component containing the sketch."
+                    },
+                    "sketch_name": {
+                        "type": "string",
+                        "description": "The name of the sketch to be deleted."
+                    }
+                },
+                "required": ["component_name", "sketch_name"]
+            }
+        }
+        """
+        try:
+
+            # Find the target component by name (assuming you have a helper method).
+            targetComponent = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return f'Error: Component "{component_name}" not found.'
+
+            # Find the target sketch by name in the component.
+            targetSketch = self._find_sketch_by_name(targetComponent)
+            if not targetSketch:
+                return f'Error: Sketch "{sketch_name}" not found in component "{component_name}".'
+
+            # Delete the sketch.
+            targetSketch.deleteMe()
+
+            return f'Deleted sketch "{sketch_name}" from component "{component_name}".'
+
+        except Exception as e:
+            return f'Failed to delete the sketch "{sketch_name}" from "{component_name}":\n{e}'
+    def delete_brep_body(self, component_name: str="comp1", body_name: str="body1") -> str:
+        """
+        {
+            "name": "delete_brep_body",
+            "description": "Deletes a BRep body from the current Fusion 360 design based on the given component name and body name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "component_name": {
+                        "type": "string",
+                        "description": "The name of the Fusion 360 component containing the BRep body."
+                    },
+                    "body_name": {
+                        "type": "string",
+                        "description": "The name of the BRep body to be deleted."
+                    }
+                },
+                "required": ["component_name", "body_name"]
+            }
+        }
+        """
+        try:
+
+            # Find the target component by name
+            targetComponent = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return f'Error: Component "{component_name}" not found.'
+
+            # Search for the specified BRep body within the component
+            targetBody = None
+            for body in targetComponent.bRepBodies:
+                if body.name == body_name:
+                    targetBody = body
+                    break
+
+            if not targetBody:
+                return f'Error: BRep body "{body_name}" not found in component "{component_name}".'
+
+            # Delete the BRep body
+            targetBody.deleteMe()
+
+            return f'Deleted BRep body "{body_name}" from component "{component_name}".'
+
+        except Exception as e:
+            return f'Failed to delete the BRep body "{body_name}" from "{component_name}":\n{e}'
+
+    def copy_component(self, source_component_name: str, target_parent_component_name: str) -> str:
+        """
+            {
+                "name": "copy_component",
+                "description": "Creates a new occurrence of an existing component inside another parent component. This effectively 'copies' the geometry by referencing the same underlying component in a new location.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "source_component_name": {
+                            "type": "string",
+                            "description": "The name of the existing Fusion 360 component to be copied."
+                        },
+                        "target_parent_component_name": {
+                            "type": "string",
+                            "description": "The name of the component that will serve as the parent for the new copy."
+                        }
+                    },
+                    "required": ["source_component_name", "target_parent_component_name"],
+                    "returns": {
+                        "type": "string",
+                        "description": "A message indicating whether the copy (new occurrence) was successfully created."
+                    }
+
+                }
+            }
+        """
+        try:
+            # Access the active design
+            app = adsk.core.Application.get()
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            if not design:
+                return "Error: No active Fusion 360 design found."
+
+            # Locate the source component using a helper method (assumed to exist in your environment)
+            sourceComp = self._find_component_by_name(source_component_name)
+            if not sourceComp:
+                return f'Error: Source component "{source_component_name}" not found.'
+
+            # Locate the target parent component
+            targetParentComp = self._find_component_by_name(target_parent_component_name)
+            if not targetParentComp:
+                return f'Error: Parent component "{target_parent_component_name}" not found.'
+
+            # Create a new occurrence of the source component in the target parent component
+            transform = adsk.core.Matrix3D.create()  # Identity transform (no rotation, no translation)
+            new_occurrence = targetParentComp.occurrences.addExistingComponent(sourceComp, transform)
+
+            # (Optional) Rename the new occurrence if you want a distinct name
+            # new_occurrence.name = source_component_name + "_copy"
+
+            return f'Successfully copied "{source_component_name}" into "{target_parent_component_name}".'
+
+        except Exception as e:
+            return f'Failed to copy "{source_component_name}" into "{target_parent_component_name}":\n{e}'
 
 
+    def copy_component_as_new(self, source_component_name: str="comp1", target_parent_component_name: str="comp_container", new_component_name: str="new_comp_1") -> str:
+        """
+            {
+                "name": "copy_component_as_new",
+                "description": "Creates a completely new component by copying the geometry of an existing component. The copied component is inserted as a new occurrence in the target parent component, but is otherwise independent of the source. The newly created component will be renamed to the provided new_component_name.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "source_component_name": {
+                            "type": "string",
+                            "description": "The name of the existing Fusion 360 component to be copied."
+                        },
+                        "target_parent_component_name": {
+                            "type": "string",
+                            "description": "The name of the component that will serve as the parent for the newly copied component."
+                        },
+                        "new_component_name": {
+                            "type": "string",
+                            "description": "The desired name for the newly created component copy."
+                        }
+                    },
+                    "required": ["source_component_name", "target_parent_component_name", "new_component_name"],
+                    "returns": {
+                        "type": "string",
+                        "description": "A message indicating whether the independent copy was successfully created and named."
+                    }
+                }
+            }
+        """
+        try:
+            # Access the active design
+            app = adsk.core.Application.get()
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            if not design:
+                return "Error: No active Fusion 360 design found."
 
+            # Locate the source component
+            sourceComp = self._find_component_by_name(source_component_name)
+            if not sourceComp:
+                return f'Error: Source component "{source_component_name}" not found.'
 
+            # Locate the target parent component
+            targetParentComp = self._find_component_by_name(target_parent_component_name)
+            if not targetParentComp:
+                return f'Error: Parent component "{target_parent_component_name}" not found.'
 
+            # Create a new, independent copy of the source component
+            transform = adsk.core.Matrix3D.create()  # Identity transform
+            new_occurrence = targetParentComp.occurrences.addNewComponentCopy(sourceComp, transform)
+            new_comp = new_occurrence.component
 
+            # Rename the newly created component
+            new_comp.name = new_component_name
 
+            return f'Successfully created a new, independent copy of "{source_component_name}into "{target_parent_component_name}" named "{new_component_name}".'
 
-
+        except Exception as e:
+            return f'Failed to copy "{source_component_name}" as a new component into "{target_parent_component_name}":\n{e}'
 
 
 

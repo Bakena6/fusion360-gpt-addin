@@ -8,12 +8,12 @@
 
 body {
     background-color: #262626;
-    height:800px;
+    height:1000px;
 }
 
 #main{
-    height:800px;
-};
+    height:900px;
+}
 
 /* reverse scrolling output container */
 .output-container {

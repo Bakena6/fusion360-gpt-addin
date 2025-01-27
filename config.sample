@@ -1,0 +1,6 @@
+# rename this file to `config.env`, delete this line, and fill in values, no quotes
+[DEFAULT]
+OPEN_AI_API_KEY=paste_api_key_here
+ASSISTANT_ID=paste_open_ai_assistant_id_here
+
+

@@ -14,7 +14,6 @@ from openai import OpenAI
 import adsk
 
 
-
 user_config = configparser.ConfigParser()
 # path to config file containing open ai API keys, Python env path
 parent_dir = os.path.dirname(os.getcwd())
@@ -22,31 +21,13 @@ config_path = os.path.join(parent_dir,"gpt_config.env")
 user_config.read(config_path)
 default_config = user_config["DEFAULT"]
 
-#PYTHON_ENV_PATH = default_config["PYTHON_ENV_PATH"]
 OPENAI_API_KEY = default_config["OPEN_AI_API_KEY"]
-
 os.environ['OPENAI_API_KEY'] =  OPENAI_API_KEY
 
+#client = OpenAI(api_key=OPENAI_API_KEY)
 ASSISTANT_ID = default_config["ASSISTANT_ID"]
 
-LOCAL_TOOLS_PATH = default_config["LOCAL_TOOLS_PATH"]
-
-#client = OpenAI(api_key=OPEN_AI_API_KEY)
 client = OpenAI()
-
-
-from pathlib import Path
-
-## local fusion interface package, added here to uploaded functions/prompt to assistant via API
-#project_root = Path(__file__).parents[1]
-#print("project_root")
-#fusion_interface_path = os.path.join(project_root, "Fusion-GPT-Addin/lib/sutil")
-#
-#if fusion_interface_path not in sys.path:
-#    sys.path.append(fusion_interface_path)
-#    #print("PATH ADDED")
-#import fusion_interface
-#print(fusion_interface)
 
 
 class Assistant:
@@ -81,7 +62,7 @@ class Assistant:
 
     def update_tools(self, tools):
         """
-        update assistant tools
+        update assistant tools, and initial prompt instructions
         """
 
         # base assistant prompt
@@ -93,10 +74,6 @@ class Assistant:
         updated_tools = []
         for tool in tools:
             updated_tools.append({"type": "function", "function": tool})
-
-
-        tool7 = updated_tools[7]
-        print(json.dumps(tool7, indent=4))
 
 
         updated_assistant = client.beta.assistants.update(
