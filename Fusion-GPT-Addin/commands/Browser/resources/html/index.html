@@ -1,47 +1,60 @@
 
+
+
+
 <html lang="en">
+
     <head>
         <meta charset="UTF-8">
-        <title>GPT Addin</title>
-
+        <title>STSI GPT Addin</title>
         <script src="static/palette.js"></script>
         <link rel="stylesheet" type="text/css" href="static/style.css">
-
     </head>
+
+
 
     <body>
 
-        <div id=main>
-
-            <div class="output-container"> </div>
-
-            <div class="input-container">
-
-                <textarea spellcheck="true" id="promptTextInput" placeholder="Enter your text here" rows="4"></textarea>
+        <div id=pageContainer>
 
 
-                <div class="button-row">
-                    <button type="button" onclick="getTools()">Show Tools</button>
+            <div class="output-container"> 
 
+            </div>
+            <!--end input-container-->
+            
+            <div class="input-wrapper">
 
-                    <button type="button" class="control-button" onclick="uploadTools()">Upload Tools</button>
+                <div class="input-container">
 
+                    <textarea spellcheck="true" id="promptTextInput" placeholder="Enter your text here" rows="4"></textarea>
 
-                    <span>    </span>
-                    <button id="submitButton" type="button" class="control-button" onclick="thread.submitPrompt()">Submit</button>
+                    <div class="button-row">
+                        <button type="button" onclick="getTools()">Show Tools</button>
+                        <button type="button" onclick="hideTools()">Hide Tools</button>
+                        <button type="button" class="control-button" onclick="uploadTools()">Upload Tools</button>
 
-                </div><!--end button row-->
+                        <span>    </span>
+                        <button id="submitButton" type="button" class="control-button" onclick="thread.submitPrompt()">Submit</button>
 
+                    </div>
+                    <!--end button row-->
 
+                    <div id="toolTestContainer"></div>
 
-                <div id="toolTestContainer"> </div>
-
+                <!--end input-container-->
+                </div> 
 
             </div> 
 
 
-            <!--end main-->
+
+        <!--end main-->
         </div>
 
+
+     <!--end body-->
     </body>
+
+
 </html>

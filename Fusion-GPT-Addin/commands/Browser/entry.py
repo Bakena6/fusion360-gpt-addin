@@ -27,7 +27,7 @@ from ...lib import fusion360utils as futil
 import importlib
 
 # custom modules
-from ...lib.sutil import fusion_interface
+from ...lib.sutil import fusion_interface, gpt_client
 
 app = adsk.core.Application.get()
 ui = app.userInterface
@@ -75,7 +75,7 @@ local_handlers = []
 fusion_itf = fusion_interface.FusionInterface(app, ui)
 
 # connects to Assistant Interface running on external process
-server_itf = fusion_interface.GptClient(fusion_itf)
+server_itf = gpt_client.GptClient(fusion_itf)
 
 def print(string):
     futil.log(str(string))
@@ -204,11 +204,15 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
     message_data = json.loads(html_args.data)
     message_action = html_args.action
 
+    importlib.reload(gpt_client)
     importlib.reload(fusion_interface)
     fusion_itf = fusion_interface.FusionInterface(app, ui)
+    # connects to Assistant Interface running on external process
+    #server_itf = gpt_client.GptClient(fusion_itf)
 
     if message_action == "error":
         print(message_data)
+
 
     elif message_action == "connect":
         server_itf.connect()
@@ -218,6 +222,7 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
     # upload function/ prompt to Assistant
     elif message_action == "upload_tools":
         server_itf.upload_tools()
+
 
     elif message_action == "get_tools":
         """

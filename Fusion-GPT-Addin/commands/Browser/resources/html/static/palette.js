@@ -91,13 +91,13 @@ class Thread {
         };
         buttonContainer.appendChild(copyButton);
 
-        var showHideButton = document.createElement('button');
-        showHideButton.textContent = 'Show/Hide Section';
-        showHideButton.className = 'log-button';
-        showHideButton.onclick = function() {
-            navigator.clipboard.writeText(value);
-        };
-        buttonContainer.appendChild(showHideButton);
+        //var showHideButton = document.createElement('button');
+        //showHideButton.textContent = 'Show/Hide Section';
+        //showHideButton.className = 'log-button';
+        //showHideButton.onclick = function() {
+        //    navigator.clipboard.writeText(value);
+        //};
+        //buttonContainer.appendChild(showHideButton);
 
         runContainer.appendChild(buttonContainer);
         
@@ -287,13 +287,14 @@ function executeToolCall(function_name) {
 } // end executeToolCall
 
 function getTools() {
-    const args = {  };
 
+    const args = {  };
     // Send the data to Fusion as a JSON string. The return value is a Promise.
     adsk.fusionSendData("get_tools", JSON.stringify(args))
         .then((result) =>{ 
 
             let toolTestContainer = document.getElementById('toolTestContainer');
+
             toolTestContainer.innerHTML = "";
 
             let response = JSON.parse(result);
@@ -340,7 +341,31 @@ function getTools() {
         }); // end then
 } // end getTools
 
+//function
 
+function hideTools() {
+
+    let toolTestContainer = document.getElementById('toolTestContainer');
+
+    toolTestContainer.innerHTML = "";
+
+} // end hide tools
+
+ function getWindowHeight() {
+      return window.innerHeight;
+    }
+
+    // Listen for the window resize event
+    window.addEventListener('resize', function() {
+      const height = getWindowHeight();
+      console.log("Current window height:", height);
+      
+      // You can call other functions or update the DOM here
+      // e.g., update a span with the height, etc.
+    });
+
+    // Optional: Log the initial height on page load
+    console.log("Initial window height:", getWindowHeight());
 
 
 window.fusionJavaScriptHandler = {

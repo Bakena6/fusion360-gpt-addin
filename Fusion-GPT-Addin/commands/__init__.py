@@ -14,12 +14,6 @@ commands = [
     browser,
 ]
 
-# add user python env to path
-#if config.PYTHON_ENV_PATH not in sys.path:
-#    sys.path.append(config.PYTHON_ENV_PATH)
-
-
-
 # Assumes you defined a "start" function in each of your modules.
 # These functions will be run when the add-in is stopped.
 def start():

@@ -17,10 +17,10 @@ import adsk
 user_config = configparser.ConfigParser()
 # path to config file containing open ai API keys, Python env path
 parent_dir = os.path.dirname(os.getcwd())
-config_path = os.path.join(parent_dir,"gpt_config.env")
+config_path = os.path.join(parent_dir,"config.env")
 user_config.read(config_path)
-default_config = user_config["DEFAULT"]
 
+default_config = user_config["DEFAULT"]
 OPENAI_API_KEY = default_config["OPEN_AI_API_KEY"]
 os.environ['OPENAI_API_KEY'] =  OPENAI_API_KEY
 
@@ -48,7 +48,6 @@ class Assistant:
         # TODO eventualy, user should be able to restart thred from Fusion
         # start assistant thread (conversation)
         self.start_thread()
-
         # run local process server, how Fusion connects
         #self.start_server()
 
@@ -74,7 +73,6 @@ class Assistant:
         updated_tools = []
         for tool in tools:
             updated_tools.append({"type": "function", "function": tool})
-
 
         updated_assistant = client.beta.assistants.update(
             self.assistant_id,
@@ -154,7 +152,7 @@ class Assistant:
                                 # set run id for tool call result calls
                                 self.run = event.data
                                 self.run_id = event.data.id
-                                print(data)
+                                #print(data)
 
                                 content = {
                                     "run_id": self.run_id,

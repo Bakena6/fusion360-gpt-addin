@@ -8,7 +8,7 @@ import os
 import json
 import inspect
 
-from multiprocessing.connection import Client
+#from multiprocessing.connection import Client
 from array import array
 import time
 
@@ -26,165 +26,6 @@ palette = ui.palettes.itemById(PALETTE_ID)
 def print(string):
     """redefine print for fusion env"""
     futil.log(str(string))
-
-
-class GptClient:
-    """
-    connects to command server running on seperate process
-    """
-
-    def __init__(self, fusion_interface):
-        """
-        fusion_interface : class inst whose methods call Fusion API
-        """
-        self.fusion_interface = fusion_interface
-        self.app = adsk.core.Application.get()
-
-        # current connection status
-        self.connected = False
-
-        # tool call history
-        self.call_history = {}
-        #self.connect()
-
-    def connect(self):
-        """
-        connect to assistant manager class on seperate process
-        """
-        address = ('localhost', 6000)
-        self.conn = Client(address, authkey=b'fusion260')
-        self.connected = True;
-
-
-    def sendToBrowser(self, function_name, data):
-        json_data = json.dumps(data)
-        # create run output section in html
-        palette.sendInfoToHTML(function_name, json_data)
-
-    def upload_tools(self):
-        """
-        upload tools to assistant
-        """
-
-        if self.connected == False:
-            self.connect()
-
-        tools = self.fusion_interface.get_docstr()
-
-        message = {
-            "message_type": "tool_update",
-            "content": tools
-        }
-        message = json.dumps(message)
-
-        message_confirmation = self.conn.send(message)
-
-        print(f"  message sent,  waiting for result...")
-
-
-
-    def send_message(self, message):
-        """send message"""
-
-        if self.connected == False:
-            self.connect()
-
-        print(f"  sending mesage: {message}")
-
-        message = {"message_type": "thread_update", "content": message}
-        message = json.dumps(message)
-
-        message_confirmation = self.conn.send(message)
-        print(f"  message sent,  waiting for result...")
-
-        # continue to run as loong thread is open
-        run_complete = False
-        while run_complete == False:
-
-            # result from server
-            api_result = self.conn.recv()
-            api_result = json.loads(api_result)
-
-            response_type = api_result.get("response_type")
-            event_type = api_result.get("event")
-            run_status = api_result.get("run_status")
-
-            content = api_result.get("content")
-
-            # streaming call outputs
-            if event_type == "thread.run.created":
-                print(event_type)
-                print(content)
-                self.sendToBrowser("runCreated", content)
-
-            # streaming call outputs
-            elif event_type == "thread.run.step.created":
-                self.sendToBrowser("stepCreated", content)
-
-            # streaming call outputs
-            elif event_type == "thread.message.created":
-                self.sendToBrowser("messageCreated", content)
-
-            # streaming call outputs
-            elif event_type == "thread.message.delta":
-                self.sendToBrowser("messageDelta", content)
-
-            #elif event_type in ["thread.run.step.delta", "thread.run.step.completed"]:
-            elif event_type in ["thread.run.step.delta"]:
-                self.sendToBrowser("stepDelta", content)
-
-            # TODO, use event type not response type
-            elif response_type == "tool_call":
-
-                function_name = api_result["function_name"]
-                function_args = api_result["function_args"]
-                function_result = self.call_function(function_name, function_args)
-                message = {"message_type": "thread_update", "content": function_result}
-                message = json.dumps(message)
-                self.conn.send(function_result)
-
-            # thread complete break loop
-            if run_status == "thread.run.completed":
-                run_complete = True
-
-            adsk.doEvents()
-
-        return api_result
-
-
-
-
-    def call_function(self, name, function_args):
-        """
-        call function passed from Assistants API
-        """
-
-        if function_args == "":
-            function_args = None
-
-        #if function_args != None:
-        if function_args != None:
-            function_args = json.loads(function_args)
-
-        print(f"CALL FUNCTION: {name}, {function_args}")
-
-        # check of FusionInterface inst has requested method
-        function = getattr(self.fusion_interface, name, None )
-
-        if callable(function):
-            if function_args == None:
-                result = function()
-            else:
-                result = function(**function_args)
-
-        else:
-            result = ""
-
-        return result
-
-
-
-
 
 
 class FusionInterface:
@@ -205,7 +46,6 @@ class FusionInterface:
             StateData(),
             SetData()
         ]
-
         fusion_methods = {}
         for submod in submodules:
             for method_name, method in submod.methods.items():
@@ -289,6 +129,7 @@ class FusionInterface:
                 attr = inspect.unwrap(attr)
                 #print(f"{index}: {attr_name}")
                 index += 1
+                print(f"method_name: {attr_name}")
 
                 docstring = attr.__doc__
 
@@ -302,7 +143,7 @@ class FusionInterface:
 
         return method_list
 
-
+    # TODO function calls should be wrapped
     def fusion_call(func):
         """
         Wraps fusion interface calls
@@ -319,7 +160,6 @@ class FusionInterface:
             return result
 
         return wrapper
-
 
 
 
@@ -390,8 +230,6 @@ class FusionSubmodule:
                 break
 
         return targetSketch
-
-
 
 
 class StateData(FusionSubmodule):
@@ -761,7 +599,7 @@ class SketchMethods(FusionSubmodule):
         """
         {
           "name": "create_rectangles_in_sketch",
-          "description": "Creates rectangles in a specified sketch within a specified component in Fusion 360 using addCenterPointRectangle. Each rectangle is defined by a center point (from center_point_list) and a size (width, height) from rectangle_size_list. A corner point is calculated automatically from the center and half the width and height, and two distance dimensions (horizontal and vertical) are applied. The number of elemenets in center_point_list must be equal to the number of elements in rectangle_size_list",
+          "description": "Creates rectangles in a specified sketch within a specified component in Fusion 360 using addCenterPointRectangle. Each rectangle is defined by a center point (from center_point_list) and a size (width, height) from rectangle_size_list. A corner point is calculated automatically from the center and half the width and height, and two distance dimensions (horizontal and vertical) are applied. The number of elemenets in center_point_list must be equal to the number of elements in rectangle_size_lis. The unit for center_point_list and rectangle_size_list is centimeters",
           "parameters": {
             "type": "object",
             "properties": {
@@ -923,7 +761,7 @@ class SketchMethods(FusionSubmodule):
         """
         {
           "name": "create_circles_in_sketch",
-          "description": "Creates circles in a specified sketch within a specified component in Fusion 360. Each circle is created at a point provided in the point_list, with its diameter specified by the corresponding element in circle_diameter_list.",
+          "description": "Creates circles in a specified sketch within a specified component in Fusion 360. Each circle is created at a point provided in the point_list, with its diameter specified by the corresponding element in circle_diameter_list. The units for point_list and circleDiameter is centimeters.",
           "parameters": {
             "type": "object",
             "properties": {
@@ -1016,7 +854,7 @@ class SketchMethods(FusionSubmodule):
         """
         {
           "name": "create_polygon_in_sketch",
-          "description": "Creates a polygon in an existing sketch within a specified parent component in Fusion 360. The polygon is formed by connecting a series of points provided in the point_list.",
+          "description": "Creates a polygon in an existing sketch within a specified parent component in Fusion 360. The polygon is formed by connecting a series of points provided in the point_list. the unit for point_list is centimeters",
           "parameters": {
             "type": "object",
             "properties": {
@@ -1039,7 +877,7 @@ class SketchMethods(FusionSubmodule):
                   "maxItems": 2,
                   "description": "A tuple representing an XY point (x, y)."
                 },
-                "description": "A list of tuples, each representing an XY point (x, y) to be included in the polygon."
+                "description": "A list of tuples, each representing an XY point (x, y) to be included in the polygon, the unit is centimeters."
               }
             },
             "required": ["parent_component_name", "sketch_name", "point_list"],
@@ -1093,107 +931,77 @@ class SketchMethods(FusionSubmodule):
             return f'Failed to create polygon in sketch: {e}'
 
 
-    def extrude_largest_profile(self, component_name:str="comp1", sketch_name:str="sketch1", extrusion_distance:float=1.0):
+
+    def extrude_profiles_in_sketch(
+        self,
+        component_name: str = "comp1",
+        sketch_name: str = "Sketch1",
+        profiles_list: list = [[0, 1], [1, 2]],
+        operation_type: str = "NewBodyFeatureOperation"
+    ) -> str:
         """
-        {
-            "name": "extrude_largest_profile",
-            "description": "Selects the largest profile in a specified sketch within a component and extrudes it by a given distance. The component and sketch are identified by their names.",
-            "parameters": {
-              "type": "object",
-              "properties": {
-                "component_name": {
-                  "type": "string",
-                  "description": "The name of the component in the current design containing the sketch."
-                },
-                "sketch_name": {
-                  "type": "string",
-                  "description": "The name of the sketch inside the specified component."
-                },
-                "extrusion_distance": {
-                  "type": "number",
-                  "description": "The distance to extrude the selected profile, in the current units of the design."
+            {
+                "name": "extrude_profiles_in_sketch",
+                "description": "Extrudes one or more profiles in a specified sketch by different amounts. The profiles are indexed by descending area, where 0 refers to the largest profile. Each item in profiles_list is [profileIndex, extrudeDistance]. The operation_type parameter selects which FeatureOperation to use. The unit for extrudeDistance is centimeters.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "component_name": {
+                            "type": "string",
+                            "description": "The name of the component in the current design containing the sketch."
+                        },
+                        "sketch_name": {
+                            "type": "string",
+                            "description": "The name of the sketch inside the specified component containing the profiles."
+                        },
+                        "profiles_list": {
+                            "type": "array",
+                            "items": {
+                                "type": "array",
+                                "items": {
+                                    "type": "number"
+                                },
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "description": "Each element is [profileIndex, extrudeDistance]. profileIndex is an integer referencing the area-sorted profile, and extrudeDistance (in centimeters) is a number specifying how far to extrude."
+                            },
+                            "description": "A list of profileIndex / extrudeDistance pairs specifying which profiles to extrude and by how much."
+                        },
+                        "operation_type": {
+                            "type": "string",
+                            "enum": [
+                                "CutFeatureOperation",
+                                "IntersectFeatureOperation",
+                                "JoinFeatureOperation",
+                                "NewBodyFeatureOperation",
+                                "NewComponentFeatureOperation"
+                            ],
+                            "description": "Specifies the Fusion 360 FeatureOperation to apply. Valid values: CutFeatureOperation, IntersectFeatureOperation, JoinFeatureOperation, NewBodyFeatureOperation, NewComponentFeatureOperation."
+                        }
+                    },
+                    "required": ["component_name", "sketch_name", "profiles_list"],
+                    "returns": {
+                        "type": "string",
+                        "description": "A message indicating whether the extrude operation compleated successfully or not."
+                    }
                 }
-              },
-              "required": ["component_name", "sketch_name", "extrusion_distance"]
             }
-        }
         """
         try:
-            # Access the active design
-            app = adsk.core.Application.get()
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            rootComp = design.rootComponent
+            # A small dictionary to map string inputs to the appropriate enumerations.
+            operation_map = {
+                "CutFeatureOperation": adsk.fusion.FeatureOperations.CutFeatureOperation,
+                "IntersectFeatureOperation": adsk.fusion.FeatureOperations.IntersectFeatureOperation,
+                "JoinFeatureOperation": adsk.fusion.FeatureOperations.JoinFeatureOperation,
+                "NewBodyFeatureOperation": adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+                "NewComponentFeatureOperation": adsk.fusion.FeatureOperations.NewComponentFeatureOperation
+            }
 
-            # use base class method to select component obj
-            targetComponent = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return f'Component "{component_name}" not found'
+            # Validate the requested operation_type.
+            if operation_type not in operation_map:
+                return (f'Error: operation_type "{operation_type}" is not recognized. '
+                        f'Valid options are: {", ".join(operation_map.keys())}.')
 
-            # use base class method to select sketch obj
-            targetSketch = self._find_sketch_by_name(targetComponent, sketch_name )
-            if not targetSketch:
-                return f'Sketch "{sketch_name}" not found in component "{component_name}"'
-
-            # Find the largest profile
-            largestProfile = None
-            maxArea = 0
-            for profile in targetSketch.profiles:
-                area = profile.areaProperties().area
-                if area > maxArea:
-                    maxArea = area
-                    largestProfile = profile
-
-            if not largestProfile:
-                return 'No profiles found in the sketch'
-
-            # Create an extrusion
-            extrudes = targetComponent.features.extrudeFeatures
-            extrudeInput = extrudes.createInput(largestProfile, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
-            distance = adsk.core.ValueInput.createByReal(extrusion_distance)
-            extrudeInput.setDistanceExtent(False, distance)
-            extrudes.add(extrudeInput)
-
-            return 'extruded profile'
-
-        except Exception as e:
-            return 'Failed to extrude profile'
-
-    def extrude_profiles_in_sketch(self, component_name: str="comp1", sketch_name: str="sketch1", profiles_list: list=[[0,1], [1,2]]) -> str:
-        """
-        {
-          "name": "extrude_profiles_in_sketch",
-          "description": "Extrudes multiple profiles in a specified sketch by different amounts. The profiles are indexed by descending area, where 0 refers to the largest profile. Each item in profiles_list is [profileIndex, extrudeDistance].",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "component_name": {
-                "type": "string",
-                "description": "The name of the component in the current design containing the sketch."
-              },
-              "sketch_name": {
-                "type": "string",
-                "description": "The name of the sketch inside the specified component containing the profiles."
-              },
-              "profiles_list": {
-                "type": "array",
-
-                "items": {
-                  "type": "array",
-                  "items": {
-                    "type": "number"
-                  },
-                  "minItems": 2,
-                  "maxItems": 2,
-                  "description": "Each element is [profileIndex, extrudeDistance]. profileIndex is an integer referencing the area-sorted profile, and extrudeDistance is a number specifying how far to extrude."
-                },
-                "description": "A list of profileIndex / extrudeDistance pairs specifying which profiles to extrude and by how much."
-              }
-            },
-            "required": ["component_name", "sketch_name", "profiles_list"]
-          }
-        }
-        """
-        try:
             # Access the active design.
             app = adsk.core.Application.get()
             design = adsk.fusion.Design.cast(app.activeProduct)
@@ -1237,15 +1045,17 @@ class SketchMethods(FusionSubmodule):
 
                 try:
                     distanceVal = adsk.core.ValueInput.createByReal(float(extrudeDist))
+
+                    # Create the extrude feature input with the requested operation type.
                     extInput = extrudes.createInput(
                         selectedProfile,
-                        adsk.fusion.FeatureOperations.NewBodyFeatureOperation
+                        operation_map[operation_type]
                     )
 
                     # Set the extent as a one-side distance.
                     extInput.setDistanceExtent(False, distanceVal)
                     extrudes.add(extInput)
-                    results.append(f"Profile index {profileIndex} extruded by {extrudeDist}.")
+                    results.append(f"Profile index {profileIndex} extruded by {extrudeDist} using {operation_type}.")
                 except Exception as e:
                     results.append(f"Error: Could not extrude profile {profileIndex}. Reason: {e}")
 
@@ -1257,9 +1067,9 @@ class SketchMethods(FusionSubmodule):
 
 
 
+
 class SetData(FusionSubmodule):
     ### Internal ###
-
 
     ### =================== CREEATE OBJECTS ======================== ###
     def create_new_component(self, parent_component_name: str="comp1", component_name: str="comp2") -> str:
@@ -1496,54 +1306,6 @@ class SetData(FusionSubmodule):
 
 
     ### ================= MODIFY OBJECTS ===================== ###
-    def rename_model_parameter(self, old_name: str, new_name: str) -> str:
-        """
-            {
-              "name": "rename_model_parameter",
-              "description": "Renames a model parameter in the active Fusion 360 design from old_name to new_name. Model parameters are typically associated with features and construction geometry. If the parameter does not exist or cannot be renamed, an error message is returned.",
-              "parameters": {
-                "type": "object",
-                "properties": {
-                  "old_name": {
-                    "type": "string",
-                    "description": "The existing name of the model parameter to rename."
-                  },
-                  "new_name": {
-                    "type": "string",
-                    "description": "The new name you want to give to the model parameter."
-                  }
-                },
-                "required": ["old_name", "new_name"],
-                "returns": {
-                  "type": "string",
-                  "description": "A message indicating whether the parameter was successfully renamed."
-                }
-              }
-            }
-        """
-        try:
-            app = adsk.core.Application.get()
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            # Retrieve the parameter by its old name
-            param = design.allParameters.itemByName(old_name)
-            if not param:
-                return f"Error: Parameter '{old_name}' not found."
-
-            # Attempt to rename it
-            try:
-                param.name = new_name
-            except Exception as rename_error:
-                return f"Error: Failed to rename parameter '{old_name}' to '{new_name}'. Reason: {rename_error}"
-
-            return f"Parameter '{old_name}' renamed to '{new_name}'."
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
     def rename_model_parameters(self, old_new_names: list) -> str:
         """
@@ -1657,6 +1419,51 @@ class SetData(FusionSubmodule):
         except Exception as e:
             return 'Failed to rename the component:\n{}'.format(new_name)
 
+    def delete_occurrence_by_name(self, occurrence_name: str) -> str:
+        """
+        {
+            "name": "delete_occurrence_by_name",
+            "description": "Deletes a component occurrence from the current Fusion 360 design based on the given occurrence name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "occurrence_name": {
+                        "type": "string",
+                        "description": "The name of the occurrence to be deleted (e.g., 'MyComponent:1')."
+                    }
+                },
+                "required": ["occurrence_name"],
+                "returns": {
+                    "type": "string",
+                    "description": "A message indicating success or failure of the deletion."
+                }
+            }
+        }
+        """
+
+        try:
+            # Access the active design.
+            app = adsk.core.Application.get()
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            rootComp = design.rootComponent
+
+            # Search all occurrences (including nested).
+            targetOccurrence = None
+            for occ in rootComp.allOccurrences:
+                if occ.name == occurrence_name:
+                    targetOccurrence = occ
+                    break
+
+            if not targetOccurrence:
+                return f'Error: Occurrence "{occurrence_name}" not found in the design.'
+
+            # Delete the found occurrence.
+            targetOccurrence.deleteMe()
+
+            return f'Deleted occurrence "{occurrence_name}".'
+
+        except Exception as e:
+            return f'Failed to delete occurrence "{occurrence_name}":\n{e}'
 
     def delete_component(self, component_name: str="comp1") -> str:
         """
@@ -1677,17 +1484,31 @@ class SetData(FusionSubmodule):
         """
         try:
 
+            app = adsk.core.Application.get()
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            rootComp = design.rootComponent
+
             targetComponent = self._find_component_by_name(component_name)
             if not targetComponent:
                 return f'Error: Component "{component_name}" not found.'
 
+
+            rootComp = design.rootComponent
+             # Search all occurrences (including nested).
+            targetOccurrence = None
+            for occ in rootComp.allOccurrences:
+                if occ.component.name == component_name:
+                    targetOccurrence = occ
+                    occ.deleteMe()
+                    break
+
             # Delete the component
-            targetComponent.deleteMe()
+            #targetComponent.deleteMe()
 
             return f'deleted {component_name}'
 
         except Exception as e:
-            return 'Failed to delete the component:\n{}'.format(component_name)
+            return f'Failed to delete component "{component_name}":\n{e}'
 
     def delete_sketch(self, component_name: str="comp1", sketch_name: str="sketch1") -> str:
         """
@@ -1718,7 +1539,7 @@ class SetData(FusionSubmodule):
                 return f'Error: Component "{component_name}" not found.'
 
             # Find the target sketch by name in the component.
-            targetSketch = self._find_sketch_by_name(targetComponent)
+            targetSketch = self._find_sketch_by_name(targetComponent, sketch_name)
             if not targetSketch:
                 return f'Error: Sketch "{sketch_name}" not found in component "{component_name}".'
 

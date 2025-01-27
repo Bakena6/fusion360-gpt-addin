@@ -1,0 +1,27 @@
+
+
+
+# plumbing flange
+Hello, I am trying to create a Flange fitting for plumbing. Can you start be creating a 200mm circle and extrude it by 10mm
+Now can you create a smaller circle and extrude cut through the first body
+Now we need to create bolt holes for the flange, we are using M6 bolts, and will need 10 holes.
+Each hole should be equidistant form the inside and outside edges of the body
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

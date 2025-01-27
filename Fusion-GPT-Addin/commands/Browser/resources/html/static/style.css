@@ -6,36 +6,80 @@
     background-color: #FFFF55; /* when hovered */
 }
 
+.test-content{
+    font-size: 100px
+
+}
+
+
 body {
-    background-color: #262626;
-    height:1000px;
+    background-color: cyan;
+    margin: 0px;
+    padding: 0px;
 }
 
-#main{
-    height:900px;
+#pageContainer{
+    display: flex;
+    height: 100%;
+    width: auto;
+    padding: 0px;
+    margin: 0px;
+    background-color: #262626; /* background gray*/
+
 }
 
+
+/* 
+ * margin bottom must macth inputwrapper height
+ * postion: fixed and bottom:0 keep text box at bottom
+ * 
+ */
 /* reverse scrolling output container */
 .output-container {
-    min-height: 500px;
+    height: auto;
+    display: flex;
     width: 100%;
     overflow: auto;
-    display: flex;
     flex-direction: column-reverse;
-    padding: 5px;
-    margin-left:5px;
-    margin-right:5px;
+    margin-right: 5px;
+    margin-left: 5px;
+    margin-top: 5px;
+
+    border: 2px solid white;
+    border-radius: 5px;
+
+    background-color: #1c1c1c;
+    margin-bottom: 230px;
+
 }
 
+/* 
+ * Use Flexbox to arrange buttons in a row 
+ * postion: fixed and bottom:0 keep text box at bottom
+ * 
+ */
+.input-wrapper {
+    bottom: 0;
+    position: fixed;
+    display:flex;
+    height: auto;
+    width: 100%;
+    margin: 0px;
+    padding: 0px;
+
+}
 
 .input-container {
+    height: auto;
     width: 100%;
-    height: 250px;
+    padding-top: 10px;
+    margin-left: 0px;
+    margin-right: 0px;
+    margin-bottom: 0px;
+    padding-bottom: 0px;
     padding: 5px;
-    margin-left: 5px;
-    margin-right: 5px;
+    background-color: #262626; /* background gray*/
 }
-
 
 #promptTextInput{
     width: 100%;
@@ -49,6 +93,24 @@ body {
     box-sizing: border-box;
     margin-bottom: 15px; /* Space between the textarea and the button row */
 }
+
+.test-content2{
+    width: auto;
+    padding: 0px;
+    margin: 10px;
+    background-color: green;
+    min-height: 100px;
+}
+
+
+
+.t{
+
+    margin-left:5px;
+    margin-right:5px;
+}
+
+
 
 
 
