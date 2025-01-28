@@ -849,8 +849,240 @@ class SketchMethods(FusionSubmodule):
         except Exception as e:
             return f'Failed to create circles in sketch: {e}'
 
+    def create_polygon_in_sketch(self,
+                                 component_name: str = "comp1",
+                                 sketch_name: str = "sketch1",
+                                 center_point: list = [0.0, 0.0],
+                                 radius: float = 1.0,
+                                 number_of_sides: int = 6,
+                                 orientation_angle_degrees: float = 0.0,
+                                 is_inscribed: bool = True) -> str:
+        """
+        {
+            "name": "create_polygon_in_sketch",
+            "description": "Creates a regular polygon in the specified sketch using the addScribedPolygon method. The polygon is defined by its center, radius, number of sides, orientation angle, and whether it is inscribed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "component_name": {
+                        "type": "string",
+                        "description": "The name of the component in the current design containing the sketch."
+                    },
+                    "sketch_name": {
+                        "type": "string",
+                        "description": "The name of the sketch within the specified component."
+                    },
+                    "center_point": {
+                        "type": "array",
+                        "description": "The [x, y] coordinates for the polygon center on the sketch plane.",
+                        "items": { "type": "number" }
+                    },
+                    "radius": {
+                        "type": "number",
+                        "description": "Radius of the polygon (distance from center to a vertex if inscribed=true, or to a midpoint of a side if inscribed=false)."
+                    },
+                    "number_of_sides": {
+                        "type": "number",
+                        "description": "Number of sides of the regular polygon."
+                    },
+                    "orientation_angle_degrees": {
+                        "type": "number",
+                        "description": "Rotation of the polygon about its center, in degrees."
+                    },
+                    "is_inscribed": {
+                        "type": "boolean",
+                        "description": "If true, polygon is inscribed (radius from center to vertex). If false, circumscribed (radius from center to midpoint of side)."
+                    }
+                },
+                "required": [
+                    "component_name",
+                    "sketch_name",
+                    "center_point",
+                    "radius",
+                    "number_of_sides",
+                    "orientation_angle_degrees",
+                    "is_inscribed"
+                ],
+                "returns": {
+                    "type": "string",
+                    "description": "A message indicating success or details about any errors encountered."
+                }
+            }
+        }
+        """
 
-    def create_polygon_in_sketch(self, parent_component_name:str="comp1", sketch_name:str="sketch1", point_list:list=[[0,0,0], [0,1,0], [1,2,0]]):
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # Locate the target component by name (assuming you have a helper method).
+            targetComponent = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return f'Error: Component "{component_name}" not found.'
+
+            # Locate the specified sketch by name.
+            targetSketch = self._find_sketch_by_name(targetComponent, sketch_name)
+            if not targetSketch:
+                return f'Error: Sketch "{sketch_name}" not found in component "{component_name}".'
+
+            # Validate parameters.
+            if number_of_sides < 3:
+                return "Error: A polygon must have at least 3 sides."
+            if radius <= 0:
+                return "Error: Radius must be positive."
+
+            # Convert center_point to a 3D point (Z=0 in sketch plane).
+            centerPnt = adsk.core.Point3D.create(center_point[0],
+                                                 center_point[1],
+                                                 0.0)
+
+            # Convert the orientation angle to radians.
+            orientation_angle_radians = math.radians(orientation_angle_degrees)
+
+            # Access the SketchLines object from the sketch.
+            sketchLines_var = targetSketch.sketchCurves.sketchLines
+
+            # Create the polygon using the old 'addScribedPolygon' method.
+            #   addScribedPolygon(centerPoint, edgeCount, angle, radius, isInscribed)
+            # - centerPoint: adsk.core.Point3D
+            # - edgeCount: int (number of sides)
+            # - angle: float in RADIANS (orientation of polygon)
+            # - radius: float (distance from center to vertex if isInscribed = True, else to side midpoint)
+            # - isInscribed: bool
+            scribed_polygon = sketchLines_var.addScribedPolygon(
+                centerPnt,
+                number_of_sides,
+                orientation_angle_radians,
+                radius,
+                is_inscribed
+            )
+
+            # scribed_polygon returns a SketchLineList object that you can inspect if needed.
+
+            poly_type = "inscribed" if is_inscribed else "circumscribed"
+            return (
+                f"Successfully created a {number_of_sides}-sided polygon "
+                f"({poly_type}, radius={radius}) in sketch '{sketch_name}' "
+                f"with orientation {orientation_angle_degrees} degrees."
+            )
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    def _create_polygon_in_sketch(self,
+                                 component_name: str = "comp1",
+                                 sketch_name: str = "sketch1",
+                                 center_point: list = [0.0, 0.0],
+                                 radius: float = 1.0,
+                                 number_of_sides: int = 6,
+                                 circumscribed: bool = True) -> str:
+        """
+        {
+            "name": "create_polygon_in_sketch",
+            "description": "Creates a regular polygon in the specified sketch. The polygon is defined by its center point, radius, number of sides, and whether it is circumscribed or inscribed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "component_name": {
+                        "type": "string",
+                        "description": "The name of the component in the current design containing the sketch."
+                    },
+                    "sketch_name": {
+                        "type": "string",
+                        "description": "The name of the sketch within the specified component."
+                    },
+                    "center_point": {
+                        "type": "array",
+                        "description": "The [x, y] coordinates for the polygon center (on the sketch plane).",
+                        "items": { "type": "number" }
+                    },
+                    "radius": {
+                        "type": "number",
+                        "description": "Radius of the polygon (distance from center to corner)."
+                    },
+                    "number_of_sides": {
+                        "type": "number",
+                        "description": "Number of sides of the regular polygon."
+                    },
+                    "circumscribed": {
+                        "type": "boolean",
+                        "description": "If true, polygon is circumscribed around the circle. If false, polygon is inscribed."
+                    }
+                },
+                "required": ["component_name", "sketch_name", "center_point", "radius", "number_of_sides", "circumscribed"],
+
+                "returns": {
+                    "type": "string",
+                    "description": "A message indicating success or details about any errors encountered."
+                }
+            }
+        }
+        """
+        import adsk.core, adsk.fusion, traceback
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # Locate the target component by name (assuming you have a helper method).
+            targetComponent = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return f'Error: Component "{component_name}" not found.'
+
+            # Locate the specified sketch by name.
+            targetSketch = self._find_sketch_by_name(targetComponent, sketch_name)
+            if not targetSketch:
+                return f'Error: Sketch "{sketch_name}" not found in component "{component_name}".'
+
+            # Validate basic parameters.
+            if number_of_sides < 3:
+                return "Error: A polygon must have at least 3 sides."
+
+            if radius <= 0:
+                return "Error: Radius must be positive."
+
+            # Convert center_point to a 3D point on the sketch plane (Z=0 in sketch space).
+            centerPnt = adsk.core.Point3D.create(float(center_point[0]),
+                                                 float(center_point[1]),
+                                                 0.0)
+
+            # Construct a reference point (one vertex). We pick a point radius units away on the X axis from center.
+            # If you prefer a different orientation, you can adjust where the reference lies.
+            refPnt = adsk.core.Point3D.create(centerPnt.x + radius,
+                                              centerPnt.y,
+                                              centerPnt.z)
+
+            # Access the polygons collection from the sketch.
+            polygons = targetSketch.sketchCurves.sketchPolygons
+
+            # Create the input object for the new polygon.
+            # createInput(centerPoint, vertexPoint, numberOfSides, isCircumscribed)
+            polygon_input = polygons.createInput(centerPnt, refPnt, number_of_sides, circumscribed)
+
+            # Add the polygon to the sketch.
+            polygons.add(polygon_input)
+
+            return (f"Successfully created a {number_of_sides}-sided "
+                    f"{'circumscribed' if circumscribed else 'inscribed'} polygon "
+                    f"with radius {radius} in sketch '{sketch_name}'.")
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    def _create_polygon_in_sketch(self, parent_component_name:str="comp1", sketch_name:str="sketch1", point_list:list=[[0,0,0], [0,1,0], [1,2,0]]):
         """
         {
           "name": "create_polygon_in_sketch",
@@ -1128,6 +1360,84 @@ class SetData(FusionSubmodule):
             error_msg = 'Failed to create new component:\n{}'.format(parent_component_name)
             return error_msg
 
+    def _set_parameter_values(self, parameter_updates: list = [["param1", 10], ["param2", 20]]) -> str:
+        """
+        {
+          "name": "set_parameter_values",
+          "description": "Sets the value of multiple parameters in the active Fusion 360 design. Each item in parameter_updates is [parameterName, newValue].",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "parameter_updates": {
+                "type": "array",
+                "description": "A list where each element is [parameterName, newValue]. parameterName is a string and newValue is a number.",
+                "items": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "required": ["parameter_updates"],
+            "returns": {
+              "type": "string",
+              "description": "Messages indicating the result of each parameter update."
+            }
+          }
+        }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            results = []
+
+            # Loop through each [parameterName, newValue] pair
+            for update in parameter_updates:
+                # Basic validation of each pair
+                if not isinstance(update, list) or len(update) != 2:
+                    results.append(f"Error: Invalid update format (expected [parameterName, newValue]): {update}")
+                    continue
+
+                parameter_name, new_value = update[0], update[1]
+
+                # Attempt to find the parameter by name
+                param = design.allParameters.itemByName(parameter_name)
+                if not param:
+                    results.append(f"Error: Parameter '{parameter_name}' not found.")
+                    continue
+
+                # Attempt to set the new value
+                try:
+                    param.value = float(new_value)
+                    results.append(f"Parameter '{parameter_name}' successfully updated to {new_value}.")
+                except:
+                    # If direct assignment fails (e.g., read-only, locked, or expression-based),
+                    # try setting the parameter expression instead
+                    try:
+                        if param.unit:
+                            param.expression = f"{new_value} {param.unit}"
+                        else:
+                            param.expression = str(new_value)
+                        results.append(f"Parameter '{parameter_name}' successfully updated to {new_value}.")
+                    except:
+                        results.append(f"Error: Failed to update parameter '{parameter_name}' to {new_value}.")
+
+            # Combine and return all messages
+            return "\n".join(results)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
     def set_parameter_value(self, parameter_name: str, new_value: float) -> str:
         """
@@ -1383,8 +1693,279 @@ class SetData(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    def list_edges_in_body(self, component_name: str="comp1", body_name: str="Body1") -> str:
+        """
+        {
+            "name": "list_edges_in_body",
+            "description": "Generates a list of all edges in a specified BRep body, including position and orientation data that can be used for future operations like fillets or chamfers.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "component_name": {
+                        "type": "string",
+                        "description": "The name of the component in the current design containing the body."
+                    },
+                    "body_name": {
+                        "type": "string",
+                        "description": "The name of the target body whose edges will be listed."
+                    }
+                },
+                "required": ["component_name", "body_name"],
+                "returns": {
+                    "type": "string",
+                    "description": "A JSON array of edge information. Each element contains 'index', 'geometryType', 'length', bounding-box data, and geometry-specific data like direction vectors or center points."
+                }
+            }
+        }
+        """
 
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
 
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # Locate the target component by name (assuming you have a helper method)
+            targetComponent = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return f'Error: Component "{component_name}" not found.'
+
+            # Locate the specified body by name within the component
+            body = None
+            for b in targetComponent.bRepBodies:
+                if b.name == body_name:
+                    body = b
+                    break
+            if not body:
+                return f'Error: Body "{body_name}" not found in component "{component_name}".'
+
+            edges = body.edges
+            edge_data_list = []
+
+            for i, edge in enumerate(edges):
+                geom = edge.geometry
+                geometryType = type(geom).__name__  # e.g., "Line3D", "Arc3D", "Circle3D", etc.
+
+                # Basic edge info
+                edge_info = {
+                    "index": i,
+                    "geometryType": geometryType,
+                    "length": edge.length
+                }
+
+                # 1) Collect bounding box data
+                bb = edge.boundingBox
+                if bb:
+                    edge_info["boundingBox"] = {
+                        "minPoint": [bb.minPoint.x, bb.minPoint.y, bb.minPoint.z],
+                        "maxPoint": [bb.maxPoint.x, bb.maxPoint.y, bb.maxPoint.z]
+                    }
+
+                # 2) Collect geometry-specific data
+                if isinstance(geom, adsk.core.Line3D):
+                    # For finite lines, startPoint and endPoint will be non-null.
+                    startPt = geom.startPoint
+                    endPt = geom.endPoint
+
+                    # Compute direction: end - start
+                    if startPt and endPt:
+                        directionVec = adsk.core.Vector3D.create(
+                            endPt.x - startPt.x,
+                            endPt.y - startPt.y,
+                            endPt.z - startPt.z
+                        )
+                        edge_info["geometryData"] = {
+                            "startPoint": [startPt.x, startPt.y, startPt.z],
+                            "endPoint": [endPt.x, endPt.y, endPt.z],
+                            "direction": [directionVec.x, directionVec.y, directionVec.z]
+                        }
+                    else:
+                        # If the line is infinite (rare in typical Fusion designs),
+                        # the start/endPoints might be None.
+                        # You could call getData(...) here if needed.
+                        edge_info["geometryData"] = {
+                            "startPoint": None,
+                            "endPoint": None,
+                            "direction": None
+                        }
+
+                elif isinstance(geom, adsk.core.Arc3D):
+                    centerPt = geom.center
+                    normalVec = geom.normal
+                    edge_info["geometryData"] = {
+                        "centerPoint": [centerPt.x, centerPt.y, centerPt.z],
+                        "normal": [normalVec.x, normalVec.y, normalVec.z],
+                        "radius": geom.radius,
+                        "startAngle": geom.startAngle,
+                        "endAngle": geom.endAngle
+                    }
+
+                elif isinstance(geom, adsk.core.Circle3D):
+                    centerPt = geom.center
+                    normalVec = geom.normal
+                    edge_info["geometryData"] = {
+                        "centerPoint": [centerPt.x, centerPt.y, centerPt.z],
+                        "normal": [normalVec.x, normalVec.y, normalVec.z],
+                        "radius": geom.radius
+                    }
+
+                elif isinstance(geom, adsk.core.Ellipse3D):
+                    centerPt = geom.center
+                    normalVec = geom.normal
+                    edge_info["geometryData"] = {
+                        "centerPoint": [centerPt.x, centerPt.y, centerPt.z],
+                        "normal": [normalVec.x, normalVec.y, normalVec.z],
+                        "majorRadius": geom.majorRadius,
+                        "minorRadius": geom.minorRadius
+                    }
+
+                elif isinstance(geom, adsk.core.NurbsCurve3D):
+                    # NURBS curves can be more complex:
+                    # store some minimal data; adjust as needed
+                    edge_info["geometryData"] = {
+                        "isNurbs": True,
+                        "degree": geom.degree,
+                        "controlPointCount": geom.controlPointCount
+                    }
+
+                edge_data_list.append(edge_info)
+
+            # Return the collected info in JSON format
+            return json.dumps(edge_data_list, indent=4)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    def fillet_or_chamfer_edges(self,
+                               component_name: str = "comp1",
+                               body_name: str = "Body1",
+                               edge_index_list: list = [0],
+                               operation_value: float = 0.2,
+                               operation_type: str = "fillet") -> str:
+        """
+        {
+          "name": "fillet_or_chamfer_edges",
+          "description": "Applies either a fillet or chamfer to the specified edges of a body.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "component_name": {
+                "type": "string",
+                "description": "Name of the Fusion 360 component containing the target body."
+              },
+              "body_name": {
+                "type": "string",
+                "description": "Name of the BRep body whose edges will be modified."
+              },
+              "edge_index_list": {
+                "type": "array",
+                "description": "A list of integer edge indexes from the body whose edges will be filleted or chamfered.",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "operation_value": {
+                "type": "number",
+                "description": "The distance (radius or chamfer distance) to apply, in centimeters."
+              },
+              "operation_type": {
+                "type": "string",
+                "description": "Either 'fillet' or 'chamfer'."
+              }
+            },
+            "required": ["component_name", "body_name", "edge_index_list", "operation_value", "operation_type"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating success or details about any errors encountered."
+            }
+          }
+        }
+        """
+        import adsk.core, adsk.fusion, traceback
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # Locate the target component by name.
+            targetComponent = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return f'Error: Component "{component_name}" not found.'
+
+            # Locate the specified body by name within the component.
+            body = None
+            for b in targetComponent.bRepBodies:
+                if b.name == body_name:
+                    body = b
+                    break
+            if not body:
+                return f'Error: Body "{body_name}" not found in component "{component_name}".'
+
+            # Validate operation_type
+            op_type_lower = operation_type.lower()
+            if op_type_lower not in ("fillet", "chamfer"):
+                return f"Error: Invalid operation_type '{operation_type}'. Must be 'fillet' or 'chamfer'."
+
+            # Collect edges
+            edges = body.edges
+            edge_collection = adsk.core.ObjectCollection.create()
+            invalid_indexes = []
+            for idx in edge_index_list:
+                if 0 <= idx < edges.count:
+                    edge_collection.add(edges[idx])
+                else:
+                    invalid_indexes.append(idx)
+
+            # If no valid edges were found, return an error.
+            if edge_collection.count == 0:
+                return f"Error: No valid edges found. Invalid indexes: {invalid_indexes}" if invalid_indexes else "Error: No valid edges provided."
+
+            # Create either a fillet or a chamfer
+            if op_type_lower == "fillet":
+                try:
+                    fillet_feats = targetComponent.features.filletFeatures
+                    fillet_input = fillet_feats.createInput()
+                    # Construct the radius ValueInput
+                    radius_val = adsk.core.ValueInput.createByReal(float(operation_value))
+                    # Add all edges to a single radius set
+                    fillet_input.addConstantRadiusEdgeSet(edge_collection, radius_val, True)
+                    fillet_feats.add(fillet_input)
+                    msg = f"Fillet applied with radius {operation_value} to edges: {edge_index_list}."
+                except Exception as e:
+                    return f"Error creating fillet: {e}"
+            else:  # chamfer
+                try:
+                    chamfer_feats = targetComponent.features.chamferFeatures
+                    # For a simple equal-distance chamfer, we set 'distance'
+                    distance_val = adsk.core.ValueInput.createByReal(float(operation_value))
+                    # The createInput function signature is chamferFeatures.createInput(ObjectCollection, isTangentChain)
+                    chamfer_input = chamfer_feats.createInput(edge_collection, True)
+                    chamfer_input.setToEqualDistance(distance_val)
+                    chamfer_feats.add(chamfer_input)
+                    msg = f"Chamfer applied with distance {operation_value} to edges: {edge_index_list}."
+                except Exception as e:
+                    return f"Error creating chamfer: {e}"
+
+            # Include any invalid edge indexes in the output message for clarity
+            if invalid_indexes:
+                msg += f" Some invalid indexes were ignored: {invalid_indexes}"
+
+            return msg
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
     def rename_component(self, component_name: str, new_name: str) -> str:
         """

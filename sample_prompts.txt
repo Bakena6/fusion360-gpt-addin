@@ -1,17 +1,15 @@
 
+# hardware
+hello, can you create an M8x40mm hex head bolt, with a .5mm chamfer on all edges?
 
 
-# plumbing flange
-Hello, I am trying to create a Flange fitting for plumbing. Can you start be creating a 200mm circle and extrude it by 10mm
-Now can you create a smaller circle and extrude cut through the first body
-Now we need to create bolt holes for the flange, we are using M6 bolts, and will need 10 holes.
-Each hole should be equidistant form the inside and outside edges of the body
+# random cubes
+Hello, can you generate 30 rectangles with random sizes between 10 and 20mm. The rectangles should be quite close together so they are overlapping. Then extrude each profile by a random amount between 10 and 30mm.
 
 
+# keyboard
 
-
-
-
+I am designing a common TKL keyboard. It will have a main body, which should be draw as a rectangle, then extruded into a solid. On top of the body, you should create another sketch for the keys. Each key profile should be drawn as square or rectangle depending on the key. For example: number and letter keys are square, but space bar and shift keys are rectangular. Each key should be in the correct x,y position for a TKL QWERTY keyboard. You may want to create a separate sketch for each row or other logical grouping you think makes sense. Make sure to include all the keys. There should be a slight gap between each key. The keys should be extrude-joined into the body, protruding through the top, if the key sketches and the body sketch have the same z position, the keys need to be extruded at least as thick as the body. For body size, key size, key height, and key spacing, use common values for a typical TKL keyboard.
 
 
 
