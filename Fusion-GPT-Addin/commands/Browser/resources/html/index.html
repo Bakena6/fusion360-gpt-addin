@@ -12,48 +12,75 @@
     </head>
 
 
-
     <body>
 
         <div id=pageContainer>
 
+            <div id="outputContainer" class="output-container"> 
 
-            <div class="output-container"> 
+            <!--
+                <div class="run-output">conten1</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content</div>
+                <div class="run-output">content0</div>
 
+            -->
             </div>
             <!--end input-container-->
-            
-            <div class="input-wrapper">
 
-                <div class="input-container">
 
-                    <textarea spellcheck="true" id="promptTextInput" placeholder="Enter your text here" rows="4"></textarea>
+            <div id="inputContainer" class="input-container">
 
-                    <div class="button-row">
-                        <button type="button" onclick="getTools()">Show Tools</button>
-                        <button type="button" onclick="hideTools()">Hide Tools</button>
-                        <button type="button" class="control-button" onclick="uploadTools()">Upload Tools</button>
+                <textarea spellcheck="true" id="promptTextInput" placeholder="Enter your text here" rows="4"></textarea>
 
-                        <span>    </span>
-                        <button id="submitButton" type="button" class="control-button" onclick="thread.submitPrompt()">Submit</button>
+                <div class="button-row">
+                    <button type="button" onclick="reconnect()">Reconnect</button>
+                    <button type="button" onclick="getTools()">Show Tools</button>
+                    <button type="button" onclick="hideTools()">Hide Tools</button>
+                    <button type="button" class="control-button" onclick="uploadTools()">Upload Tools</button>
 
-                    </div>
-                    <!--end button row-->
+                    <span> </span>
+                    <button id="submitButton" type="button" class="control-button" onclick="thread.submitPrompt()">Submit</button>
 
-                    <div id="toolTestContainer"></div>
+                </div>
+                <!-- end button row-->
 
-                <!--end input-container-->
-                </div> 
 
+                <!--input container-->
             </div> 
 
+            <div id="toolTestContainer"></div>
 
-
-        <!--end main-->
+            <!--end main-->
         </div>
 
 
-     <!--end body-->
+        <!--end body-->
     </body>
 
 

@@ -42,9 +42,12 @@ class FusionInterface:
 
         # method collections
         submodules = [
-            SketchMethods(),
             StateData(),
-            SetData()
+            SketchMethods(),
+            ModifyObjects(),
+            CreateObjects(),
+            DeleteObjects(),
+            Joints()
         ]
         fusion_methods = {}
         for submod in submodules:
@@ -71,6 +74,9 @@ class FusionInterface:
                 continue
 
             if str(attr.__class__) == "<class 'method'>":
+
+                #print(dir(attr))
+                #print(attr.__name__)
 
                 methods[attr_name] = {}
 
@@ -111,7 +117,6 @@ class FusionInterface:
         """
         creates list fusion interface functions
         """
-
         method_list = []
         index = 0
         for attr_name in dir(self):
@@ -129,7 +134,7 @@ class FusionInterface:
                 attr = inspect.unwrap(attr)
                 #print(f"{index}: {attr_name}")
                 index += 1
-                print(f"method_name: {attr_name}")
+                #print(f"method_name: {attr_name}")
 
                 docstring = attr.__doc__
 
@@ -196,7 +201,6 @@ class FusionSubmodule:
         return methods
 
 
-
     def _find_component_by_name(self, component_name:str="comp1"):
         """
         called from methods, not Assistant directly
@@ -230,6 +234,7 @@ class FusionSubmodule:
                 break
 
         return targetSketch
+
 
 
 class StateData(FusionSubmodule):
@@ -365,7 +370,6 @@ class StateData(FusionSubmodule):
         for param in all_params:
             # Some parameters may not have a comment or expression.
             # We'll store empty strings if they're missing.
-            #print(param)
             name = param.name
             unit = param.unit or ""
             expression = param.expression or ""
@@ -530,6 +534,361 @@ class StateData(FusionSubmodule):
 
         except Exception as e:
             return f"Error: {e}"
+
+    def list_edges_in_body(self, component_name: str="comp1", body_name: str="Body1") -> str:
+        """
+        {
+            "name": "list_edges_in_body",
+            "description": "Generates a list of all edges in a specified BRep body, including position and orientation data that can be used for future operations like fillets or chamfers.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "component_name": {
+                        "type": "string",
+                        "description": "The name of the component in the current design containing the body."
+                    },
+                    "body_name": {
+                        "type": "string",
+                        "description": "The name of the target body whose edges will be listed."
+                    }
+                },
+                "required": ["component_name", "body_name"],
+                "returns": {
+                    "type": "string",
+                    "description": "A JSON array of edge information. Each element contains 'index', 'geometryType', 'length', bounding-box data, and geometry-specific data like direction vectors or center points."
+                }
+            }
+        }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # Locate the target component by name (assuming you have a helper method)
+            targetComponent = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return f'Error: Component "{component_name}" not found.'
+
+            # Locate the specified body by name within the component
+            body = None
+            for b in targetComponent.bRepBodies:
+                if b.name == body_name:
+                    body = b
+                    break
+            if not body:
+                return f'Error: Body "{body_name}" not found in component "{component_name}".'
+
+            edges = body.edges
+            edge_data_list = []
+
+            for i, edge in enumerate(edges):
+                geom = edge.geometry
+                geometryType = type(geom).__name__  # e.g., "Line3D", "Arc3D", "Circle3D", etc.
+
+                # Basic edge info
+                edge_info = {
+                    "index": i,
+                    "geometryType": geometryType,
+                    "length": edge.length
+                }
+
+                # 1) Collect bounding box data
+                bb = edge.boundingBox
+                if bb:
+                    edge_info["boundingBox"] = {
+                        "minPoint": [bb.minPoint.x, bb.minPoint.y, bb.minPoint.z],
+                        "maxPoint": [bb.maxPoint.x, bb.maxPoint.y, bb.maxPoint.z]
+                    }
+
+                # 2) Collect geometry-specific data
+                if isinstance(geom, adsk.core.Line3D):
+                    # For finite lines, startPoint and endPoint will be non-null.
+                    startPt = geom.startPoint
+                    endPt = geom.endPoint
+
+                    # Compute direction: end - start
+                    if startPt and endPt:
+                        directionVec = adsk.core.Vector3D.create(
+                            endPt.x - startPt.x,
+                            endPt.y - startPt.y,
+                            endPt.z - startPt.z
+                        )
+                        edge_info["geometryData"] = {
+                            "startPoint": [startPt.x, startPt.y, startPt.z],
+                            "endPoint": [endPt.x, endPt.y, endPt.z],
+                            "direction": [directionVec.x, directionVec.y, directionVec.z]
+                        }
+                    else:
+                        # If the line is infinite (rare in typical Fusion designs),
+                        # the start/endPoints might be None.
+                        # You could call getData(...) here if needed.
+                        edge_info["geometryData"] = {
+                            "startPoint": None,
+                            "endPoint": None,
+                            "direction": None
+                        }
+
+                elif isinstance(geom, adsk.core.Arc3D):
+                    centerPt = geom.center
+                    normalVec = geom.normal
+                    edge_info["geometryData"] = {
+                        "centerPoint": [centerPt.x, centerPt.y, centerPt.z],
+                        "normal": [normalVec.x, normalVec.y, normalVec.z],
+                        "radius": geom.radius,
+                        "startAngle": geom.startAngle,
+                        "endAngle": geom.endAngle
+                    }
+
+                elif isinstance(geom, adsk.core.Circle3D):
+                    centerPt = geom.center
+                    normalVec = geom.normal
+                    edge_info["geometryData"] = {
+                        "centerPoint": [centerPt.x, centerPt.y, centerPt.z],
+                        "normal": [normalVec.x, normalVec.y, normalVec.z],
+                        "radius": geom.radius
+                    }
+
+                elif isinstance(geom, adsk.core.Ellipse3D):
+                    centerPt = geom.center
+                    normalVec = geom.normal
+                    edge_info["geometryData"] = {
+                        "centerPoint": [centerPt.x, centerPt.y, centerPt.z],
+                        "normal": [normalVec.x, normalVec.y, normalVec.z],
+                        "majorRadius": geom.majorRadius,
+                        "minorRadius": geom.minorRadius
+                    }
+
+                elif isinstance(geom, adsk.core.NurbsCurve3D):
+                    # NURBS curves can be more complex:
+                    # store some minimal data; adjust as needed
+                    edge_info["geometryData"] = {
+                        "isNurbs": True,
+                        "degree": geom.degree,
+                        "controlPointCount": geom.controlPointCount
+                    }
+
+                edge_data_list.append(edge_info)
+
+            # Return the collected info in JSON format
+            #return json.dumps(edge_data_list, indent=4)
+            return json.dumps(edge_data_list)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    def list_faces_in_body(self, component_name: str="comp1", body_name: str = "Body1") -> str:
+        """
+        {
+            "name": "list_faces_in_body",
+            "description": "Generates a list of all faces in the specified BRep body. Returns face data in JSON format that can be used for future operations.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "component_name": {
+                        "type": "string",
+                        "description": "The name of the component in the current design containing the body."
+                    },
+                    "body_name": {
+                        "type": "string",
+                        "description": "The name of the target body whose faces will be listed."
+                    }
+                },
+                "required": ["component_name", "body_name"],
+                "returns": {
+                    "type": "string",
+                    "description": "A JSON array of face information. Each element contains keys such as 'index', 'surfaceType', 'area', and 'boundingBox'."
+                }
+            }
+        }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # Locate the target component by name (assuming you have a local helper method).
+            targetComponent = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return f'Error: Component "{component_name}" not found.'
+
+            # Locate the specified body by name within the component.
+            body = None
+            for b in targetComponent.bRepBodies:
+                if b.name == body_name:
+                    body = b
+                    break
+            if not body:
+                return f'Error: Body "{body_name}" not found in component "{component_name}".'
+
+            faces = body.faces
+            face_data_list = []
+
+            for i, face in enumerate(faces):
+                geom = face.geometry
+                surface_type = type(geom).__name__  # e.g., "Plane", "Cylinder", "Cone", "Sphere", "Torus", "NurbsSurface"
+
+                # Store basic face info
+                face_info = {
+                    "index": i,
+                    "surfaceType": surface_type,
+                    "area": face.area
+                }
+
+                # Collect bounding box data for the face (if available)
+                bb = face.boundingBox
+                if bb:
+                    face_info["boundingBox"] = {
+                        "minPoint": [bb.minPoint.x, bb.minPoint.y, bb.minPoint.z],
+                        "maxPoint": [bb.maxPoint.x, bb.maxPoint.y, bb.maxPoint.z]
+                    }
+
+                # Collect geometry-specific data
+                geometry_data = {}
+                if isinstance(geom, adsk.core.Cylinder):
+                    # Cylindrical face
+                    axis = geom.axis
+                    origin = geom.origin
+                    geometry_data = {
+                        "axisVector": [axis.x, axis.y, axis.z],
+                        "origin": [origin.x, origin.y, origin.z],
+                        "radius": geom.radius
+                    }
+
+                elif isinstance(geom, adsk.core.Sphere):
+                    # Spherical face
+                    center = geom.center
+                    geometry_data = {
+                        "center": [center.x, center.y, center.z],
+                        "radius": geom.radius
+                    }
+
+                elif isinstance(geom, adsk.core.Torus):
+                    # Torus face
+                    center = geom.center
+                    axis = geom.axis
+                    geometry_data = {
+                        "center": [center.x, center.y, center.z],
+                        "axisVector": [axis.x, axis.y, axis.z],
+                        "majorRadius": geom.majorRadius,
+                        "minorRadius": geom.minorRadius
+                    }
+
+                elif isinstance(geom, adsk.core.Cone):
+                    # Conical face
+                    axis = geom.axis
+                    origin = geom.origin
+                    geometry_data = {
+                        "axisVector": [axis.x, axis.y, axis.z],
+                        "origin": [origin.x, origin.y, origin.z],
+                        "halfAngle": geom.halfAngle
+                    }
+
+                elif isinstance(geom, adsk.core.NurbsSurface):
+                    # Nurbs-based face
+                    geometry_data = {
+                        "isNurbsSurface": True,
+                        "uDegree": geom.degreeU,
+                        "vDegree": geom.degreeV,
+                        "controlPointCountU": geom.controlPointCountU,
+                        "controlPointCountV": geom.controlPointCountV
+                    }
+
+                if geometry_data:
+                    face_info["geometryData"] = geometry_data
+
+                face_data_list.append(face_info)
+
+            # Convert the collected face data to a JSON string
+            return json.dumps(face_data_list, indent=4)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    def list_all_available_appearances(self) -> str:
+        """
+        {
+            "name": "list_all_available_appearances",
+            "description": "Generates a JSON list of all appearances available in the current Fusion 360 design, including local appearances and those in all appearance libraries.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                },
+                "required": [],
+                "returns": {
+                    "type": "string",
+                    "description": "A JSON array of appearances. Each element contains at least the name, id, and source library (or 'Design' if local)."
+                }
+            }
+        }
+        """
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            appearance_list = []
+
+            # ------------------------------------------------------------
+            # 1) Get the local (design) appearances
+            # ------------------------------------------------------------
+            local_appearances = design.appearances
+            for i in range(local_appearances.count):
+                appearance = local_appearances.item(i)
+                appearance_info = {
+                    "name": appearance.name,
+                    "id": appearance.id,
+                    #"appearanceType": appearance.appearanceType,
+                    "source": "Design"
+                }
+                appearance_list.append(appearance_info)
+
+            # ------------------------------------------------------------
+            # 2) Get the appearances from all appearance libraries
+            # ------------------------------------------------------------
+            material_libs = app.materialLibraries  # returns all material libraries, which can include appearance libraries
+            for i in range(material_libs.count):
+                library = material_libs.item(i)
+                # We only want libraries of type AppearanceLibraryType
+
+                #if library.objectType == adsk.core.LibraryTypes.AppearanceLibraryType:
+
+                if library.name not in ["Fusion Appearance Library"]:
+                    continue
+
+                for j in range(library.appearances.count):
+                    lib_appearance = library.appearances.item(j)
+                    appearance_info = {
+                        "name": lib_appearance.name,
+                        "id": lib_appearance.id,
+                        #"appearanceType": lib_appearance.appearanceType,
+                        "source": library.name  # e.g., "Fusion 360 Appearance Library"
+                    }
+                    appearance_list.append(appearance_info)
+
+            # Convert the collected appearance data to a JSON string
+            #return json.dumps(appearance_list, indent=4)
+            return json.dumps(appearance_list)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
 class SketchMethods(FusionSubmodule):
@@ -828,7 +1187,6 @@ class SketchMethods(FusionSubmodule):
             if not targetSketch:
                 return f'Sketch "{sketch_name}" not found in component "{component_name}"'
 
-            print("abc")
             # Create circles in the sketch
             for point, diameter in zip(point_list, circle_diameter_list):
                 print(point)
@@ -1298,12 +1656,8 @@ class SketchMethods(FusionSubmodule):
             return f"Error: An unexpected exception occurred: {e}"
 
 
+class CreateObjects(FusionSubmodule):
 
-
-class SetData(FusionSubmodule):
-    ### Internal ###
-
-    ### =================== CREEATE OBJECTS ======================== ###
     def create_new_component(self, parent_component_name: str="comp1", component_name: str="comp2") -> str:
         """
             {
@@ -1615,7 +1969,69 @@ class SetData(FusionSubmodule):
 
 
 
-    ### ================= MODIFY OBJECTS ===================== ###
+    def copy_component_as_new(self, source_component_name: str="comp1", target_parent_component_name: str="comp_container", new_component_name: str="new_comp_1") -> str:
+        """
+            {
+                "name": "copy_component_as_new",
+                "description": "Creates a completely new component by copying the geometry of an existing component. The copied component is inserted as a new occurrence in the target parent component, but is otherwise independent of the source. The newly created component will be renamed to the provided new_component_name.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "source_component_name": {
+                            "type": "string",
+                            "description": "The name of the existing Fusion 360 component to be copied."
+                        },
+                        "target_parent_component_name": {
+                            "type": "string",
+                            "description": "The name of the component that will serve as the parent for the newly copied component."
+                        },
+                        "new_component_name": {
+                            "type": "string",
+                            "description": "The desired name for the newly created component copy."
+                        }
+                    },
+                    "required": ["source_component_name", "target_parent_component_name", "new_component_name"],
+                    "returns": {
+                        "type": "string",
+                        "description": "A message indicating whether the independent copy was successfully created and named."
+                    }
+                }
+            }
+        """
+        try:
+            # Access the active design
+            app = adsk.core.Application.get()
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            if not design:
+                return "Error: No active Fusion 360 design found."
+
+            # Locate the source component
+            sourceComp = self._find_component_by_name(source_component_name)
+            if not sourceComp:
+                return f'Error: Source component "{source_component_name}" not found.'
+
+            # Locate the target parent component
+            targetParentComp = self._find_component_by_name(target_parent_component_name)
+            if not targetParentComp:
+                return f'Error: Parent component "{target_parent_component_name}" not found.'
+
+            # Create a new, independent copy of the source component
+            transform = adsk.core.Matrix3D.create()  # Identity transform
+            new_occurrence = targetParentComp.occurrences.addNewComponentCopy(sourceComp, transform)
+            new_comp = new_occurrence.component
+
+            # Rename the newly created component
+            new_comp.name = new_component_name
+
+            return f'Successfully created a new, independent copy of "{source_component_name}into "{target_parent_component_name}" named "{new_component_name}".'
+
+        except Exception as e:
+            return f'Failed to copy "{source_component_name}" as a new component into "{target_parent_component_name}":\n{e}'
+
+
+
+
+class ModifyObjects(FusionSubmodule):
 
     def rename_model_parameters(self, old_new_names: list) -> str:
         """
@@ -1693,153 +2109,93 @@ class SetData(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    def list_edges_in_body(self, component_name: str="comp1", body_name: str="Body1") -> str:
+    def rename_component(self, component_name: str, new_name: str) -> str:
         """
-        {
-            "name": "list_edges_in_body",
-            "description": "Generates a list of all edges in a specified BRep body, including position and orientation data that can be used for future operations like fillets or chamfers.",
-            "parameters": {
+            {
+              "name": "rename_component",
+              "parameters": {
                 "type": "object",
                 "properties": {
-                    "component_name": {
-                        "type": "string",
-                        "description": "The name of the component in the current design containing the body."
-                    },
-                    "body_name": {
-                        "type": "string",
-                        "description": "The name of the target body whose edges will be listed."
-                    }
-                },
-                "required": ["component_name", "body_name"],
-                "returns": {
+                  "component_name": {
                     "type": "string",
-                    "description": "A JSON array of edge information. Each element contains 'index', 'geometryType', 'length', bounding-box data, and geometry-specific data like direction vectors or center points."
-                }
+                    "description": "The name of the Fusion 360 component to be renamed."
+                  },
+                  "new_name": {
+                    "type": "string",
+                    "description": "The new name to assign to the component."
+                  }
+                },
+                "required": [
+                  "component",
+                  "new_name"
+                ]
+              },
+              "description": "Renames a specified component in Fusion 360 to a new name."
             }
-        }
         """
 
         try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
+            targetComponent = self._find_component_by_name(component_name)
+            # Set the new name for the component
+            targetComponent.name = new_name
+            return new_name
+        except Exception as e:
+            return 'Failed to rename the component:\n{}'.format(new_name)
 
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
+    def copy_component(self, source_component_name: str, target_parent_component_name: str) -> str:
+        """
+            {
+                "name": "copy_component",
+                "description": "Creates a new occurrence of an existing component inside another parent component. This effectively 'copies' the geometry by referencing the same underlying component in a new location.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "source_component_name": {
+                            "type": "string",
+                            "description": "The name of the existing Fusion 360 component to be copied."
+                        },
+                        "target_parent_component_name": {
+                            "type": "string",
+                            "description": "The name of the component that will serve as the parent for the new copy."
+                        }
+                    },
+                    "required": ["source_component_name", "target_parent_component_name"],
+                    "returns": {
+                        "type": "string",
+                        "description": "A message indicating whether the copy (new occurrence) was successfully created."
+                    }
+
+                }
+            }
+        """
+        try:
+            # Access the active design
+            app = adsk.core.Application.get()
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            if not design:
                 return "Error: No active Fusion 360 design found."
 
-            design = adsk.fusion.Design.cast(product)
+            # Locate the source component using a helper method (assumed to exist in your environment)
+            sourceComp = self._find_component_by_name(source_component_name)
+            if not sourceComp:
+                return f'Error: Source component "{source_component_name}" not found.'
 
-            # Locate the target component by name (assuming you have a helper method)
-            targetComponent = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return f'Error: Component "{component_name}" not found.'
+            # Locate the target parent component
+            targetParentComp = self._find_component_by_name(target_parent_component_name)
+            if not targetParentComp:
+                return f'Error: Parent component "{target_parent_component_name}" not found.'
 
-            # Locate the specified body by name within the component
-            body = None
-            for b in targetComponent.bRepBodies:
-                if b.name == body_name:
-                    body = b
-                    break
-            if not body:
-                return f'Error: Body "{body_name}" not found in component "{component_name}".'
+            # Create a new occurrence of the source component in the target parent component
+            transform = adsk.core.Matrix3D.create()  # Identity transform (no rotation, no translation)
+            new_occurrence = targetParentComp.occurrences.addExistingComponent(sourceComp, transform)
 
-            edges = body.edges
-            edge_data_list = []
+            # (Optional) Rename the new occurrence if you want a distinct name
+            # new_occurrence.name = source_component_name + "_copy"
 
-            for i, edge in enumerate(edges):
-                geom = edge.geometry
-                geometryType = type(geom).__name__  # e.g., "Line3D", "Arc3D", "Circle3D", etc.
+            return f'Successfully copied "{source_component_name}" into "{target_parent_component_name}".'
 
-                # Basic edge info
-                edge_info = {
-                    "index": i,
-                    "geometryType": geometryType,
-                    "length": edge.length
-                }
-
-                # 1) Collect bounding box data
-                bb = edge.boundingBox
-                if bb:
-                    edge_info["boundingBox"] = {
-                        "minPoint": [bb.minPoint.x, bb.minPoint.y, bb.minPoint.z],
-                        "maxPoint": [bb.maxPoint.x, bb.maxPoint.y, bb.maxPoint.z]
-                    }
-
-                # 2) Collect geometry-specific data
-                if isinstance(geom, adsk.core.Line3D):
-                    # For finite lines, startPoint and endPoint will be non-null.
-                    startPt = geom.startPoint
-                    endPt = geom.endPoint
-
-                    # Compute direction: end - start
-                    if startPt and endPt:
-                        directionVec = adsk.core.Vector3D.create(
-                            endPt.x - startPt.x,
-                            endPt.y - startPt.y,
-                            endPt.z - startPt.z
-                        )
-                        edge_info["geometryData"] = {
-                            "startPoint": [startPt.x, startPt.y, startPt.z],
-                            "endPoint": [endPt.x, endPt.y, endPt.z],
-                            "direction": [directionVec.x, directionVec.y, directionVec.z]
-                        }
-                    else:
-                        # If the line is infinite (rare in typical Fusion designs),
-                        # the start/endPoints might be None.
-                        # You could call getData(...) here if needed.
-                        edge_info["geometryData"] = {
-                            "startPoint": None,
-                            "endPoint": None,
-                            "direction": None
-                        }
-
-                elif isinstance(geom, adsk.core.Arc3D):
-                    centerPt = geom.center
-                    normalVec = geom.normal
-                    edge_info["geometryData"] = {
-                        "centerPoint": [centerPt.x, centerPt.y, centerPt.z],
-                        "normal": [normalVec.x, normalVec.y, normalVec.z],
-                        "radius": geom.radius,
-                        "startAngle": geom.startAngle,
-                        "endAngle": geom.endAngle
-                    }
-
-                elif isinstance(geom, adsk.core.Circle3D):
-                    centerPt = geom.center
-                    normalVec = geom.normal
-                    edge_info["geometryData"] = {
-                        "centerPoint": [centerPt.x, centerPt.y, centerPt.z],
-                        "normal": [normalVec.x, normalVec.y, normalVec.z],
-                        "radius": geom.radius
-                    }
-
-                elif isinstance(geom, adsk.core.Ellipse3D):
-                    centerPt = geom.center
-                    normalVec = geom.normal
-                    edge_info["geometryData"] = {
-                        "centerPoint": [centerPt.x, centerPt.y, centerPt.z],
-                        "normal": [normalVec.x, normalVec.y, normalVec.z],
-                        "majorRadius": geom.majorRadius,
-                        "minorRadius": geom.minorRadius
-                    }
-
-                elif isinstance(geom, adsk.core.NurbsCurve3D):
-                    # NURBS curves can be more complex:
-                    # store some minimal data; adjust as needed
-                    edge_info["geometryData"] = {
-                        "isNurbs": True,
-                        "degree": geom.degree,
-                        "controlPointCount": geom.controlPointCount
-                    }
-
-                edge_data_list.append(edge_info)
-
-            # Return the collected info in JSON format
-            return json.dumps(edge_data_list, indent=4)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+        except Exception as e:
+            return f'Failed to copy "{source_component_name}" into "{target_parent_component_name}":\n{e}'
 
     def fillet_or_chamfer_edges(self,
                                component_name: str = "comp1",
@@ -1967,38 +2323,422 @@ class SetData(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    def rename_component(self, component_name: str, new_name: str) -> str:
+    def set_appearance_on_components(
+        self, appearance_updates: list = [{"component_name": "comp1","appearance_name":"Paint - Enamel Glossy (Green)"}]) -> str:
+
         """
             {
-              "name": "rename_component",
+              "name": "set_appearance_on_components",
+              "description": "Sets the appearance on a list of components. Each item in appearance_updates is {'component_name': <COMPONENT_NAME>, 'appearance_name': <APPEARANCE_NAME>}.",
               "parameters": {
                 "type": "object",
                 "properties": {
-                  "component_name": {
-                    "type": "string",
-                    "description": "The name of the Fusion 360 component to be renamed."
-                  },
-                  "new_name": {
-                    "type": "string",
-                    "description": "The new name to assign to the component."
+                  "appearance_updates": {
+                    "type": "array",
+                    "description": "An array of objects with the form {'component_name': <COMPONENT_NAME>, 'appearance_name': <APPEARANCE_NAME>}.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "component_name": {
+                          "type": "string"
+                        },
+                        "appearance_name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["component_name", "appearance_name"]
+                    }
                   }
                 },
-                "required": [
-                  "component",
-                  "new_name"
-                ]
-              },
-              "description": "Renames a specified component in Fusion 360 to a new name."
+                "required": ["appearance_updates"],
+                "returns": {
+                  "type": "string",
+                  "description": "A summary message about which components were updated or any errors encountered."
+                }
+              }
             }
         """
 
         try:
-            targetComponent = self._find_component_by_name(component_name)
-            # Set the new name for the component
-            targetComponent.name = new_name
-            return new_name
-        except Exception as e:
-            return 'Failed to rename the component:\n{}'.format(new_name)
+            if not appearance_updates or not isinstance(appearance_updates, list):
+                return "Error: Must provide an array of updates in the form [{'component_name': '...', 'appearance_name': '...'}, ...]."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            root_comp = design.rootComponent
+
+            # A helper function to find an appearance by name in the design
+            # (Optionally search the appearance libraries if not found in design).
+            def find_appearance_by_name(appearance_name: str):
+                print(appearance_name)
+
+                # 1) Check the design's local appearances
+                local_appearance = design.appearances.itemByName(appearance_name)
+                if local_appearance:
+                    return local_appearance
+
+                # 2) Optionally, check libraries if not found in local. Comment this out if not needed.
+                appearance_libraries = app.materialLibraries
+                for i in range(appearance_libraries.count):
+
+                    a_lib = appearance_libraries.item(i)
+                    if a_lib.name not in ["Fusion Appearance Library"]:
+                        continue
+                    print(i)
+
+                    lib_app = a_lib.appearances.itemByName(appearance_name)
+
+                    if lib_app:
+                        # You typically need to copy the library appearance into the design before applying
+                        return design.appearances.addByCopy(lib_app, appearance_name)
+
+                return None
+
+            results = []
+
+            # Process each update item
+            for update in appearance_updates:
+                # Validate each item in the array
+                if not isinstance(update, dict):
+                    results.append("Error: Appearance update must be a dictionary.")
+                    continue
+
+                comp_name = update.get("component_name")
+                app_name = update.get("appearance_name")
+                if not comp_name or not app_name:
+                    results.append(f"Error: Missing component_name or appearance_name in {update}.")
+                    continue
+
+                # Find the appearance by name
+                appearance = find_appearance_by_name(app_name)
+                if not appearance:
+                    results.append(f"Error: Appearance '{app_name}' not found in design or libraries.")
+                    continue
+
+                # Find all occurrences that reference this component name
+                found_occurrences = []
+                for i in range(root_comp.occurrences.count):
+                    occ = root_comp.occurrences.item(i)
+                    if occ.component.name == comp_name:
+                        found_occurrences.append(occ)
+
+                if not found_occurrences:
+                    results.append(f"Error: No occurrences found for component '{comp_name}'.")
+                    continue
+
+                # Apply the appearance override to each matching occurrence
+                for occ in found_occurrences:
+                    try:
+                        # Setting the appearance property on an occurrence
+                        occ.appearance = appearance
+                        # If needed, you can enforce override with:
+                        # occ.appearance.isOverride = True
+                    except Exception as e:
+                        results.append(f"Error setting appearance on occurrence {occ.name}: {str(e)}")
+                        continue
+
+                results.append(f"Set appearance '{app_name}' on component '{comp_name}' ({len(found_occurrences)} occurrence(s)).")
+
+            return "\n".join(results)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    def move_component(self,
+                       component_name: str = "comp1",
+                       move_position: list = [0.0, 0.0, 0.0]) -> str:
+        """
+        {
+          "name": "move_component",
+          "description": "Moves the specified component so that its local origin is placed at the given [x, y, z] point in centimeters.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "component_name": {
+                "type": "string",
+                "description": "Name of the Fusion 360 component to move."
+              },
+              "move_position": {
+                "type": "array",
+                "description": "The [x, y, z] coordinates (in centimeters) to place the component's local origin in the global coordinate system.",
+                "items": { "type": "number" }
+              }
+            },
+            "required": ["component_name", "move_position"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating the result of the move operation."
+            }
+          }
+        }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            root_comp = design.rootComponent
+
+            # Validate the move_position format: expecting [x, y, z].
+            if (not isinstance(move_position, list)) or (len(move_position) < 3):
+                return "Error: move_position must be an array of [x, y, z]."
+
+            # Extract the coordinates (in centimeters)
+            x_val, y_val, z_val = move_position
+
+            # Find all occurrences referencing this component.
+            target_occurrences = []
+            for i in range(root_comp.occurrences.count):
+                occ = root_comp.occurrences.item(i)
+                if occ.component.name == component_name:
+                    target_occurrences.append(occ)
+
+            if not target_occurrences:
+                return f"Error: No occurrences found for component '{component_name}'."
+
+            # Create a transform with the translation [x_val, y_val, z_val].
+            transform = adsk.core.Matrix3D.create()
+            translation = adsk.core.Vector3D.create(x_val, y_val, z_val)
+            transform.translation = translation
+
+            # Apply the transform to each occurrence of the specified component.
+            for occ in target_occurrences:
+                try:
+                    occ.transform = transform
+                except Exception as e:
+                    return f"Error: Could not transform occurrence '{occ.name}'. Reason: {e}"
+
+            return (f"Moved component '{component_name}' to "
+                    f"[{x_val}, {y_val}, {z_val}] cm. Affected {len(target_occurrences)} occurrence(s).")
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+    def capture_component_position(self, component_name: str = "comp1") -> str:
+        """
+        {
+          "name": "capture_component_position",
+          "description": "Retrieves the current global position (translation) of each occurrence referencing the specified component.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "component_name": {
+                "type": "string",
+                "description": "The name of the Fusion 360 component whose occurrences' positions will be captured."
+              }
+            },
+            "required": ["component_name"],
+            "returns": {
+              "type": "string",
+              "description": "A JSON array where each element has an 'occurrenceName' and 'position' [x, y, z] in centimeters."
+            }
+          }
+        }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            root_comp = design.rootComponent
+
+            # Find all occurrences of this component
+            target_occurrences = []
+            for i in range(root_comp.occurrences.count):
+                occ = root_comp.occurrences.item(i)
+                if occ.component.name == component_name:
+                    target_occurrences.append(occ)
+
+            if not target_occurrences:
+                return f"Error: No occurrences found for component '{component_name}'."
+
+            # Collect the translation vector (x, y, z) for each occurrence
+            positions_info = []
+            for occ in target_occurrences:
+                transform = occ.transform
+                translation = transform.translation
+                positions_info.append({
+                    "occurrenceName": occ.name,
+                    "position": [translation.x, translation.y, translation.z]
+                })
+
+            # Return the data as a JSON array string
+            return json.dumps(positions_info)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    def set_visibility(
+            self, objects_to_set: list = [ {"object_type": "component", "object_name": "comp1", "visible": False} ]
+) -> str:
+        """
+            {
+              "name": "set_visibility",
+              "description": "Sets the visibility for various Fusion 360 objects (components, bodies, or sketches) based on the provided instructions.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "objects_to_set": {
+                    "type": "array",
+                    "description": "Array of items specifying object type, name, and visibility. Example: [{'object_type': 'component', 'object_name': 'comp1', 'visible': True}, ...]",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "object_type": {
+                          "type": "string",
+                          "description": "'component', 'body', or 'sketch'."
+                        },
+                        "object_name": {
+                          "type": "string",
+                          "description": "The name of the object in Fusion 360."
+                        },
+                        "visible": {
+                          "type": "boolean",
+                          "description": "True to show, False to hide."
+                        }
+                      },
+                      "required": ["object_type", "object_name", "visible"]
+                    }
+                  }
+                },
+                "required": ["objects_to_set"],
+                "returns": {
+                  "type": "string",
+                  "description": "A summary message about which objects were updated or any errors encountered."
+                }
+              }
+            }
+        """
+
+        try:
+            # Validate input
+            if not objects_to_set or not isinstance(objects_to_set, list):
+                return "Error: Must provide a list of objects to set visibility on."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            root_comp = design.rootComponent
+
+            # Helper: gather ALL components in the design in a list for quick searching
+            all_comps = []
+            def collect_all_components(comp):
+                all_comps.append(comp)
+                for occ in comp.occurrences:
+                    collect_all_components(occ.component)
+
+            collect_all_components(root_comp)
+
+            # Helper: gather ALL bodies and sketches across all components
+            all_bodies = []
+            all_sketches = []
+            for comp in all_comps:
+                for body in comp.bRepBodies:
+                    all_bodies.append(body)
+                for sk in comp.sketches:
+                    all_sketches.append(sk)
+
+            messages = []
+
+            # Process each visibility instruction
+            for item in objects_to_set:
+                obj_type = item.get('object_type')
+                obj_name = item.get('object_name')
+                visible = item.get('visible')
+
+                if not obj_type or not obj_name or visible is None:
+                    messages.append(f"Error: Missing or invalid fields in {item}.")
+                    continue
+
+                if obj_type.lower() == 'component':
+                    # Hide/show all occurrences referencing this component name
+                    found_occurrences = []
+                    for comp in all_comps:
+                        if comp.name == obj_name:
+                            # Look in root for occurrences referencing comp
+                            for i in range(root_comp.occurrences.count):
+                                occ = root_comp.occurrences.item(i)
+                                if occ.component == comp:
+                                    found_occurrences.append(occ)
+                            # Also look in sub-assemblies (occurrences of occurrences)
+                            # but since we recursively gather "all_comps," the root's
+                            # occurrences might suffice if the user consistently named
+                            # components. If needed, you could do a more advanced search.
+
+                    if not found_occurrences:
+                        messages.append(f"Error: No occurrences found for component '{obj_name}'.")
+                        continue
+
+                    for occ in found_occurrences:
+                        try:
+                            occ.isLightBulbOn = bool(visible)
+                        except Exception as e:
+                            messages.append(f"Error: Could not set visibility on occurrence '{occ.name}': {e}")
+                    messages.append(f"Set visibility for component '{obj_name}' to {visible} (affected {len(found_occurrences)} occurrence(s)).")
+
+                elif obj_type.lower() == 'body':
+                    # Hide/show bodies by name
+                    found_bodies = [b for b in all_bodies if b.name == obj_name]
+                    if not found_bodies:
+                        messages.append(f"Error: No body found with name '{obj_name}'.")
+                        continue
+
+                    for b in found_bodies:
+                        try:
+                            b.isLightBulbOn = bool(visible)
+                        except Exception as e:
+                            messages.append(f"Error: Could not set visibility on body '{b.name}': {e}")
+                    messages.append(f"Set visibility for body '{obj_name}' to {visible} (affected {len(found_bodies)} body/ies).")
+
+                elif obj_type.lower() == 'sketch':
+                    # Hide/show sketches by name
+                    found_sketches = [s for s in all_sketches if s.name == obj_name]
+                    if not found_sketches:
+                        messages.append(f"Error: No sketch found with name '{obj_name}'.")
+                        continue
+
+                    for sk in found_sketches:
+                        try:
+                            sk.isLightBulbOn = bool(visible)
+                        except Exception as e:
+                            messages.append(f"Error: Could not set visibility on sketch '{sk.name}': {e}")
+                    messages.append(f"Set visibility for sketch '{obj_name}' to {visible} (affected {len(found_sketches)} sketch(es)).")
+
+                else:
+                    messages.append(f"Error: Unknown object_type '{obj_type}' in {item}.")
+
+            return "\n".join(messages)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
+class DeleteObjects(FusionSubmodule):
 
     def delete_occurrence_by_name(self, occurrence_name: str) -> str:
         """
@@ -2177,133 +2917,417 @@ class SetData(FusionSubmodule):
         except Exception as e:
             return f'Failed to delete the BRep body "{body_name}" from "{component_name}":\n{e}'
 
-    def copy_component(self, source_component_name: str, target_parent_component_name: str) -> str:
-        """
-            {
-                "name": "copy_component",
-                "description": "Creates a new occurrence of an existing component inside another parent component. This effectively 'copies' the geometry by referencing the same underlying component in a new location.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "source_component_name": {
-                            "type": "string",
-                            "description": "The name of the existing Fusion 360 component to be copied."
-                        },
-                        "target_parent_component_name": {
-                            "type": "string",
-                            "description": "The name of the component that will serve as the parent for the new copy."
-                        }
-                    },
-                    "required": ["source_component_name", "target_parent_component_name"],
-                    "returns": {
-                        "type": "string",
-                        "description": "A message indicating whether the copy (new occurrence) was successfully created."
-                    }
 
-                }
-            }
+class Joints(FusionSubmodule):
+
+    def list_joint_origin_references(self, component_name: str = "comp1") -> str:
         """
+        {
+          "name": "list_joint_origin_references",
+          "description": "Finds potential reference geometry (faces, edges, vertices, sketch points) in the specified component that can host a Joint Origin. Returns a JSON array, each item includes geometry type, name or index, a referenceId, and approximate X/Y/Z coordinates.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "component_name": {
+                "type": "string",
+                "description": "Name of the Fusion 360 component whose geometry references will be listed."
+              }
+            },
+            "required": ["component_name"],
+            "returns": {
+              "type": "string",
+              "description": "A JSON array of references. Each entry might look like { 'referenceId': 'face|body0|face3', 'geometryType': 'face', 'location': [x, y, z], ... }"
+            }
+          }
+        }
+        """
+
         try:
-            # Access the active design
             app = adsk.core.Application.get()
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            if not design:
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
                 return "Error: No active Fusion 360 design found."
 
-            # Locate the source component using a helper method (assumed to exist in your environment)
-            sourceComp = self._find_component_by_name(source_component_name)
-            if not sourceComp:
-                return f'Error: Source component "{source_component_name}" not found.'
+            design = adsk.fusion.Design.cast(product)
 
-            # Locate the target parent component
-            targetParentComp = self._find_component_by_name(target_parent_component_name)
-            if not targetParentComp:
-                return f'Error: Parent component "{target_parent_component_name}" not found.'
+            # Find the target component by name
+            targetComponent = None
+            for comp in design.allComponents:
+                if comp.name == component_name:
+                    targetComponent = comp
+                    break
+            if not targetComponent:
+                return f"Error: Component '{component_name}' not found."
 
-            # Create a new occurrence of the source component in the target parent component
-            transform = adsk.core.Matrix3D.create()  # Identity transform (no rotation, no translation)
-            new_occurrence = targetParentComp.occurrences.addExistingComponent(sourceComp, transform)
+            references_list = []
 
-            # (Optional) Rename the new occurrence if you want a distinct name
-            # new_occurrence.name = source_component_name + "_copy"
+            # A helper to get the bounding box center in [x, y, z].
+            def bounding_box_center(bbox: adsk.core.BoundingBox3D):
+                x = 0.5 * (bbox.minPoint.x + bbox.maxPoint.x)
+                y = 0.5 * (bbox.minPoint.y + bbox.maxPoint.y)
+                z = 0.5 * (bbox.minPoint.z + bbox.maxPoint.z)
+                return [x, y, z]
 
-            return f'Successfully copied "{source_component_name}" into "{target_parent_component_name}".'
+            # 1) Collect faces (using bounding box center)
+            for bodyIndex, body in enumerate(targetComponent.bRepBodies):
+                for faceIndex, face in enumerate(body.faces):
+                    refId = f"face|body{bodyIndex}|face{faceIndex}"
+                    bbox = face.boundingBox
+                    loc = bounding_box_center(bbox) if bbox else [0, 0, 0]
 
-        except Exception as e:
-            return f'Failed to copy "{source_component_name}" into "{target_parent_component_name}":\n{e}'
+                    references_list.append({
+                        "referenceId": refId,
+                        "geometryType": "face",
+                        "bodyName": body.name,
+                        "faceIndex": faceIndex,
+                        "location": loc
+                    })
 
+            # 2) Collect edges (using bounding box center)
+            for bodyIndex, body in enumerate(targetComponent.bRepBodies):
+                for edgeIndex, edge in enumerate(body.edges):
+                    refId = f"edge|body{bodyIndex}|edge{edgeIndex}"
 
-    def copy_component_as_new(self, source_component_name: str="comp1", target_parent_component_name: str="comp_container", new_component_name: str="new_comp_1") -> str:
+                    geoType = ""
+                    edgeGeo = edge.geometry
+                    if isinstance(edgeGeo, adsk.core.Circle3D):
+                        geoType = "Circle3D"
+                        loc = edge.geometry.center.asArray()
+                    elif isinstance(edgeGeo, adsk.core.Line3D):
+                        geoType = "Line3D"
+                        loc = edge.geometry.startPoint.asArray()
+                    elif isinstance(edgeGeo, adsk.core.Arc3D):
+                        geoType = "Arc3D"
+                        loc = edge.geometry.center.asArray()
+                    else:
+                        print(edge.geometry)
+                        loc = None
+
+                    references_list.append({
+                        "referenceId": refId,
+                        "geometryType": f"Edge_{geoType}",
+                        "bodyName": body.name,
+                        "edgeIndex": edgeIndex,
+                        "location": loc
+                    })
+
+            # 3) Collect vertices (bounding box center = actual vertex coords)
+            for bodyIndex, body in enumerate(targetComponent.bRepBodies):
+                for vertIndex, vertex in enumerate(body.vertices):
+                    refId = f"vertex|body{bodyIndex}|vertex{vertIndex}"
+
+                    if isinstance(vertex, adsk.fusion.BRepVertex):
+                        loc = vertex.geometry.asArray()
+                    else:
+                        loc = None
+
+                    #loc = bounding_box_center(bbox) if bbox else [0, 0, 0]
+                    references_list.append({
+                        "referenceId": refId,
+                        "geometryType": "vertex",
+                        "bodyName": body.name,
+                        "vertexIndex": vertIndex,
+                        "location": loc
+                    })
+
+            # 4) Collect sketch points (use the 3D geometry of the point)
+            for sketchIndex, sketch in enumerate(targetComponent.sketches):
+                for pointIndex, skPoint in enumerate(sketch.sketchPoints):
+                    refId = f"sketchPoint|sketch{sketchIndex}|point{pointIndex}"
+                    geo = skPoint.worldGeometry  # a Point3D in global coords
+
+                    #print("sketch")
+                    #print(geo)
+
+                    loc = [geo.x, geo.y, geo.z]
+
+                    references_list.append({
+                        "referenceId": refId,
+                        "geometryType": "sketchPoint",
+                        "sketchName": sketch.name,
+                        "sketchPointIndex": pointIndex,
+                        "location": loc
+                    })
+
+            return json.dumps(references_list)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+    def _old_list_joint_origin_references(self, component_name: str = "comp1") -> str:
         """
-            {
-                "name": "copy_component_as_new",
-                "description": "Creates a completely new component by copying the geometry of an existing component. The copied component is inserted as a new occurrence in the target parent component, but is otherwise independent of the source. The newly created component will be renamed to the provided new_component_name.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "source_component_name": {
-                            "type": "string",
-                            "description": "The name of the existing Fusion 360 component to be copied."
-                        },
-                        "target_parent_component_name": {
-                            "type": "string",
-                            "description": "The name of the component that will serve as the parent for the newly copied component."
-                        },
-                        "new_component_name": {
-                            "type": "string",
-                            "description": "The desired name for the newly created component copy."
-                        }
-                    },
-                    "required": ["source_component_name", "target_parent_component_name", "new_component_name"],
-                    "returns": {
-                        "type": "string",
-                        "description": "A message indicating whether the independent copy was successfully created and named."
-                    }
-                }
+        {
+          "name": "list_joint_origin_references",
+          "description": "Finds potential reference geometry (faces, edges, vertices, sketch points) in the specified component that can host a Joint Origin. Returns a JSON array, each item including geometry type, name or index, and an internal reference ID that can be used to create a Joint Origin.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "component_name": {
+                "type": "string",
+                "description": "Name of the Fusion 360 component whose geometry references will be listed."
+              }
+            },
+            "required": ["component_name"],
+            "returns": {
+              "type": "string",
+              "description": "A JSON array of references. Each entry might look like { 'referenceId': 'someUniqueId', 'geometryType': 'face', 'index': 3 }"
             }
+          }
+        }
         """
+
         try:
-            # Access the active design
             app = adsk.core.Application.get()
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            if not design:
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
                 return "Error: No active Fusion 360 design found."
 
-            # Locate the source component
-            sourceComp = self._find_component_by_name(source_component_name)
-            if not sourceComp:
-                return f'Error: Source component "{source_component_name}" not found.'
+            design = adsk.fusion.Design.cast(product)
 
-            # Locate the target parent component
-            targetParentComp = self._find_component_by_name(target_parent_component_name)
-            if not targetParentComp:
-                return f'Error: Parent component "{target_parent_component_name}" not found.'
+            # Find the target component by name
+            targetComponent = None
+            for comp in design.allComponents:
+                if comp.name == component_name:
+                    targetComponent = comp
+                    break
+            if not targetComponent:
+                return f"Error: Component '{component_name}' not found."
 
-            # Create a new, independent copy of the source component
-            transform = adsk.core.Matrix3D.create()  # Identity transform
-            new_occurrence = targetParentComp.occurrences.addNewComponentCopy(sourceComp, transform)
-            new_comp = new_occurrence.component
+            references_list = []
 
-            # Rename the newly created component
-            new_comp.name = new_component_name
+            # 1) Collect faces
+            for bodyIndex, body in enumerate(targetComponent.bRepBodies):
+                for faceIndex, face in enumerate(body.faces):
+                    refId = f"face|body{bodyIndex}|face{faceIndex}"
+                    references_list.append({
+                        "referenceId": refId,
+                        "geometryType": "face",
+                        "bodyName": body.name,
+                        "faceIndex": faceIndex
+                    })
 
-            return f'Successfully created a new, independent copy of "{source_component_name}into "{target_parent_component_name}" named "{new_component_name}".'
+            # 2) Collect edges
+            for bodyIndex, body in enumerate(targetComponent.bRepBodies):
+                for edgeIndex, edge in enumerate(body.edges):
+                    refId = f"edge|body{bodyIndex}|edge{edgeIndex}"
+                    references_list.append({
+                        "referenceId": refId,
+                        "geometryType": "edge",
+                        "bodyName": body.name,
+                        "edgeIndex": edgeIndex
+                    })
 
-        except Exception as e:
-            return f'Failed to copy "{source_component_name}" as a new component into "{target_parent_component_name}":\n{e}'
+            # 3) Collect vertices
+            for bodyIndex, body in enumerate(targetComponent.bRepBodies):
+                for vertIndex, vertex in enumerate(body.vertices):
+                    refId = f"vertex|body{bodyIndex}|vertex{vertIndex}"
+                    references_list.append({
+                        "referenceId": refId,
+                        "geometryType": "vertex",
+                        "bodyName": body.name,
+                        "vertexIndex": vertIndex
+                    })
+
+            # 4) Collect sketch points
+            for sketchIndex, sketch in enumerate(targetComponent.sketches):
+                for pointIndex, point in enumerate(sketch.sketchPoints):
+                    refId = f"sketchPoint|sketch{sketchIndex}|point{pointIndex}"
+                    references_list.append({
+                        "referenceId": refId,
+                        "geometryType": "sketchPoint",
+                        "sketchName": sketch.name,
+                        "sketchPointIndex": pointIndex
+                    })
+
+            return json.dumps(references_list)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
+    def create_joint_origin(self,
+                            component_name: str = "comp1",
+                            reference_id: str = "face|body0|face1",
+                            origin_name: str = "topFaceCenter") -> str:
+        """
+        {
+          "name": "create_joint_origin",
+          "description": "Creates a Joint Origin in the specified component, attached to a reference (face/edge/vertex/sketchPoint) identified by reference_id. Names the Joint Origin as specified.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "component_name": {
+                "type": "string",
+                "description": "Name of the Fusion 360 component in which to create the Joint Origin."
+              },
+              "reference_id": {
+                "type": "string",
+                "description": "ID string for the geometry reference. This typically comes from list_joint_origin_references()."
+              },
+              "origin_name": {
+                "type": "string",
+                "description": "A descriptive name for the newly created Joint Origin."
+              }
+            },
+            "required": ["component_name", "reference_id", "origin_name"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating success or any errors that occurred."
+            }
+          }
+        }
+        """
+        import adsk.core, adsk.fusion, traceback, re
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # Find the target component by name
+            targetComponent = None
+            for comp in design.allComponents:
+                if comp.name == component_name:
+                    targetComponent = comp
+                    break
+            if not targetComponent:
+                return f"Error: Component '{component_name}' not found."
+
+            tokens = reference_id.split('|')
+            if len(tokens) < 2:
+                return f"Error: reference_id '{reference_id}' is not in the expected format."
+
+            geometry_type = tokens[0]  # e.g. "face", "edge", "vertex", "sketchPoint"
+            refGeom = None
+
+            # We'll define a helper function to parse "bodyN" => integer N
+            def parse_body_index(bodyTag):
+                m = re.search(r"body(\d+)", bodyTag)
+                return int(m.group(1)) if m else None
+
+            if geometry_type in ["face", "edge", "vertex"]:
+                if len(tokens) < 3:
+                    return f"Error: reference_id '{reference_id}' missing 'bodyX|faceY/edgeY/vertexY'."
+
+                bodyTag = tokens[1]           # e.g. "body0"
+                fevTag = tokens[2]           # e.g. "face3", "edge1", or "vertex5"
+                bodyIndex = parse_body_index(bodyTag)
+                if bodyIndex is None:
+                    return f"Error: Could not parse body index from '{bodyTag}'."
+
+                fevMatch = re.search(r"(face|edge|vertex)(\d+)", fevTag)
+                if not fevMatch:
+                    return f"Error: Could not parse geometry index from '{fevTag}'."
+                subType = fevMatch.group(1)  # "face", "edge", or "vertex"
+                geomIndex = int(fevMatch.group(2))
+
+                # Get the actual geometry
+                bodies = targetComponent.bRepBodies
+                if bodyIndex >= bodies.count:
+                    return f"Error: Body index {bodyIndex} out of range."
+                theBody = bodies.item(bodyIndex)
+
+                if subType == "face":
+                    if geomIndex >= theBody.faces.count:
+                        return f"Error: Face index {geomIndex} out of range on body {bodyIndex}."
+                    faceObj = theBody.faces.item(geomIndex)
+                    # This example assumes the face is planar
+                    # For non-planar, use createByNonPlanarFace, etc.
+                    planarFace = adsk.fusion.BRepFace.cast(faceObj)
+                    if not planarFace or not planarFace.geometry or not isinstance(planarFace.geometry, adsk.core.Plane):
+                        return "Error: The specified face is not planar. For non-planar, use createByNonPlanarFace, etc."
+                    refGeom = adsk.fusion.JointGeometry.createByPlanarFace(
+                        planarFace, #face
+                        None, # edge
+                        adsk.fusion.JointKeyPointTypes.CenterKeyPoint  # or MidPointKeyPoint, etc.
+                    )
+
+                elif subType == "edge":
+                    if geomIndex >= theBody.edges.count:
+                        return f"Error: Edge index {geomIndex} out of range on body {bodyIndex}."
+                    edgeObj = theBody.edges.item(geomIndex)
+                    print(edgeObj)
 
 
+                    # TODO get edge type
+                    try:
+                        # Use createByCurve with a keypoint type; e.g. MiddleKeyPoint
+                        refGeom = adsk.fusion.JointGeometry.createByCurve(
+                            edgeObj,
+                            adsk.fusion.JointKeyPointTypes.CenterKeyPoint
+                        )
+                    except Exception as e:
+                        # Use createByCurve with a keypoint type; e.g. MiddleKeyPoint
+                        refGeom = adsk.fusion.JointGeometry.createByCurve(
+                            edgeObj,
+                            adsk.fusion.JointKeyPointTypes.MiddleKeyPoint
+                        )
 
 
+                elif subType == "vertex":
+                    if geomIndex >= theBody.vertices.count:
+                        return f"Error: Vertex index {geomIndex} out of range on body {bodyIndex}."
+                    vertexObj = theBody.vertices.item(geomIndex)
+                    # For a vertex, use createByPoint
+                    refGeom = adsk.fusion.JointGeometry.createByPoint(vertexObj)
 
+            elif geometry_type == "sketchPoint":
+                # Expect something like "sketchPoint|sketch0|point2"
+                if len(tokens) < 3:
+                    return f"Error: reference_id '{reference_id}' is missing 'sketchX|pointY'."
 
+                sketchTag = tokens[1]  # e.g. "sketch0"
+                pointTag = tokens[2]   # e.g. "point2"
 
+                s_match = re.search(r"sketch(\d+)", sketchTag)
+                p_match = re.search(r"point(\d+)", pointTag)
+                if not s_match or not p_match:
+                    return f"Error: Could not parse sketch/point indexes from '{sketchTag}', '{pointTag}'."
+                sketchIndex = int(s_match.group(1))
+                pointIndex = int(p_match.group(1))
 
+                if sketchIndex >= targetComponent.sketches.count:
+                    return f"Error: Sketch index {sketchIndex} out of range."
+                theSketch = targetComponent.sketches.item(sketchIndex)
+                if pointIndex >= theSketch.sketchPoints.count:
+                    return f"Error: Sketch point index {pointIndex} out of range."
 
+                skPointObj = theSketch.sketchPoints.item(pointIndex)
+                refGeom = adsk.fusion.JointGeometry.createByPoint(skPointObj)
 
+            else:
+                return f"Error: Unrecognized geometry type '{geometry_type}' in reference_id '{reference_id}'."
 
+            if not refGeom:
+                return f"Error: Could not build JointGeometry for '{reference_id}'. Possibly non-planar or invalid geometry."
+
+            # Now we create the Joint Origin
+            joint_origins = targetComponent.jointOrigins
+            jo_input = joint_origins.createInput(refGeom)
+            # Optionally set orientation or offsets here, e.g.:
+            # transform = adsk.core.Matrix3D.create()
+            # transform.translation = adsk.core.Vector3D.create(0, 0, 1)  # offset 1 cm
+            # jo_input.setByOffset(transform)
+
+            # Add the new Joint Origin
+            newJo = joint_origins.add(jo_input)
+            newJo.name = origin_name
+
+            return f"Joint Origin '{origin_name}' created for {reference_id} in component '{component_name}'."
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
 

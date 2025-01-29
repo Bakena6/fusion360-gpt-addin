@@ -311,6 +311,17 @@ function getTools() {
                 functionButton.id = m_name;
                 functionButton.setAttribute("onClick", `javascript: executeToolCall("${m_name}");`);
                 functionButton.className = "toolCallButton";
+
+                if (m_name.includes("create") | m_name.includes("import")) {
+                    functionButton.style.borderColor = "green";
+                } else if (m_name.includes("delete")) {
+                    functionButton.style.borderColor = "red";
+                } else if (m_name.includes("get")) {
+                    functionButton.style.borderColor = "cyan";
+                } else if (m_name.includes("list")) {
+                    functionButton.style.borderColor = "cyan";
+                };
+
                 const inputContainer = document.createElement("span");
 
                 for (const [param_name, param_info] of Object.entries(params)) {
@@ -320,12 +331,18 @@ function getTools() {
 
                     paramInput.id = `${m_name}__${param_name}`;
                     paramInput.name = `${param_name}`;
-
+                    paramInput.type = "text";
                     paramInput.className = `${m_name}__input`;
                     paramInput.placeholder = `${param_name}`;
+                    
+                    // Set the oninput method dynamically
+                    paramInput.oninput = function () {
+                        resizeInput(paramInput);
+                    };
 
                     //console.log("paramDefault", paramDefault);
                     paramInput.value = JSON.stringify(paramDefault);
+                    resizeInput(paramInput);
 
                     inputContainer.appendChild(paramInput);
                 };
@@ -339,34 +356,69 @@ function getTools() {
             }// end for
 
         }); // end then
+
+    
+    let toolTestContainer = document.getElementById('toolTestContainer');
+    toolTestContainer.style.height = '50%';
+    setWindowHeight();
 } // end getTools
 
 //function
 
+
+
 function hideTools() {
 
     let toolTestContainer = document.getElementById('toolTestContainer');
-
+    toolTestContainer.style.height = "0px";
     toolTestContainer.innerHTML = "";
+    setWindowHeight();
 
 } // end hide tools
 
- function getWindowHeight() {
-      return window.innerHeight;
-    }
 
-    // Listen for the window resize event
-    window.addEventListener('resize', function() {
-      const height = getWindowHeight();
-      console.log("Current window height:", height);
-      
-      // You can call other functions or update the DOM here
-      // e.g., update a span with the height, etc.
-    });
 
-    // Optional: Log the initial height on page load
-    console.log("Initial window height:", getWindowHeight());
+ function setWindowHeight() {
 
+    let outputContainer = document.getElementById('outputContainer');
+    let toolTestContainer = document.getElementById('toolTestContainer');
+    let inputContainer = document.getElementById('inputContainer');
+
+    let outputHeight = outputContainer.offsetHeight;
+    let toolTestHeight = toolTestContainer.offsetHeight;
+    let inputHeight = inputContainer.offsetHeight;
+
+    //console.log("Current outputContainer height:", outputHeight);
+    //console.log("Current toolTestContainer height:", toolTestHeight);
+    //console.log("Current inputContainer height:", inputHeight);
+
+    let newOutputHeight = window.innerHeight - (inputHeight + toolTestHeight +5) ;
+
+
+    outputContainer.style.height = `${newOutputHeight}px`;
+
+
+}
+
+// Listen for the window resize event
+window.addEventListener('resize', function() {
+    setWindowHeight();
+    // You can call other functions or update the DOM here
+    // e.g., update a span with the height, etc.
+});
+
+
+window.addEventListener('load', (event) => {
+  // Your code to execute after the page loads
+    setWindowHeight();
+});
+
+
+
+
+function resizeInput(input) {
+    input.style.width = (input.value.length + 1) * 8 + "px"; // Adjust multiplier for better spacing
+  }
 
 window.fusionJavaScriptHandler = {
 

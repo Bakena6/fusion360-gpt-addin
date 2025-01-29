@@ -1,6 +1,14 @@
 
 # hardware
-hello, can you create an M8x40mm hex head bolt, with a .5mm chamfer on all edges?
+
+Hello, can you create a brass M8x45mm Hex Head screw, add a small fillet to all the edges, then add a joint origin to the top face?
+
+Can you create a similar component, but this time for an stainless steel M12x30mm Hex Head screw?
+
+Hello, can you create a brass M8x20mm Socket Head screw, with a small chamfer on all the edges, then add a joint origin on the top face?
+
+Hello, can you create an M8x40mm hex head bolt, with a .5mm chamfer on all edges?
+
 
 
 # random cubes

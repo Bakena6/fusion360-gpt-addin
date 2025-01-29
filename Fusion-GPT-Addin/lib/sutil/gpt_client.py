@@ -39,6 +39,8 @@ class GptClient:
         fusion_interface : class inst whose methods call Fusion API
         """
         self.fusion_interface = fusion_interface
+
+        # must be defined here,
         self.app = adsk.core.Application.get()
 
         # current connection status
@@ -53,6 +55,8 @@ class GptClient:
         """
         address = ('localhost', 6000)
         self.conn = Client(address, authkey=b'fusion260')
+        #print(dir(self.conn))
+
         self.connected = True;
 
 
@@ -74,13 +78,14 @@ class GptClient:
         }
         message = json.dumps(message)
 
+
         if self.connected == False:
             self.connect()
 
+        print(f"conn closed: {self.conn.closed}")
         message_confirmation = self.conn.send(message)
 
         print(f"  message sent,  waiting for result...")
-
 
 
 
@@ -91,7 +96,6 @@ class GptClient:
             self.connect()
 
         print(f"  sending mesage: {message}")
-
         message = {"message_type": "thread_update", "content": message}
         message = json.dumps(message)
 
@@ -114,8 +118,8 @@ class GptClient:
 
             # streaming call outputs
             if event_type == "thread.run.created":
-                print(event_type)
-                print(content)
+                #print(event_type)
+                #print(content)
                 self.sendToBrowser("runCreated", content)
 
             # streaming call outputs

@@ -59,7 +59,9 @@ This Fusion 360 Python Add-In allows the OpenAI Assistant API to interact with t
     3. Click run, to run the Add-In
 
 
-
+# Bugs
+payments
+new design
 
 
 

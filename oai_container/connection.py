@@ -94,8 +94,7 @@ class Assistant:
 
         ## laste run step
         self.run_steps = None
-        print(f'THREAD CREATED: {self.thread.id}')
-
+        print(f'Thread created: {self.thread.id}')
 
     def start_server(self):
         # run on local host, Fusion client must connect to this address
@@ -108,7 +107,7 @@ class Assistant:
 
                 i = 0
                 while True:
-                    print(f"{i} WAITING...")
+                    print(f"{i} Waiting for user command...")
 
                     # wait for message from user
                     message_raw = conn.recv()
@@ -129,6 +128,12 @@ class Assistant:
                         tools = message["content"]
                         self.update_tools(tools)
                         continue
+
+                    # update Assistant meta data
+                    #elif message_type == "reconnect":
+                    #    tools = message["content"]
+                    #    self.update_tools(tools)
+                    #    continue
 
                     # add message to thread
                     self.add_message(message_text)
@@ -411,8 +416,6 @@ class Assistant:
             run_id=self.run_id,
         )
 
-        #self.format_str("", 9)
-        #print(f"  RUN STATUS: status: {run.status}")
         return run
 
 
@@ -430,6 +433,7 @@ class Assistant:
             tool_outputs=response_list,
             stream=True,
         )
+
         return stream
 
 
@@ -450,11 +454,6 @@ class Assistant:
         )
 
         print(f'RESP RUN STATUS: run_id: {run.id}, status: {run.status}')
-
-
-    #def get_steps(self):
-    #    """print most recent run steps"""
-    #    print(self.get_run_steps().model_dump_json(indent=4))
 
 
     def cancel_run(self):
