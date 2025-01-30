@@ -2626,6 +2626,7 @@ class ModifyObjects(FusionSubmodule):
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
     def capture_component_position(self, component_name: str = "comp1") -> str:
         """
         {
