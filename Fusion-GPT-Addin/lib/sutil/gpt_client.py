@@ -95,12 +95,11 @@ class GptClient:
         if self.connected == False:
             self.connect()
 
-        print(f"  sending mesage: {message}")
         message = {"message_type": "thread_update", "content": message}
         message = json.dumps(message)
 
         message_confirmation = self.conn.send(message)
-        print(f"  message sent,  waiting for result...")
+        print(f"MESSAGE SENT,  waiting for result...")
 
         # continue to run as loong thread is open
         run_complete = False
@@ -182,6 +181,10 @@ class GptClient:
 
         else:
             result = ""
+
+        if "Error:" in result:
+            print(result)
+
 
         return result
 

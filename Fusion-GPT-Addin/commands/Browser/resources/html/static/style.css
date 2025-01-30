@@ -62,9 +62,6 @@ body {
  * Use Flexbox to arrange buttons in a row 
  * postion: fixed and bottom:0 keep text box at bottom
  *
- *
-    position: fixed;
- *
  */
 
 #toolTestContainer{
@@ -79,13 +76,12 @@ body {
     padding-left: 10px;
 }
 
-#toolTestContainer button{
+
+/* call function method button */
+.toolCallButton{
     width: auto;
     min-width: 5ch;
     font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
-
-    border: 2px solid pink;
-    border-radius: 3px;
     margin-left: 1px;
     margin-right: 1px;
     margin-bottom: 1px;
@@ -104,6 +100,56 @@ body {
 
 }
 
+
+
+/* tool test title, buttons and input boxes*/
+.toolClassContainer{
+    width: auto;
+    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
+    font-size: 14px;
+    color: white;
+    min-width: 5ch;
+
+    border: 2px solid pink;
+    border-radius: 3px;
+
+    margin-left: 1px;
+    margin-right: 1px;
+    margin-bottom: 1px;
+    padding-bottom: 1px;
+
+}
+.toolCallClassTitle{
+
+    width: auto;
+    font-size: 14px;
+    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
+
+    margin-left: 1px;
+    margin-right: 1px;
+    margin-bottom: 1px;
+    padding-bottom: 1px;
+
+}
+
+
+
+/* tool test button and input boxes*/
+.tool-row{
+    width: auto;
+    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
+    font-size: 14px;
+    color: white;
+    margin-left: 10px;
+    margin-right: 1px;
+    margin-bottom: 1px;
+    padding-bottom: 1px;
+
+}
+
+.toolCallButton {
+    margin-right: 20px;
+}
 
 
 #inputContainer {

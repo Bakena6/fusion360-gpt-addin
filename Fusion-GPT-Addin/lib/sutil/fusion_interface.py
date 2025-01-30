@@ -7,7 +7,7 @@ import math
 import os
 import json
 import inspect
-
+import re
 #from multiprocessing.connection import Client
 from array import array
 import time
@@ -41,18 +41,19 @@ class FusionInterface:
         self.design = adsk.fusion.Design.cast(self.app.activeProduct)
 
         # method collections
-        submodules = [
+        self.submodules = [
             StateData(),
             SketchMethods(),
             ModifyObjects(),
             CreateObjects(),
             DeleteObjects(),
+            Timeline(),
             Joints()
         ]
+
         fusion_methods = {}
-        for submod in submodules:
+        for submod in self.submodules:
             for method_name, method in submod.methods.items():
-                #print(method_name)
                 # add method from container classes to main interface class
                 setattr(self, method_name, method)
 
@@ -61,57 +62,69 @@ class FusionInterface:
         """
         creates list fusion interface functions
         """
+
         methods = {}
-        self.get_docstr()
 
-        for attr_name in dir(self):
-            # ignore functions that don't directly interface with fusion workspace
-            if attr_name in ["__init__", "get_tools", "fusion_call"]:
-                continue
-            attr = getattr(self, attr_name)
-
-            if callable(attr) == False:
-                continue
-
-            if str(attr.__class__) == "<class 'method'>":
-
-                #print(dir(attr))
-                #print(attr.__name__)
-
-                methods[attr_name] = {}
-
-                sig = inspect.signature(attr)
-                attr = inspect.unwrap(attr)
-
-                default_vals = inspect.getfullargspec(attr).defaults
-
-                if default_vals != None:
-                    n_default_vals = len(default_vals)
-                else:
-                    n_default_vals = 0
+        # add modules and create methods
+        for mod in self.submodules:
+            class_name = mod.__class__.__name__
 
 
-                param_dict = {}
-                for index, param_name in enumerate(sig.parameters):
-                    annotation = sig.parameters.get(param_name).annotation
+            # class name used for display
+            methods[class_name] = {}
 
-                    if index < n_default_vals:
-                        default_val = default_vals[index]
+            for attr_name in dir(mod):
+                # ignore functions that don't directly interface with fusion workspace
+                if attr_name in ["__init__", "get_tools", "fusion_call"]:
+                    continue
+
+                if attr_name[0] == "_":
+                    continue
+
+                #attr = getattr(self, attr_name)
+                attr = getattr(mod, attr_name)
+
+                if callable(attr) == False:
+                    continue
+
+                if str(attr.__class__) == "<class 'method'>":
+
+                    # method signature
+                    sig = inspect.signature(attr)
+                    attr = inspect.unwrap(attr)
+
+                    default_vals = inspect.getfullargspec(attr).defaults
+
+                    if default_vals != None:
+                        n_default_vals = len(default_vals)
                     else:
-                        default_val = None
+                        n_default_vals = 0
 
-                    param_info_dict = {
-                        "type": str(annotation),
-                        "default_val": default_val
-                    }
+                    param_dict = {}
+                    for index, param_name in enumerate(sig.parameters):
+                        annotation = sig.parameters.get(param_name).annotation
 
-                    #param_info_dict
+                        if index < n_default_vals:
+                            default_val = default_vals[index]
+                        else:
+                            default_val = None
 
-                    param_dict[param_name] = param_info_dict
+                        param_info_dict = {
+                            "type": str(annotation),
+                            "default_val": default_val
+                        }
 
-                methods[attr_name] = param_dict
+                        #param_info_dict
+                        param_dict[param_name] = param_info_dict
+
+                    methods[class_name][attr_name] = param_dict
+
+
 
         return methods
+
+
+
 
     def get_docstr(self):
         """
@@ -124,17 +137,22 @@ class FusionInterface:
             # ignore functions that don't directly interface with fusion workspace
             if attr_name in ["__init__", "get_tools", "fusion_call", "get_docstr", "save_assistant_functions" ]:
                 continue
+
+            if attr_name[0] == "_":
+                continue
+
             attr = getattr(self, attr_name)
 
             if callable(attr) == False:
                 continue
+
+            print(attr_name)
 
             if str(attr.__class__) == "<class 'method'>":
                 sig = inspect.signature(attr)
                 attr = inspect.unwrap(attr)
                 #print(f"{index}: {attr_name}")
                 index += 1
-                #print(f"method_name: {attr_name}")
 
                 docstring = attr.__doc__
 
@@ -160,7 +178,6 @@ class FusionInterface:
             self.app = adsk.core.Application.get()
             print("func start")
             result = func(self, *args, **kwds)
-            #print(result)
             print("func end")
             return result
 
@@ -210,6 +227,10 @@ class FusionSubmodule:
         app = adsk.core.Application.get()
         design = adsk.fusion.Design.cast(app.activeProduct)
         rootComp = design.rootComponent
+
+        # 
+        if component_name == rootComp.name:
+            return rootComp
 
         # Find the target component
         targetComponent = None
@@ -335,7 +356,7 @@ class StateData(FusionSubmodule):
         # Convert dictionary to a JSON string with indentation
         return json.dumps(design_data, indent=4)
 
-    def get_design_parameters_as_json(self) -> str:
+    def _get_design_parameters_as_json(self) -> str:
         """
         {
             "name": "get_design_parameters_as_json",
@@ -389,6 +410,10 @@ class StateData(FusionSubmodule):
 
         # Convert to a JSON string
         return json.dumps(data, indent=4)
+
+
+
+
 
     def get_model_parameters_by_component_as_json(self) -> str:
         """
@@ -934,7 +959,7 @@ class SketchMethods(FusionSubmodule):
             # use base class method
             targetComponent = self._find_component_by_name(component_name)
             if not targetComponent:
-                return f'Component "{component_name}" not found'
+                return f'Error: Component "{component_name}" not found'
 
             # Determine the sketch plane
             if sketch_plane.lower() == "xz":
@@ -951,7 +976,7 @@ class SketchMethods(FusionSubmodule):
             return f'Sketch "{sketch_name}" created successfully'
 
         except Exception as e:
-            return f'Failed to create sketch: {e}'
+            return f'Error: Failed to create sketch: {e}'
 
 
     def create_rectangles_in_sketch(self, component_name: str="comp1", sketch_name: str="sketch1", center_point_list: list=[[1,1,0]], rectangle_size_list:list=[[2,4]]):
@@ -1045,7 +1070,7 @@ class SketchMethods(FusionSubmodule):
             # use base class method
             targetComponent = self._find_component_by_name(component_name)
             if not targetComponent:
-                return f'Component "{component_name}" not found.'
+                return f'Error: Component "{component_name}" not found.'
 
             # Find the target sketch
             targetSketch = None
@@ -1055,7 +1080,7 @@ class SketchMethods(FusionSubmodule):
                     break
 
             if not targetSketch:
-                return f'Sketch "{sketch_name}" not found in component "{component_name}".'
+                return f'Error: Sketch "{sketch_name}" not found in component "{component_name}".'
 
             # Create rectangles in the sketch
             for center_point, size in zip(center_point_list, rectangle_size_list):
@@ -1114,7 +1139,7 @@ class SketchMethods(FusionSubmodule):
 
         except Exception as e:
 
-            return f'Failed to create rectangles in sketch: {e}'
+            return f'Error: Failed to create rectangles in sketch: {e}'
 
     def create_circles_in_sketch(self, component_name:str="comp1", sketch_name:str="sketch1", point_list:str=[[1,1,0]], circle_diameter_list:list=[10]):
         """
@@ -1164,7 +1189,7 @@ class SketchMethods(FusionSubmodule):
         try:
             # Validate the lengths of point_list and circle_diameter_list
             if len(point_list) != len(circle_diameter_list):
-                return "The lengths of point_list and circle_diameter_list must be equal."
+                return "Error: The lengths of point_list and circle_diameter_list must be equal."
 
             # Access the active design
             app = adsk.core.Application.get()
@@ -1175,7 +1200,7 @@ class SketchMethods(FusionSubmodule):
             # use base class method
             targetComponent = self._find_component_by_name(component_name)
             if not targetComponent:
-                return f'Component "{component_name}" not found.'
+                return f'Error: Component "{component_name}" not found.'
 
             # Find the target sketch
             targetSketch = None
@@ -1189,7 +1214,6 @@ class SketchMethods(FusionSubmodule):
 
             # Create circles in the sketch
             for point, diameter in zip(point_list, circle_diameter_list):
-                print(point)
 
                 centerPoint = adsk.core.Point3D.create(point[0], point[1], point[2])
 
@@ -1197,24 +1221,22 @@ class SketchMethods(FusionSubmodule):
                 entity = targetSketch.sketchCurves.sketchCircles.addByCenterRadius(centerPoint, diameter / 2)
                 # offset the text label
                 textPoint = adsk.core.Point3D.create(point[0]+1, point[1]+1, point[2])
-
                 dimensions = targetSketch.sketchDimensions
-
                 circleDimension = dimensions.addDiameterDimension(entity, textPoint)
 
             return f'Circles created in sketch "{sketch_name}"'
 
         except Exception as e:
-            return f'Failed to create circles in sketch: {e}'
+            return f'Error: Failed to create circles in sketch: {e}'
 
     def create_polygon_in_sketch(self,
                                  component_name: str = "comp1",
-                                 sketch_name: str = "sketch1",
-                                 center_point: list = [0.0, 0.0],
+                                 sketch_name: str = "Sketch1",
+                                 center_point: list = [0.0, 0.0, 0.0],
                                  radius: float = 1.0,
                                  number_of_sides: int = 6,
                                  orientation_angle_degrees: float = 0.0,
-                                 is_inscribed: bool = True) -> str:
+                                 is_inscribed: bool = False) -> str:
         """
         {
             "name": "create_polygon_in_sketch",
@@ -1232,7 +1254,7 @@ class SketchMethods(FusionSubmodule):
                     },
                     "center_point": {
                         "type": "array",
-                        "description": "The [x, y] coordinates for the polygon center on the sketch plane.",
+                        "description": "The [x, y, z] coordinates for the polygon center on the sketch plane.",
                         "items": { "type": "number" }
                     },
                     "radius": {
@@ -1299,7 +1321,8 @@ class SketchMethods(FusionSubmodule):
             # Convert center_point to a 3D point (Z=0 in sketch plane).
             centerPnt = adsk.core.Point3D.create(center_point[0],
                                                  center_point[1],
-                                                 0.0)
+                                                 center_point[2],
+                                                 )
 
             # Convert the orientation angle to radians.
             orientation_angle_radians = math.radians(orientation_angle_degrees)
@@ -1314,6 +1337,12 @@ class SketchMethods(FusionSubmodule):
             # - angle: float in RADIANS (orientation of polygon)
             # - radius: float (distance from center to vertex if isInscribed = True, else to side midpoint)
             # - isInscribed: bool
+
+            print("before pg")
+            for index, p in enumerate(targetSketch.sketchPoints):
+                print(f"{index}, {p}, {p.geometry.asArray()}")
+
+            print("after pg")
             scribed_polygon = sketchLines_var.addScribedPolygon(
                 centerPnt,
                 number_of_sides,
@@ -1321,6 +1350,47 @@ class SketchMethods(FusionSubmodule):
                 radius,
                 is_inscribed
             )
+
+
+            for index, l in enumerate(scribed_polygon):
+                print(f"{index}, {l}, {l.geometry}")
+
+
+            for index, p in enumerate(targetSketch.sketchPoints):
+                print(f"{index}, {p}, {p.geometry.asArray()}")
+
+
+
+            n_sketch_points = targetSketch.sketchPoints.count
+            centerSketchPoint = targetSketch.sketchPoints.item(n_sketch_points-1)
+
+            # fix initial location so it does not move during repositioning
+            centerSketchPoint.isFixed = True
+
+            # Find the first edge, point is added and mid point contrained
+            firstEdge = scribed_polygon[0]  # First polygon edge
+
+            midpoint = adsk.core.Point3D.create(0, 0, 0)
+            midpointSketchPoint = targetSketch.sketchPoints.add(midpoint)
+
+            # Apply a Midpoint Constraint (ensures the point is always attached to the line)
+            targetSketch.geometricConstraints.addMidPoint(midpointSketchPoint, firstEdge)
+
+            dimensions = targetSketch.sketchDimensions
+
+             # Get the center sketch point (first point created)
+            dim = dimensions.addDistanceDimension(
+                centerSketchPoint,  # Center of polygon
+                midpointSketchPoint,  # Midpoint of an edge
+
+                adsk.fusion.DimensionOrientations.AlignedDimensionOrientation,
+                #adsk.fusion.DimensionOrientations.HorizontalDimensionOrientation,
+                adsk.core.Point3D.create(center_point[0] * 1.5, center_point[1]*1.1, center_point[2]),
+                True
+            )  # Position for the dimension text
+
+
+            #dim.parameter.comments = radius  # Set the radius dimension
 
             # scribed_polygon returns a SketchLineList object that you can inspect if needed.
 
@@ -1334,116 +1404,10 @@ class SketchMethods(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    def _create_polygon_in_sketch(self,
-                                 component_name: str = "comp1",
-                                 sketch_name: str = "sketch1",
-                                 center_point: list = [0.0, 0.0],
-                                 radius: float = 1.0,
-                                 number_of_sides: int = 6,
-                                 circumscribed: bool = True) -> str:
+    def create_irregular_polygon_in_sketch(self, parent_component_name:str="comp1", sketch_name:str="Sketch1", point_list:list=[[0,0,0], [0,1,0], [1,2,0]]):
         """
         {
-            "name": "create_polygon_in_sketch",
-            "description": "Creates a regular polygon in the specified sketch. The polygon is defined by its center point, radius, number of sides, and whether it is circumscribed or inscribed.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "component_name": {
-                        "type": "string",
-                        "description": "The name of the component in the current design containing the sketch."
-                    },
-                    "sketch_name": {
-                        "type": "string",
-                        "description": "The name of the sketch within the specified component."
-                    },
-                    "center_point": {
-                        "type": "array",
-                        "description": "The [x, y] coordinates for the polygon center (on the sketch plane).",
-                        "items": { "type": "number" }
-                    },
-                    "radius": {
-                        "type": "number",
-                        "description": "Radius of the polygon (distance from center to corner)."
-                    },
-                    "number_of_sides": {
-                        "type": "number",
-                        "description": "Number of sides of the regular polygon."
-                    },
-                    "circumscribed": {
-                        "type": "boolean",
-                        "description": "If true, polygon is circumscribed around the circle. If false, polygon is inscribed."
-                    }
-                },
-                "required": ["component_name", "sketch_name", "center_point", "radius", "number_of_sides", "circumscribed"],
-
-                "returns": {
-                    "type": "string",
-                    "description": "A message indicating success or details about any errors encountered."
-                }
-            }
-        }
-        """
-        import adsk.core, adsk.fusion, traceback
-
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            # Locate the target component by name (assuming you have a helper method).
-            targetComponent = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return f'Error: Component "{component_name}" not found.'
-
-            # Locate the specified sketch by name.
-            targetSketch = self._find_sketch_by_name(targetComponent, sketch_name)
-            if not targetSketch:
-                return f'Error: Sketch "{sketch_name}" not found in component "{component_name}".'
-
-            # Validate basic parameters.
-            if number_of_sides < 3:
-                return "Error: A polygon must have at least 3 sides."
-
-            if radius <= 0:
-                return "Error: Radius must be positive."
-
-            # Convert center_point to a 3D point on the sketch plane (Z=0 in sketch space).
-            centerPnt = adsk.core.Point3D.create(float(center_point[0]),
-                                                 float(center_point[1]),
-                                                 0.0)
-
-            # Construct a reference point (one vertex). We pick a point radius units away on the X axis from center.
-            # If you prefer a different orientation, you can adjust where the reference lies.
-            refPnt = adsk.core.Point3D.create(centerPnt.x + radius,
-                                              centerPnt.y,
-                                              centerPnt.z)
-
-            # Access the polygons collection from the sketch.
-            polygons = targetSketch.sketchCurves.sketchPolygons
-
-            # Create the input object for the new polygon.
-            # createInput(centerPoint, vertexPoint, numberOfSides, isCircumscribed)
-            polygon_input = polygons.createInput(centerPnt, refPnt, number_of_sides, circumscribed)
-
-            # Add the polygon to the sketch.
-            polygons.add(polygon_input)
-
-            return (f"Successfully created a {number_of_sides}-sided "
-                    f"{'circumscribed' if circumscribed else 'inscribed'} polygon "
-                    f"with radius {radius} in sketch '{sketch_name}'.")
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-    def _create_polygon_in_sketch(self, parent_component_name:str="comp1", sketch_name:str="sketch1", point_list:list=[[0,0,0], [0,1,0], [1,2,0]]):
-        """
-        {
-          "name": "create_polygon_in_sketch",
+          "name": "create_irregular_polygon_in_sketch",
           "description": "Creates a polygon in an existing sketch within a specified parent component in Fusion 360. The polygon is formed by connecting a series of points provided in the point_list. the unit for point_list is centimeters",
           "parameters": {
             "type": "object",
@@ -1485,27 +1449,16 @@ class SketchMethods(FusionSubmodule):
             design = adsk.fusion.Design.cast(app.activeProduct)
             rootComp = design.rootComponent
 
-            # Find the parent component
-            parentComponent = None
-            for occ in rootComp.allOccurrences:
-                if occ.component.name == parent_component_name:
-                    parentComponent = occ.component
-                    break
-
             # use base class method
             parentComponent = self._find_component_by_name(parent_component_name)
             if not parentComponent:
-                return f'Parent component "{parent_component_name}" not found'
+                return f'Error: Parent component "{parent_component_name}" not found'
 
             # Find the existing sketch
-            targetSketch = None
-            for sketch in parentComponent.sketches:
-                if sketch.name == sketch_name:
-                    targetSketch = sketch
-                    break
-
+            targetSketch = self._find_sketch_by_name(parentComponent, sketch_name)
             if not targetSketch:
-                return f'Sketch "{sketch_name}" not found in component "{parent_component_name}"'
+                return f'Error: Sketch "{sketch_name}" not found in component "{parent_component_name}"'
+
 
             # Add points and lines to the sketch to form the polygon
             for i in range(len(point_list)):
@@ -1518,11 +1471,169 @@ class SketchMethods(FusionSubmodule):
             return f'Polygon created in sketch "{sketch_name}"'
 
         except Exception as e:
-            return f'Failed to create polygon in sketch: {e}'
-
-
+            return f'Error: Failed to create polygon in sketch: {e}'
 
     def extrude_profiles_in_sketch(
+        self,
+        component_name: str = "comp1",
+        sketch_name: str = "Sketch1",
+        profiles_list: list = [[0, 1], [1, 2]],
+        operation_type: str = "NewBodyFeatureOperation",
+        start_extent: float = 0.0,
+        taper_angle: float = 0.0
+    ) -> str:
+
+        """
+        {
+            "name": "extrude_profiles_in_sketch",
+            "description": "Extrudes one or more profiles in a specified sketch by different amounts. The profiles are indexed by descending area, where 0 refers to the largest profile. Each item in profiles_list is [profileIndex, extrudeDistance]. The operation_type parameter selects which FeatureOperation to use. The unit for extrudeDistance and start_extent is centimeters, and taper_angle is in degrees (can be positive or negative).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "component_name": {
+                        "type": "string",
+                        "description": "The name of the component in the current design containing the sketch."
+                    },
+                    "sketch_name": {
+                        "type": "string",
+                        "description": "The name of the sketch inside the specified component containing the profiles."
+                    },
+                    "profiles_list": {
+                        "type": "array",
+                        "items": {
+                            "type": "array",
+                            "items": { "type": "number" },
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "description": "Each element is [profileIndex, extrudeDistance]. profileIndex is an integer referencing the area-sorted profile, extrudeDistance (in cm) is how far to extrude."
+                        },
+                        "description": "A list of profileIndex / extrudeDistance pairs specifying which profiles to extrude and by how much."
+                    },
+                    "operation_type": {
+                        "type": "string",
+                        "enum": [
+                            "CutFeatureOperation",
+                            "IntersectFeatureOperation",
+                            "JoinFeatureOperation",
+                            "NewBodyFeatureOperation",
+                            "NewComponentFeatureOperation"
+                        ],
+                        "description": "Specifies the Fusion 360 FeatureOperation to apply."
+                    },
+                    "start_extent": {
+                        "type": "number",
+                        "description": "Offset distance in centimeters from the sketch plane to start the extrude. Can be positive or negative. Default 0."
+                    },
+                    "taper_angle": {
+                        "type": "number",
+                        "description": "Taper angle (in degrees). Positive or negative. Default 0."
+                    }
+                },
+                "required": ["component_name", "sketch_name", "profiles_list"],
+                "returns": {
+                    "type": "string",
+                    "description": "A message indicating whether the extrude operations completed successfully or not."
+                }
+            }
+        }
+
+        """
+        try:
+            # A small dictionary to map string inputs to the appropriate enumerations.
+            operation_map = {
+                "CutFeatureOperation": adsk.fusion.FeatureOperations.CutFeatureOperation,
+                "IntersectFeatureOperation": adsk.fusion.FeatureOperations.IntersectFeatureOperation,
+                "JoinFeatureOperation": adsk.fusion.FeatureOperations.JoinFeatureOperation,
+                "NewBodyFeatureOperation": adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+                "NewComponentFeatureOperation": adsk.fusion.FeatureOperations.NewComponentFeatureOperation
+            }
+
+            # Validate the requested operation_type.
+            if operation_type not in operation_map:
+                return (f'Error: operation_type "{operation_type}" is not recognized. '
+                        f'Valid options are: {", ".join(operation_map.keys())}.')
+
+            # Access the active design.
+            app = adsk.core.Application.get()
+            design = adsk.fusion.Design.cast(app.activeProduct)
+
+            # Locate the target component by name (using a local helper method).
+            targetComponent = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return f'Error: Component "{component_name}" not found.'
+
+            # Locate the sketch by name (within the target component).
+            targetSketch = self._find_sketch_by_name(targetComponent, sketch_name)
+            if not targetSketch:
+                return f'Error: Sketch "{sketch_name}" not found in component "{component_name}".'
+
+            if not targetSketch.profiles or targetSketch.profiles.count == 0:
+                return f'Error: Sketch "{sketch_name}" has no profiles to extrude.'
+
+            # Collect and sort profiles by area in descending order (largest first).
+            profile_info = []
+            for prof in targetSketch.profiles:
+                props = prof.areaProperties()
+                profile_info.append((prof, props.area))
+            profile_info.sort(key=lambda x: x[1], reverse=True)
+
+            # Prepare extrude feature objects
+            extrudes = targetComponent.features.extrudeFeatures
+            results = []
+
+            # Loop through requested extrusions
+            for pair in profiles_list:
+                if not isinstance(pair, list) or len(pair) < 2:
+                    results.append("Error: Invalid profiles_list entry (expected [profileIndex, distance]).")
+                    continue
+
+                profileIndex, extrudeDist = pair[0], pair[1]
+
+                # Check the valid index range.
+                if profileIndex < 0 or profileIndex >= len(profile_info):
+                    results.append(f"Error: Invalid profile index {profileIndex}.")
+                    continue
+
+                selectedProfile = profile_info[profileIndex][0]
+
+                try:
+                    # Convert extrudeDist (cm) to internal real value
+                    distanceVal = adsk.core.ValueInput.createByReal(float(extrudeDist))
+
+                    # Create the extrude feature input with the requested operation type.
+                    extInput = extrudes.createInput(selectedProfile, operation_map[operation_type])
+
+                    # 1) Set an offset start extent if requested
+                    if abs(start_extent) > 1e-7:  # effectively non-zero
+                        offsetVal = adsk.core.ValueInput.createByReal(float(start_extent))
+                        offsetDef = adsk.fusion.OffsetStartDefinition.create(offsetVal)
+                        extInput.startExtent = offsetDef
+
+                    # 2) Set the taper angle (in degrees) if non-zero
+                    if abs(taper_angle) > 1e-7:
+                        # Use createByString for degrees (e.g., "15 deg")
+                        angleVal = adsk.core.ValueInput.createByString(f"{taper_angle} deg")
+                        extInput.taperAngle = angleVal
+
+                    # 3) Set the extent as a one-side distance.
+                    extInput.setDistanceExtent(False, distanceVal)
+
+                    # Add the extrude feature
+                    extrudes.add(extInput)
+                    results.append(
+                        f"Profile index {profileIndex} extruded by {extrudeDist} (startExtent={start_extent}, taper={taper_angle})"
+                        f" with {operation_type}."
+                    )
+                except Exception as e:
+                    results.append(f"Error: Could not extrude profile {profileIndex}. Reason: {e}")
+
+            # Combine all messages.
+            return "\n".join(results)
+
+        except Exception as e:
+            return f"Error: An unexpected exception occurred: {e}"
+
+    def _extrude_profiles_in_sketch(
         self,
         component_name: str = "comp1",
         sketch_name: str = "Sketch1",
@@ -1569,6 +1680,7 @@ class SketchMethods(FusionSubmodule):
                             "description": "Specifies the Fusion 360 FeatureOperation to apply. Valid values: CutFeatureOperation, IntersectFeatureOperation, JoinFeatureOperation, NewBodyFeatureOperation, NewComponentFeatureOperation."
                         }
                     },
+
                     "required": ["component_name", "sketch_name", "profiles_list"],
                     "returns": {
                         "type": "string",
@@ -1607,7 +1719,7 @@ class SketchMethods(FusionSubmodule):
                 return f'Error: Sketch "{sketch_name}" not found in component "{component_name}".'
 
             if not targetSketch.profiles or targetSketch.profiles.count == 0:
-                return f'Sketch "{sketch_name}" has no profiles to extrude.'
+                return f'Error: Sketch "{sketch_name}" has no profiles to extrude.'
 
             # Collect and sort profiles by area in descending order (largest first).
             profile_info = []
@@ -1690,18 +1802,9 @@ class CreateObjects(FusionSubmodule):
             design = adsk.fusion.Design.cast(app.activeProduct)
             rootComp = design.rootComponent
 
-            # Determine the parent component
-            if parent_component_name == rootComp.name:
-                parentComponent = rootComp
-            else:
-                parentComponent = None
-                for occ in rootComp.allOccurrences:
-                    if occ.component.name == parent_component_name:
-                        parentComponent = occ.component
-                        break
-                if not parentComponent:
-                    error_msg = f'Parent component "{parent_component_name}" not found'
-                    return error_msg
+            parentComponent = self._find_component_by_name(parent_component_name)
+            if not parentComponent:
+                return f'Error: Parent component "{parent_component_name}" not found'
 
             # Create a new component
             newOccurrence = parentComponent.occurrences.addNewComponent(adsk.core.Matrix3D.create())
@@ -1711,10 +1814,9 @@ class CreateObjects(FusionSubmodule):
             return newComponent.name
 
         except Exception as e:
-            error_msg = 'Failed to create new component:\n{}'.format(parent_component_name)
-            return error_msg
+            return 'Error: Failed to create new component:\n{}'.format(parent_component_name)
 
-    def _set_parameter_values(self, parameter_updates: list = [["param1", 10], ["param2", 20]]) -> str:
+    def set_parameter_values(self, parameter_updates: list = [["d1", 1.1], ["d2", 1.9]]) -> str:
         """
         {
           "name": "set_parameter_values",
@@ -1793,7 +1895,7 @@ class CreateObjects(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    def set_parameter_value(self, parameter_name: str, new_value: float) -> str:
+    def _set_parameter_value(self, parameter_name: str="d1", new_value: float=1.6) -> str:
         """
         {
           "name": "set_parameter_value",
@@ -1962,7 +2064,7 @@ class CreateObjects(FusionSubmodule):
 
         except:
             if ui:
-                ui.messageBox('Failed to import DXF file:\n{}'.format(traceback.format_exc()))
+                ui.messageBox('Error: Failed to import DXF file:\n{}'.format(traceback.format_exc()))
 
 
         return newSketch
@@ -2026,7 +2128,7 @@ class CreateObjects(FusionSubmodule):
             return f'Successfully created a new, independent copy of "{source_component_name}into "{target_parent_component_name}" named "{new_component_name}".'
 
         except Exception as e:
-            return f'Failed to copy "{source_component_name}" as a new component into "{target_parent_component_name}":\n{e}'
+            return f'Error: Failed to copy "{source_component_name}" as a new component into "{target_parent_component_name}":\n{e}'
 
 
 
@@ -2140,7 +2242,7 @@ class ModifyObjects(FusionSubmodule):
             targetComponent.name = new_name
             return new_name
         except Exception as e:
-            return 'Failed to rename the component:\n{}'.format(new_name)
+            return 'Error: Failed to rename the component:\n{}'.format(new_name)
 
     def copy_component(self, source_component_name: str, target_parent_component_name: str) -> str:
         """
@@ -2195,7 +2297,7 @@ class ModifyObjects(FusionSubmodule):
             return f'Successfully copied "{source_component_name}" into "{target_parent_component_name}".'
 
         except Exception as e:
-            return f'Failed to copy "{source_component_name}" into "{target_parent_component_name}":\n{e}'
+            return f'Error: Failed to copy "{source_component_name}" into "{target_parent_component_name}":\n{e}'
 
     def fillet_or_chamfer_edges(self,
                                component_name: str = "comp1",
@@ -2242,7 +2344,6 @@ class ModifyObjects(FusionSubmodule):
           }
         }
         """
-        import adsk.core, adsk.fusion, traceback
 
         try:
             app = adsk.core.Application.get()
@@ -2300,7 +2401,7 @@ class ModifyObjects(FusionSubmodule):
                     fillet_feats.add(fillet_input)
                     msg = f"Fillet applied with radius {operation_value} to edges: {edge_index_list}."
                 except Exception as e:
-                    return f"Error creating fillet: {e}"
+                    return f"Error: Error creating fillet: {e}"
             else:  # chamfer
                 try:
                     chamfer_feats = targetComponent.features.chamferFeatures
@@ -2312,7 +2413,7 @@ class ModifyObjects(FusionSubmodule):
                     chamfer_feats.add(chamfer_input)
                     msg = f"Chamfer applied with distance {operation_value} to edges: {edge_index_list}."
                 except Exception as e:
-                    return f"Error creating chamfer: {e}"
+                    return f"Error: Error creating chamfer: {e}"
 
             # Include any invalid edge indexes in the output message for clarity
             if invalid_indexes:
@@ -2391,7 +2492,6 @@ class ModifyObjects(FusionSubmodule):
                     a_lib = appearance_libraries.item(i)
                     if a_lib.name not in ["Fusion Appearance Library"]:
                         continue
-                    print(i)
 
                     lib_app = a_lib.appearances.itemByName(appearance_name)
 
@@ -2441,7 +2541,7 @@ class ModifyObjects(FusionSubmodule):
                         # If needed, you can enforce override with:
                         # occ.appearance.isOverride = True
                     except Exception as e:
-                        results.append(f"Error setting appearance on occurrence {occ.name}: {str(e)}")
+                        results.append(f"Error: error setting appearance on occurrence {occ.name}: {str(e)}")
                         continue
 
                 results.append(f"Set appearance '{app_name}' on component '{comp_name}' ({len(found_occurrences)} occurrence(s)).")
@@ -2784,7 +2884,7 @@ class DeleteObjects(FusionSubmodule):
             return f'Deleted occurrence "{occurrence_name}".'
 
         except Exception as e:
-            return f'Failed to delete occurrence "{occurrence_name}":\n{e}'
+            return f'Error: Failed to delete occurrence "{occurrence_name}":\n{e}'
 
     def delete_component(self, component_name: str="comp1") -> str:
         """
@@ -2829,7 +2929,7 @@ class DeleteObjects(FusionSubmodule):
             return f'deleted {component_name}'
 
         except Exception as e:
-            return f'Failed to delete component "{component_name}":\n{e}'
+            return f'Error: Failed to delete component "{component_name}":\n{e}'
 
     def delete_sketch(self, component_name: str="comp1", sketch_name: str="sketch1") -> str:
         """
@@ -2870,7 +2970,7 @@ class DeleteObjects(FusionSubmodule):
             return f'Deleted sketch "{sketch_name}" from component "{component_name}".'
 
         except Exception as e:
-            return f'Failed to delete the sketch "{sketch_name}" from "{component_name}":\n{e}'
+            return f'Error: Failed to delete the sketch "{sketch_name}" from "{component_name}":\n{e}'
     def delete_brep_body(self, component_name: str="comp1", body_name: str="body1") -> str:
         """
         {
@@ -2915,7 +3015,7 @@ class DeleteObjects(FusionSubmodule):
             return f'Deleted BRep body "{body_name}" from component "{component_name}".'
 
         except Exception as e:
-            return f'Failed to delete the BRep body "{body_name}" from "{component_name}":\n{e}'
+            return f'Error: Failed to delete the BRep body "{body_name}" from "{component_name}":\n{e}'
 
 
 class Joints(FusionSubmodule):
@@ -3039,9 +3139,6 @@ class Joints(FusionSubmodule):
                     refId = f"sketchPoint|sketch{sketchIndex}|point{pointIndex}"
                     geo = skPoint.worldGeometry  # a Point3D in global coords
 
-                    #print("sketch")
-                    #print(geo)
-
                     loc = [geo.x, geo.y, geo.z]
 
                     references_list.append({
@@ -3108,7 +3205,8 @@ class Joints(FusionSubmodule):
                         "referenceId": refId,
                         "geometryType": "face",
                         "bodyName": body.name,
-                        "faceIndex": faceIndex
+                        "faceIndex": faceIndex,
+                        "area": face.area
                     })
 
             # 2) Collect edges
@@ -3147,6 +3245,7 @@ class Joints(FusionSubmodule):
             return json.dumps(references_list)
 
         except:
+
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
@@ -3154,6 +3253,7 @@ class Joints(FusionSubmodule):
                             component_name: str = "comp1",
                             reference_id: str = "face|body0|face1",
                             origin_name: str = "topFaceCenter") -> str:
+
         """
         {
           "name": "create_joint_origin",
@@ -3182,7 +3282,6 @@ class Joints(FusionSubmodule):
           }
         }
         """
-        import adsk.core, adsk.fusion, traceback, re
 
         try:
             app = adsk.core.Application.get()
@@ -3257,7 +3356,7 @@ class Joints(FusionSubmodule):
                     if geomIndex >= theBody.edges.count:
                         return f"Error: Edge index {geomIndex} out of range on body {bodyIndex}."
                     edgeObj = theBody.edges.item(geomIndex)
-                    print(edgeObj)
+                    #print(edgeObj)
 
 
                     # TODO get edge type
@@ -3334,5 +3433,193 @@ class Joints(FusionSubmodule):
 
 
 
+class Timeline(FusionSubmodule):
+
+    def list_timeline_info(self) -> str:
+        """
+            {
+              "name": "list_timeline_info",
+              "description": "Returns a JSON array describing all items in the Fusion 360 timeline, including entity info, errors/warnings, healthState, etc.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                },
+                "required": [],
+                "returns": {
+                  "type": "string",
+                  "description": "A JSON array; each entry includes timeline item data such as index, name, entityType, healthState, errorOrWarningMessage, etc."
+                }
+              }
+            }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            timeline = design.timeline
+
+            timeline_info = []
+
+            for i in range(timeline.count):
+                t_item = timeline.item(i)
+                if not t_item:
+                    continue
+
+                # Collect basic info
+                item_data = {
+                    "index": t_item.index,
+                    "name": t_item.name,
+                    "isSuppressed": t_item.isSuppressed,
+                    "healthState": str(t_item.healthState),          # e.g. 'HealthStateError', 'HealthStateOk'
+                    "errorOrWarningMessage": t_item.errorOrWarningMessage,
+                }
+
+                # Parent group reference
+                if t_item.parentGroup:
+                    item_data["parentGroupIndex"] = t_item.parentGroup.index
+                    item_data["parentGroupName"] = t_item.parentGroup.name
+
+                # Entity info
+                entity = t_item.entity
+                if entity:
+                    # We'll store a few general properties if available
+                    entity_type = entity.objectType  # e.g. 'adsk::fusion::ExtrudeFeature'
+                    item_data["entityType"] = entity_type
+
+                    # Many entities have a "name" property, but not all. We'll try/catch.
+                    entity_name = getattr(entity, "name", None)
+                    if entity_name:
+                        item_data["entityName"] = entity_name
+
+                    # Optionally gather more info if you like:
+                    # e.g. if entity_type indicates a feature, you could store
+                    # entity.isSuppressed or others. Just be sure to check for availability.
+                else:
+                    item_data["entityType"] = None  # E.g., might be a group or unknown.
+
+                timeline_info.append(item_data)
+
+            return json.dumps(timeline_info)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
+
+    def delete_timeline_items(self, indexes_to_delete: list = []) -> str:
+        """
+        {
+          "name": "delete_timeline_items",
+          "description": "Deletes one or more items in the timeline by their index. Use list_timeline_info() to find item indexes first.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "indexes_to_delete": {
+                "type": "array",
+                "description": "A list of integer indexes of the timeline items to delete. Example: [1, 5, 7]",
+                "items": { "type": "number" }
+              }
+            },
+            "required": ["indexes_to_delete"],
+            "returns": {
+              "type": "string",
+              "description": "A message about which items were deleted or any errors encountered."
+            }
+          }
+        }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            timeline = design.timeline
+
+            if not indexes_to_delete:
+                return "Error: No indexes provided to delete."
+
+            # Sort descending to avoid reindexing issues as we delete
+            sorted_indexes = sorted(indexes_to_delete, reverse=True)
+
+            results = []
+            for idx in sorted_indexes:
+                if idx < 0 or idx >= timeline.count:
+                    results.append(f"Error: Timeline index {idx} out of range.")
+                    continue
+
+                item = timeline.item(idx)
+                # Attempt the deletion
+                try:
+
+                    item_name = item.name
+                    item.entity.deleteMe()
+                    results.append(f"Deleted timeline item at index {idx}: {item_name}")
+                except Exception as e:
+                    results.append(f"Error: deleting timeline item {idx}: {str(e)}")
+
+            return "\n".join(results)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
+    def roll_back_to_timeline(self, index_to_rollback: int = 0) -> str:
+        """
+        {
+          "name": "roll_back_to_timeline",
+          "description": "Rolls the design's timeline marker back (or forward) to the specified index, effectively suppressing all features after that index.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "index_to_rollback": {
+                "type": "number",
+                "description": "The timeline index to move the marker to. Items after this index will be suppressed in the UI."
+              }
+            },
+            "required": ["index_to_rollback"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating success or any error encountered."
+            }
+          }
+        }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            timeline = design.timeline
+
+            if index_to_rollback < 0 or index_to_rollback >= timeline.count:
+                return f"Error: index_to_rollback {index_to_rollback} out of range (0..{timeline.count - 1})."
+
+            # Move the marker position
+            timeline.markerPosition = index_to_rollback
+            return f"Timeline marker moved to index {index_to_rollback}."
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 

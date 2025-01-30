@@ -286,6 +286,24 @@ function executeToolCall(function_name) {
 
 } // end executeToolCall
 
+
+
+function showHideElement(elementId){
+    console.log(elementId);
+    let element = document.getElementById(elementId);
+
+    if (element.style.display === "none") {
+        element.style.display = "block"; 
+    } else {
+        element.style.display = "none"; 
+    }
+
+
+};
+
+
+
+
 function getTools() {
 
     const args = {  };
@@ -299,61 +317,98 @@ function getTools() {
 
             let response = JSON.parse(result);
 
-            for (const [m_name, params] of Object.entries(response)) {
+            // class name, methods
+            for (const [c_name, methods] of Object.entries(response)) {
+                // methods
+                
+                // top class container
+                const toolClassContainer = document.createElement("div");
+                toolClassContainer.className = "toolClassContainer";
 
-                let toolRow = document.createElement("div");
-                toolRow.id = `${m_name}_row`;
-                console.log(params);
+                //const classSectionTitle = document.createElement("span");
+                const classSectionTitle = document.createElement("button");
+                classSectionTitle.innerHTML = c_name;
+                classSectionTitle.type = "button";
+                classSectionTitle.className = "toolCallClassTitle";
 
-                let functionButton = document.createElement("button");
-                functionButton.innerHTML = m_name;
-                functionButton.type = "button";
-                functionButton.id = m_name;
-                functionButton.setAttribute("onClick", `javascript: executeToolCall("${m_name}");`);
-                functionButton.className = "toolCallButton";
 
-                if (m_name.includes("create") | m_name.includes("import")) {
-                    functionButton.style.borderColor = "green";
-                } else if (m_name.includes("delete")) {
-                    functionButton.style.borderColor = "red";
-                } else if (m_name.includes("get")) {
-                    functionButton.style.borderColor = "cyan";
-                } else if (m_name.includes("list")) {
-                    functionButton.style.borderColor = "cyan";
+                // all methods in a class
+                const methodsContainer = document.createElement("div");
+                const methodsContainerId = `${c_name}_method_container`;
+                methodsContainer.id = methodsContainerId;
+                methodsContainer.className = "methodsContainer";
+                methodsContainer.style.display = "none";
+
+                classSectionTitle.onclick = function() {
+
+                    showHideElement(methodsContainerId);
                 };
 
-                const inputContainer = document.createElement("span");
+                toolClassContainer.appendChild(classSectionTitle);
 
-                for (const [param_name, param_info] of Object.entries(params)) {
-                    const paramInput = document.createElement("input");
+                let borderColor="blue";
 
-                    const paramDefault = param_info.default_val;
+                if (c_name == "CreateObjects"){
+                    borderColor = "green";
+                } else if (c_name == "ModifyObjects") {
+                    borderColor = "orange";
+                } else if (c_name == "DeleteObjects") {
+                    borderColor = "red";
+                };
 
-                    paramInput.id = `${m_name}__${param_name}`;
-                    paramInput.name = `${param_name}`;
-                    paramInput.type = "text";
-                    paramInput.className = `${m_name}__input`;
-                    paramInput.placeholder = `${param_name}`;
-                    
-                    // Set the oninput method dynamically
-                    paramInput.oninput = function () {
+
+                classSectionTitle.style.borderColor = borderColor;
+
+                for (const [m_name, params] of Object.entries(methods)) {
+
+                    const toolRow = document.createElement("div");
+                    toolRow.className = 'tool-row';
+
+                    const functionButton = document.createElement("button");
+                    functionButton.innerHTML = m_name;
+                    functionButton.type = "button";
+                    functionButton.id = m_name;
+                    functionButton.setAttribute("onClick", `javascript: executeToolCall("${m_name}");`);
+                    functionButton.className = "toolCallButton";
+
+                    const inputContainer = document.createElement("span");
+
+                    // params
+                    for (const [param_name, param_info] of Object.entries(params)) {
+                        const paramInput = document.createElement("input");
+                        const paramDefault = param_info.default_val;
+                        paramInput.id = `${m_name}__${param_name}`;
+                        paramInput.name = `${param_name}`;
+                        paramInput.type = "text";
+                        paramInput.className = `${m_name}__input`;
+                        paramInput.placeholder = `${param_name}`;
+                        
+                        // Set the oninput method dynamically
+                        paramInput.oninput = function () {
+                            resizeInput(paramInput);
+                        };
+
+                        //console.log("paramDefault", paramDefault);
+                        paramInput.value = JSON.stringify(paramDefault);
                         resizeInput(paramInput);
+
+                        inputContainer.appendChild(paramInput);
                     };
 
-                    //console.log("paramDefault", paramDefault);
-                    paramInput.value = JSON.stringify(paramDefault);
-                    resizeInput(paramInput);
+                    //responseDiv.className = 'message-response'; // Add class for styling
+                    toolRow.appendChild(functionButton);
+                    toolRow.appendChild(inputContainer);
 
-                    inputContainer.appendChild(paramInput);
-                };
+                    methodsContainer.appendChild(toolRow);
 
-                //responseDiv.className = 'message-response'; // Add class for styling
-                toolRow.appendChild(functionButton);
-                toolRow.appendChild(inputContainer);
-                toolTestContainer.appendChild(toolRow);
+                }// end for params
 
+                toolClassContainer.appendChild(methodsContainer);
+
+                toolTestContainer.appendChild(toolClassContainer);
 
             }// end for
+
 
         }); // end then
 
@@ -361,6 +416,7 @@ function getTools() {
     let toolTestContainer = document.getElementById('toolTestContainer');
     toolTestContainer.style.height = '50%';
     setWindowHeight();
+
 } // end getTools
 
 //function
