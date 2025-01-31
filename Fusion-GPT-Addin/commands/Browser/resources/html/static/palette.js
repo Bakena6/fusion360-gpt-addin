@@ -304,23 +304,24 @@ function showHideElement(elementId){
 
 
 
-function getTools() {
+
+
+
+
+function loadTools() {
 
     const args = {  };
     // Send the data to Fusion as a JSON string. The return value is a Promise.
     adsk.fusionSendData("get_tools", JSON.stringify(args))
         .then((result) =>{ 
-
             let toolTestContainer = document.getElementById('toolTestContainer');
-
             toolTestContainer.innerHTML = "";
-
             let response = JSON.parse(result);
 
             // class name, methods
             for (const [c_name, methods] of Object.entries(response)) {
-                // methods
                 
+                // methods
                 // top class container
                 const toolClassContainer = document.createElement("div");
                 toolClassContainer.className = "toolClassContainer";
@@ -346,18 +347,23 @@ function getTools() {
 
                 toolClassContainer.appendChild(classSectionTitle);
 
-                let borderColor="blue";
+                let borderColor="pink";
 
                 if (c_name == "CreateObjects"){
                     borderColor = "green";
+
                 } else if (c_name == "ModifyObjects") {
                     borderColor = "orange";
+
+                } else if (c_name == "Sketches") {
+                    borderColor = "green";
+
                 } else if (c_name == "DeleteObjects") {
                     borderColor = "red";
                 };
 
 
-                classSectionTitle.style.borderColor = borderColor;
+                toolClassContainer.style.borderColor = borderColor;
 
                 for (const [m_name, params] of Object.entries(methods)) {
 
@@ -422,16 +428,28 @@ function getTools() {
 //function
 
 
+function toggleTools() {
 
-function hideTools() {
+    //let toolTestContainer = document.getElementById('toolTestContainer');
+    //console.log(toolTestContainer);
+    //
+    //toolTestContainer.style.height = "0px";
+    //toolTestContainer.innerHTML = "";
+    showHideElement("toolTestContainer");
 
-    let toolTestContainer = document.getElementById('toolTestContainer');
-    toolTestContainer.style.height = "0px";
-    toolTestContainer.innerHTML = "";
     setWindowHeight();
 
 } // end hide tools
 
+
+//function hideTools() {
+//
+//    let toolTestContainer = document.getElementById('toolTestContainer');
+//    toolTestContainer.style.height = "0px";
+//    toolTestContainer.innerHTML = "";
+//    setWindowHeight();
+//
+//} // end hide tools
 
 
  function setWindowHeight() {

@@ -14,7 +14,7 @@ from datetime import datetime
 import adsk.core
 from adsk.core import ValueInput
 from adsk.core import MessageBoxButtonTypes, ObjectCollection
-from adsk.fusion import CombineFeature #IntersectFeatureOperation
+#from adsk.fusion import CombineFeature
 #from adsk.core import Camera
 import os
 import sys
@@ -27,7 +27,8 @@ from ...lib import fusion360utils as futil
 import importlib
 
 # custom modules
-from ...lib.sutil import fusion_interface, gpt_client
+#from ...lib.sutil import fusion_interface, gpt_client
+from ...lib.sutil import gpt_client
 
 app = adsk.core.Application.get()
 ui = app.userInterface
@@ -49,9 +50,11 @@ PALETTE_URL = PALETTE_URL.replace('\\', '/')
 PALETTE_DOCKING = adsk.core.PaletteDockingStates.PaletteDockStateRight
 #PALETTE_DOCKING = adsk.core.PaletteDockingStates.PaletteDockStateFloating
 
-CMD_NAME = os.path.basename(os.path.dirname(__file__))
+#CMD_NAME = os.path.basename(os.path.dirname(__file__))
+CMD_NAME = "Prompt Window"
+
 CMD_ID = f'{config.COMPANY_NAME}_{config.ADDIN_NAME}_{CMD_NAME}'
-CMD_Description = 'Browser Input'
+CMD_Description = "Prompt Window"
 IS_PROMOTED = False
 
 # Global variables by referencing values from /config.py
@@ -70,12 +73,9 @@ ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resource
 local_handlers = []
 
 
-
 # Fusion360 interface, methodods availible to OpenAI Assistant
-fusion_itf = fusion_interface.FusionInterface(app, ui)
+#fusion_itf = fusion_interface.FusionInterface(app, ui)
 
-# connects to Assistant Interface running on external process
-server_itf = gpt_client.GptClient(fusion_itf)
 
 def print(string):
     futil.log(str(string))
@@ -141,6 +141,9 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     futil.add_handler(args.command.destroy, command_destroy, local_handlers=local_handlers)
 
 
+# connects to Assistant Interface running on external process
+server_itf = gpt_client.GptClient()
+
 def command_execute(args: adsk.core.CommandEventArgs):
     # General logging for debug.
     futil.log(f'{CMD_NAME}: Command execute event.')
@@ -169,6 +172,8 @@ def command_execute(args: adsk.core.CommandEventArgs):
         palette.dockingState = PALETTE_DOCKING
 
     palette.isVisible = True
+
+    server_itf.reload_interface()
 
 
 
@@ -204,45 +209,47 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
     message_data = json.loads(html_args.data)
     message_action = html_args.action
 
-    importlib.reload(gpt_client)
-    importlib.reload(fusion_interface)
-    fusion_itf = fusion_interface.FusionInterface(app, ui)
+    #importlib.reload(gpt_client)
     # connects to Assistant Interface running on external process
     #server_itf = gpt_client.GptClient(fusion_itf)
 
     if message_action == "error":
         print(message_data)
 
-
     elif message_action == "connect":
         server_itf.connect()
         #connect to server
         print("SERVER CONNECTED")
 
-    # upload function/ prompt to Assistant
+    # upload function/ prompt to assistant
     elif message_action == "upload_tools":
         server_itf.upload_tools()
-
 
     elif message_action == "get_tools":
         """
         get available tools, display in window
         """
-        methods = fusion_itf.get_tools()
+        server_itf.reload_interface()
+
+        methods = server_itf.fusion_itf.get_tools()
 
         html_args.returnData = json.dumps(methods)
 
 
     elif message_action == "execute_tool_call":
 
+
+        server_itf.reload_interface()
+
         function_name = message_data["function_name"]
         function_args = message_data["function_args"]
+
 
         # convert to dict if passed as str when manually testing
         if isinstance(function_args, str):
             function_args = json.loads(function_args)
 
-        method = getattr(fusion_itf, function_name, None)
+        method = getattr(server_itf.fusion_itf, function_name, None)
 
         if callable(method):
             result = method(**function_args)
@@ -257,12 +264,6 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
         if prompt_text != "":
             server_itf.send_message(prompt_text)
 
-
-
-
-# This function will be called when the user clicks the OK button in the command dialog.
-def command_execute_o(args: adsk.core.CommandEventArgs):
-    futil.log(f'{CMD_NAME} Command Execute Event')
 
 
 # This function will be called when the user completes the command.

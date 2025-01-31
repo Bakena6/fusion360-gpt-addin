@@ -43,12 +43,12 @@ class FusionInterface:
         # method collections
         self.submodules = [
             StateData(),
-            SketchMethods(),
-            ModifyObjects(),
             CreateObjects(),
+            ModifyObjects(),
             DeleteObjects(),
+            Sketches(),
+            Joints(),
             Timeline(),
-            Joints()
         ]
 
         fusion_methods = {}
@@ -62,7 +62,6 @@ class FusionInterface:
         """
         creates list fusion interface functions
         """
-
         methods = {}
 
         # add modules and create methods
@@ -228,7 +227,8 @@ class FusionSubmodule:
         design = adsk.fusion.Design.cast(app.activeProduct)
         rootComp = design.rootComponent
 
-        # 
+        #if ":" in 
+
         if component_name == rootComp.name:
             return rootComp
 
@@ -243,6 +243,42 @@ class FusionSubmodule:
         #    return f'Component "{component_name}" not found'
 
         return targetComponent
+
+    def _find_occurrence_by_name(self, occurrence_name:str="comp1:1"):
+
+        """
+        called from methods, not Assistant directly
+        """
+
+        # Access the active design
+        app = adsk.core.Application.get()
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        rootComp = design.rootComponent
+
+        # Search all occurrences (including nested).
+        targetOccurrence = None
+        for occ in rootComp.allOccurrences:
+            if occ.name == occurrence_name:
+                targetOccurrence = occ
+
+        # check beck occ path
+        if targetOccurrence is None:
+            for occ in rootComp.allOccurrences:
+                print(occ.fullPathName)
+                if occ.fullPathName == occurrence_name:
+                    targetOccurrence = occ
+
+        if targetOccurrence is None:
+            occ_parts = occurrence_name.split(":")
+            occurrence_name = ''.join([ occ_parts[-2], ":", occ_parts[-1]])
+            print(occurrence_name)
+
+            if occ.name == occurrence_name:
+                targetOccurrence = occ
+
+
+        return targetOccurrence
+
 
 
     def _find_sketch_by_name(self, component, sketch_name):
@@ -285,22 +321,45 @@ class StateData(FusionSubmodule):
             return None
 
 
+    def _get_ent_attrs(self, entity, attr_list):
+        """
+        get entity info
+        """
+
+        ent_info = { }
+        for attr in attr_list:
+            if hasattr(entity, attr) == True:
+
+                attr_val = getattr(entity, attr)
+
+                if isinstance(attr_val, adsk.core.Point3D):
+                    attr_val = attr_val.asArray()
+                elif isinstance(attr_val, adsk.core.Matrix3D):
+                    attr_val = attr_val.asArray()
+
+                ent_info[attr] = attr_val
+
+        return ent_info
+
+
+
+
     def get_design_as_json(self) -> str:
         """
-        {
-          "name": "get_design_as_json",
-          "description": "Collects information about the active Fusion 360 design (including components, bodies, sketches, joints, and nested occurrences) and returns a JSON-encoded string describing the entire structure.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-            },
-            "required": [],
-            "returns": {
-              "type": "string",
-              "description": "A JSON-encoded string representing the structure of the current design, including name, bodies, sketches, joints, and nested occurrences for each component."
+            {
+              "name": "get_design_as_json",
+              "description": "Collects information about the active Fusion 360 design (including components, bodies, sketches, joints, and nested occurrences) and returns a JSON-encoded string describing the entire structure.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                },
+                "required": [],
+                "returns": {
+                  "type": "string",
+                  "description": "A JSON-encoded string representing the structure of the current design, including name, bodies, sketches, joints, and nested occurrences for each component."
+                }
+              }
             }
-          }
-        }
         """
 
         app = adsk.core.Application.get()
@@ -317,40 +376,65 @@ class StateData(FusionSubmodule):
         design = adsk.fusion.Design.cast(product)
 
         # Recursively gather data for each component
-        def get_component_data(component):
+        def get_component_data(occ, component):
+
+
             comp_dict = {
-                "name": component.name,
+                "component_name": component.name,
+                "occurrence_data": None,
                 "bodies": [],
                 "sketches": [],
                 "joints": [],
+                "joint_origins": [],
                 "occurrences": []
             }
 
+            occ_params = ["name", "isLightBulbOn", "transform", "translation"]
+            if occ != None:
+                occurrence_data = self._get_ent_attrs(occ, occ_params)
+                comp_dict["occurrence_data"] = occurrence_data
+
+            body_params = ["name", "area", "volume", "isLightBulbOn"]
             # Collect bodies
             for body in component.bRepBodies:
-                comp_dict["bodies"].append(body.name)
+                ent_info = self._get_ent_attrs(body, body_params)
+                comp_dict["bodies"].append(ent_info)
 
+            sketch_params = ["name", "area", "isLightBulbOn", "errorOrWarningMessage", "origin"]
             # Collect sketches
             for sketch in component.sketches:
-                comp_dict["sketches"].append(sketch.name)
+                ent_info = self._get_ent_attrs(sketch, sketch_params)
+                comp_dict["sketches"].append(ent_info)
 
+
+            joint_params = ["name","isLightBulbOn", "healthState" ]
             # Collect joints
             for joint in component.joints:
-                comp_dict["joints"].append(joint.name)
+                ent_info = self._get_ent_attrs(joint, joint_params)
+                comp_dict["joints"].append(ent_info)
+
+            joint_origin_params = ["name","isLightBulbOn", "healthState" ]
+            # Collect joints
+            for joint_origin in component.jointOrigins:
+                ent_info = self._get_ent_attrs(joint_origin, joint_origin_params)
+                comp_dict["joint_origins"].append(ent_info)
 
             # Recursively gather data for all child occurrences
-            for occ in component.occurrences:
+            for index, occ in enumerate(component.occurrences):
+
                 sub_comp = occ.component
+
                 if sub_comp:
-                    sub_comp_data = get_component_data(sub_comp)
-                    comp_dict["occurrences"].append(sub_comp_data)
+                    occ_data = get_component_data(occ, sub_comp)
+                    comp_dict["occurrences"].append(occ_data)
 
             return comp_dict
+
 
         # Build a dictionary that holds the entire design structure
         design_data = {
             "designName": design.rootComponent.name,
-            "rootComponent": get_component_data(design.rootComponent)
+            "rootComponent": get_component_data(None, design.rootComponent)
         }
 
         # Convert dictionary to a JSON string with indentation
@@ -410,7 +494,6 @@ class StateData(FusionSubmodule):
 
         # Convert to a JSON string
         return json.dumps(data, indent=4)
-
 
 
 
@@ -916,7 +999,7 @@ class StateData(FusionSubmodule):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
-class SketchMethods(FusionSubmodule):
+class Sketches(FusionSubmodule):
 
     def create_sketch(self, component_name: str="comp1", sketch_name: str ="sketch1", sketch_plane: str ="xy"):
         """
@@ -2523,11 +2606,18 @@ class ModifyObjects(FusionSubmodule):
                     continue
 
                 # Find all occurrences that reference this component name
+                #self._find_component_by_name(component_name)
+
                 found_occurrences = []
-                for i in range(root_comp.occurrences.count):
-                    occ = root_comp.occurrences.item(i)
+                for occ in root_comp.allOccurrences:
+                    print(occ.name)
                     if occ.component.name == comp_name:
                         found_occurrences.append(occ)
+
+                #  in case occurrences was passed in
+                if not found_occurrences:
+                    found_occurrences.append(self._find_occurrence_by_name(comp_name))
+
 
                 if not found_occurrences:
                     results.append(f"Error: No occurrences found for component '{comp_name}'.")
@@ -2551,19 +2641,22 @@ class ModifyObjects(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+
+
+
     def move_component(self,
-                       component_name: str = "comp1",
-                       move_position: list = [0.0, 0.0, 0.0]) -> str:
+                       occurrence_name: str = "comp1:1",
+                       move_position: list = [1.0, 1.0, 0.0]) -> str:
         """
         {
           "name": "move_component",
-          "description": "Moves the specified component so that its local origin is placed at the given [x, y, z] point in centimeters.",
+          "description": "Moves the specified occurrence so that its local origin is placed at the given [x, y, z] point in centimeters.",
           "parameters": {
             "type": "object",
             "properties": {
-              "component_name": {
+              "occurrence_name": {
                 "type": "string",
-                "description": "Name of the Fusion 360 component to move."
+                "description": "Name of the Fusion 360 occurrence to move."
               },
               "move_position": {
                 "type": "array",
@@ -2571,7 +2664,7 @@ class ModifyObjects(FusionSubmodule):
                 "items": { "type": "number" }
               }
             },
-            "required": ["component_name", "move_position"],
+            "required": ["occurrence_name", "move_position"],
             "returns": {
               "type": "string",
               "description": "A message indicating the result of the move operation."
@@ -2591,6 +2684,7 @@ class ModifyObjects(FusionSubmodule):
 
             design = adsk.fusion.Design.cast(product)
             root_comp = design.rootComponent
+            features = root_comp.features
 
             # Validate the move_position format: expecting [x, y, z].
             if (not isinstance(move_position, list)) or (len(move_position) < 3):
@@ -2599,30 +2693,30 @@ class ModifyObjects(FusionSubmodule):
             # Extract the coordinates (in centimeters)
             x_val, y_val, z_val = move_position
 
-            # Find all occurrences referencing this component.
-            target_occurrences = []
-            for i in range(root_comp.occurrences.count):
-                occ = root_comp.occurrences.item(i)
-                if occ.component.name == component_name:
-                    target_occurrences.append(occ)
-
-            if not target_occurrences:
-                return f"Error: No occurrences found for component '{component_name}'."
+            targetOccurrence = self._find_occurrence_by_name(occurrence_name)
+            if not targetOccurrence:
+                return f"Error: No occurrences found for '{occurrence_name}'."
 
             # Create a transform with the translation [x_val, y_val, z_val].
             transform = adsk.core.Matrix3D.create()
             translation = adsk.core.Vector3D.create(x_val, y_val, z_val)
             transform.translation = translation
 
-            # Apply the transform to each occurrence of the specified component.
-            for occ in target_occurrences:
-                try:
-                    occ.transform = transform
-                except Exception as e:
-                    return f"Error: Could not transform occurrence '{occ.name}'. Reason: {e}"
+            try:
+                targetOccurrence.timelineObject.rollTo(False)
+                targetOccurrence.initialTransform = transform
+                #occ.transform = transform
 
-            return (f"Moved component '{component_name}' to "
-                    f"[{x_val}, {y_val}, {z_val}] cm. Affected {len(target_occurrences)} occurrence(s).")
+            except Exception as e:
+                return f"Error: Could not transform occurrence '{occurrence_name}'. Reason: {e}"
+
+            timeline = design.timeline
+            timeline.moveToEnd()
+
+
+            return (f"Moved occurrence '{occurrence_name}' to "
+                    # TODI
+                    f"[{x_val}, {y_val}, {z_val}] cm. Affected {[len(targetOccurrence)]} occurrence(s).")
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
@@ -2693,7 +2787,7 @@ class ModifyObjects(FusionSubmodule):
         """
             {
               "name": "set_visibility",
-              "description": "Sets the visibility for various Fusion 360 objects (components, bodies, or sketches) based on the provided instructions.",
+              "description": "Sets the visibility for various Fusion 360 objects (components, bodies, sketches, joints, joint_origins) based on the provided instructions.",
               "parameters": {
                 "type": "object",
                 "properties": {
@@ -2705,7 +2799,7 @@ class ModifyObjects(FusionSubmodule):
                       "properties": {
                         "object_type": {
                           "type": "string",
-                          "description": "'component', 'body', or 'sketch'."
+                          "description": "'component', 'body', 'sketch', 'joint', 'joint_origin'."
                         },
                         "object_name": {
                           "type": "string",
@@ -2757,11 +2851,18 @@ class ModifyObjects(FusionSubmodule):
             # Helper: gather ALL bodies and sketches across all components
             all_bodies = []
             all_sketches = []
+            all_joints = []
+            all_joint_origins = []
+
             for comp in all_comps:
                 for body in comp.bRepBodies:
                     all_bodies.append(body)
                 for sk in comp.sketches:
                     all_sketches.append(sk)
+                for joint in comp.joints:
+                    all_joints.append(joint)
+                for joint_origin in comp.jointOrigins:
+                    all_joint_origins.append(joint_origin)
 
             messages = []
 
@@ -2814,6 +2915,32 @@ class ModifyObjects(FusionSubmodule):
                         except Exception as e:
                             messages.append(f"Error: Could not set visibility on body '{b.name}': {e}")
                     messages.append(f"Set visibility for body '{obj_name}' to {visible} (affected {len(found_bodies)} body/ies).")
+                elif obj_type.lower() == 'joint':
+                    # Hide/show joints by name
+                    found_joints = [jt for jt in all_joints if jt.name == obj_name]
+                    if not found_joints:
+                        messages.append(f"Error: No joint found with name '{obj_name}'.")
+                        continue
+                    for jt in found_joints:
+                        try:
+                            jt.isLightBulbOn = bool(visible)
+                        except Exception as e:
+                            messages.append(f"Error: Could not set visibility on joint '{jt.name}': {e}")
+                    messages.append(f"Set visibility for body '{obj_name}' to {visible} (affected {len(found_joints)} joints).")
+                elif obj_type.lower() == 'joint_origin':
+                    # Hide/show joint origins by name
+                    found_joint_origins = [jo for jo in all_joint_origins if jo.name == obj_name]
+                    if not found_joint_origins:
+                        messages.append(f"Error: No joint origin found with name '{obj_name}'.")
+                        continue
+                    for jo in found_joint_origins:
+                        try:
+                            jo.isLightBulbOn = bool(visible)
+                        except Exception as e:
+                            messages.append(f"Error: Could not set visibility on joint '{jo.name}': {e}")
+                    messages.append(f"Set visibility for body '{obj_name}' to {visible} (affected {len(found_joint_origins)} joint origins).")
+
+
 
                 elif obj_type.lower() == 'sketch':
                     # Hide/show sketches by name
@@ -2887,20 +3014,20 @@ class DeleteObjects(FusionSubmodule):
         except Exception as e:
             return f'Error: Failed to delete occurrence "{occurrence_name}":\n{e}'
 
-    def delete_component(self, component_name: str="comp1") -> str:
+    def delete_occurrence(self, occurrence_name: str="comp1:1") -> str:
         """
         {
-            "name": "delete_component",
-            "description": "Deletes a component from the current Fusion 360 design based on the given component name.",
+            "name": "delete_occurrence",
+            "description": "Deletes a occurrence from the current Fusion 360 design based on the given occurrence name.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "component_name": {
+                    "occurrence_name": {
                         "type": "string",
-                        "description": "The name of the Fusion 360 component object to be deleted."
+                        "description": "The name of the Fusion 360 occurrence object to be deleted."
                     }
                 },
-                "required": ["component_name"]
+                "required": ["occurrence_name"]
             }
         }
         """
@@ -2910,27 +3037,18 @@ class DeleteObjects(FusionSubmodule):
             design = adsk.fusion.Design.cast(app.activeProduct)
             rootComp = design.rootComponent
 
-            targetComponent = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return f'Error: Component "{component_name}" not found.'
+            targetOccurrence = self._find_occurrence_by_name(occurrence_name)
+            if not targetOccurrence:
+                return f'Error: Occurrence "{occurrence_name}" not found.'
 
+            targetOccurrence.deleteMe()
 
-            rootComp = design.rootComponent
-             # Search all occurrences (including nested).
-            targetOccurrence = None
-            for occ in rootComp.allOccurrences:
-                if occ.component.name == component_name:
-                    targetOccurrence = occ
-                    occ.deleteMe()
-                    break
-
-            # Delete the component
-            #targetComponent.deleteMe()
-
-            return f'deleted {component_name}'
+            return f'deleted {occurrence_name}'
 
         except Exception as e:
-            return f'Error: Failed to delete component "{component_name}":\n{e}'
+            return f'Error: Failed to delete occurrence "{occurrence_name}":\n{e}'
+
+
 
     def delete_sketch(self, component_name: str="comp1", sketch_name: str="sketch1") -> str:
         """
@@ -2959,7 +3077,9 @@ class DeleteObjects(FusionSubmodule):
             targetComponent = self._find_component_by_name(component_name)
             if not targetComponent:
                 return f'Error: Component "{component_name}" not found.'
+            print(targetComponent)
 
+            print(sketch_name)
             # Find the target sketch by name in the component.
             targetSketch = self._find_sketch_by_name(targetComponent, sketch_name)
             if not targetSketch:
@@ -3430,6 +3550,262 @@ class Joints(FusionSubmodule):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
+    def create_joints_between_origins(self,
+                                      joint_requests: list = [{
+                                          "jointOrigin1":"JointOrigin1",
+                                          "jointOrigin2":"JoinOrigin2",
+                                          "jointType":"RigidJointType",
+                                      }]) -> str:
+        """
+        {
+          "name": "create_joints_between_origins",
+          "description": "Creates new joints between pairs of existing jointOrigins. Each request specifies the path (or reference) to two JointOrigins and a joint type.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "joint_requests": {
+                "type": "array",
+                "description": "An array of items: { 'jointOrigin1': <path>, 'jointOrigin2': <path>, 'jointType': 'RevoluteJointType' }",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "jointOrigin1": { "type": "string", "description": "Reference or path to the first joint origin." },
+                    "jointOrigin2": { "type": "string", "description": "Reference or path to the second joint origin." },
+                    "jointType": {
+                      "type": "string",
+                      "description": "The type of joint: 'RigidJointType', 'RevoluteJointType', etc."
+                    }
+                  },
+                  "required": ["jointOrigin1", "jointOrigin2", "jointType"]
+                }
+              }
+            },
+            "required": ["joint_requests"],
+            "returns": {
+              "type": "string",
+              "description": "A summary of created joints or errors encountered."
+            }
+          }
+        }
+        """
+
+        try:
+            if not joint_requests or not isinstance(joint_requests, list):
+                return "Error: Must provide an array of joint requests."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            root_comp = design.rootComponent
+
+            # A mapping from string to the Fusion 360 JointTypes enumerations
+            joint_type_map = {
+                "RigidJointType": adsk.fusion.JointTypes.RigidJointType,
+                "RevoluteJointType": adsk.fusion.JointTypes.RevoluteJointType,
+                "SliderJointType": adsk.fusion.JointTypes.SliderJointType,
+                "CylindricalJointType": adsk.fusion.JointTypes.CylindricalJointType,
+                "PinSlotJointType": adsk.fusion.JointTypes.PinSlotJointType,
+                "PlanarJointType": adsk.fusion.JointTypes.PlanarJointType,
+                "BallJointType": adsk.fusion.JointTypes.BallJointType
+            }
+
+            results = []
+
+            # A helper to find a joint origin by name or path (assuming unique naming)
+            def find_joint_origin_by_name(name_str):
+                # Search in all components
+                for comp in design.allComponents:
+                    print(comp)
+                    for j_origin in comp.jointOrigins:
+                        if j_origin.name == name_str:
+                            return j_origin
+                return None
+
+            for request in joint_requests:
+                print(request)
+                j1_name = request.get("jointOrigin1")
+                j2_name = request.get("jointOrigin2")
+                j_type_str = request.get("jointType")
+
+                if not (j1_name and j2_name and j_type_str):
+                    results.append(f"Error: Missing fields in {request}")
+                    continue
+
+                # Map the jointType string
+                if j_type_str not in joint_type_map:
+                    results.append(f"Error: Unknown jointType '{j_type_str}' in {request}")
+                    continue
+                the_joint_type = joint_type_map[j_type_str]
+
+                # Find the joint origins by their name or path
+                joint_origin_1 = find_joint_origin_by_name(j1_name)
+                joint_origin_2 = find_joint_origin_by_name(j2_name)
+                if not joint_origin_1 or not joint_origin_2:
+                    results.append(f"Error: Could not find one or both JointOrigins '{j1_name}', '{j2_name}'.")
+                    continue
+
+                # Create a JointInput
+                joints_collection = root_comp.joints
+                j_input = joints_collection.createInput(
+                    joint_origin_1, joint_origin_2
+                )
+
+                # TODO need to handle all joint types here
+                #j_input.setAsStandardJoint(the_joint_type)
+                j_input.setAsRigidJointMotion()
+
+                # Add the joint
+                try:
+                    new_joint = joints_collection.add(j_input)
+                    results.append(
+                        f"Joint of type '{j_type_str}' created between '{j1_name}' and '{j2_name}'."
+                    )
+                except Exception as e:
+                    results.append(f"Error creating joint between '{j1_name}' and '{j2_name}': {str(e)}")
+
+            return "\n".join(results)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    def modify_joint_origin(self,
+                            joint_origin_name: str = None,
+                            new_geometry: dict = None,
+                            new_orientation: dict = None) -> str:
+        """
+        {
+          "name": "modify_joint_origin",
+          "description": "Modifies an existing joint origin, including its attachment point (geometry) and orientation (offset or angle).",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "joint_origin_name": {
+                "type": "string",
+                "description": "Name of the joint origin to modify."
+              },
+              "new_geometry": {
+                "type": "object",
+                "description": "An optional specification of new geometry for the joint origin. For example: { 'type': 'face', 'component_name': 'comp1', 'body_index': 0, 'face_index': 2 } or { 'type': 'sketchPoint', ... }"
+              },
+              "new_orientation": {
+                "type": "object",
+                "description": "An optional specification of transform or offset. E.g. { 'offsetX': 1.0, 'offsetY': 0.5, 'offsetZ': 0 } in cm or an angle in degrees."
+              }
+            },
+            "required": ["joint_origin_name"],
+            "returns": {
+              "type": "string",
+              "description": "A success or error message."
+            }
+          }
+        }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            if not joint_origin_name:
+                return "Error: joint_origin_name is required."
+
+            # Locate the joint origin by name
+            target_jo = None
+            for comp in design.allComponents:
+                for jo in comp.jointOrigins:
+                    if jo.name == joint_origin_name:
+                        target_jo = jo
+                        break
+                if target_jo:
+                    break
+
+            if not target_jo:
+                return f"Error: JointOrigin '{joint_origin_name}' not found."
+
+            # We retrieve the existing definition
+            jo_def = target_jo.definition
+            # For example, jo_def is typically a "JointOriginDefinition" object, which might be
+            # an OffsetPlaneJointOriginDefinition, etc.
+
+            # 1) If new_geometry is specified, reattach to new geometry
+            if new_geometry and isinstance(new_geometry, dict):
+                # We'll do a simplistic approach; you can adapt to your geometry approach
+                # e.g. re-creating a JointGeometry by face/edge/sketchPoint, etc.
+                new_geom_ref = None
+                geom_type = new_geometry.get("type")  # e.g. "face", "edge", "sketchPoint"
+                comp_name = new_geometry.get("component_name")
+                body_index = new_geometry.get("body_index")
+                face_index = new_geometry.get("face_index")
+                # etc. This part is flexible, depending on how you define your references.
+
+                # Example: if we detect "face" and the user provided body_index, face_index
+                if geom_type == "face" and comp_name is not None and body_index is not None and face_index is not None:
+                    # Find the component
+                    new_comp = None
+                    for c in design.allComponents:
+                        if c.name == comp_name:
+                            new_comp = c
+                            break
+                    if not new_comp:
+                        return f"Error: Could not find component '{comp_name}' for new geometry."
+
+                    if body_index < 0 or body_index >= new_comp.bRepBodies.count:
+                        return f"Error: body_index {body_index} out of range in comp '{comp_name}'."
+
+                    the_body = new_comp.bRepBodies.item(body_index)
+                    if face_index < 0 or face_index >= the_body.faces.count:
+                        return f"Error: face_index {face_index} out of range in body {body_index}."
+
+                    the_face = the_body.faces.item(face_index)
+                    # Create a new JointGeometry
+                    plane_face = adsk.fusion.BRepFace.cast(the_face)
+                    if plane_face and isinstance(plane_face.geometry, adsk.core.Plane):
+                        new_geom_ref = adsk.fusion.JointGeometry.createByPlanarFace(
+                            plane_face,
+                            adsk.fusion.JointKeyPointTypes.CenterKeyPoint
+                        )
+                    else:
+                        return "Error: Only planar faces handled in this sample."
+
+                # If new_geom_ref is found, update definition
+                if new_geom_ref:
+                    # Reattach
+                    jo_def.reattach(new_geom_ref)
+
+            # 2) If new_orientation is specified, apply offset or angles
+            #    For example, if user provides an offsetX, offsetY, offsetZ in cm
+            #    or a rotation angle in degrees about some axis, etc.
+            if new_orientation and isinstance(new_orientation, dict):
+                # We'll do a basic offset approach.
+                ox = new_orientation.get("offsetX", 0.0)
+                oy = new_orientation.get("offsetY", 0.0)
+                oz = new_orientation.get("offsetZ", 0.0)
+
+                if abs(ox) > 1e-7 or abs(oy) > 1e-7 or abs(oz) > 1e-7:
+                    offset_transform = adsk.core.Matrix3D.create()
+                    offset_transform.translation = adsk.core.Vector3D.create(ox, oy, oz)
+                    # The setByOffset method replaces the existing orientation
+                    jo_def.setByOffset(offset_transform)
+
+                # If you also want angles, you'd do a rotation in the transform or use
+                # jo_def.setByXXX(...). The specifics can be expanded if needed.
+
+            return f"Joint Origin '{joint_origin_name}' modified successfully."
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
 
@@ -3622,5 +3998,8 @@ class Timeline(FusionSubmodule):
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
 
 

@@ -14,11 +14,11 @@
 }
 
 body {
-    background-color: cyan;
     margin: 0px;
     padding: 0px;
     border: none;
     background-color: cyan;
+    background-color: #262626; /* background gray*/
 }
 
 /* 
@@ -77,8 +77,8 @@ rgb(136,249,168); /* vim green */
     margin: 0px;
     height: 0px;
     padding-top: 5px;
-    padding-left: 10px;
-    padding-left: 10px;
+    padding-left: 0px;
+    padding-left: 0px;
 }
 
 
@@ -115,13 +115,16 @@ rgb(136,249,168); /* vim green */
     color: white;
     min-width: 5ch;
 
-    border: 2px solid pink;
+    border: 2px solid;
     border-radius: 3px;
+    padding: 5px;
+    padding-top: 3px;
+    padding-bottom: 3px;
 
-    margin-left: 1px;
-    margin-right: 1px;
-    margin-bottom: 1px;
-    padding-bottom: 1px;
+    margin-left: 10px;
+    margin-right: 10px;
+    margin-bottom: 3px;
+    margin-top: 3px;
 
 }
 .toolCallClassTitle{
@@ -207,9 +210,9 @@ rgb(136,249,168); /* vim green */
 }
 
 #submitButton{
-
-    rgb(136,249,168); /* vim green */
-
+    background-color: rgb(0,255,0);
+    background-color: rgb(136,249,168); /* vim green */
+    background-color: rgb(55,247,247); /* vim cyan */
 }
 
 

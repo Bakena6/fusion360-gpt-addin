@@ -8,6 +8,8 @@ import os
 import json
 import inspect
 
+import importlib
+
 from multiprocessing.connection import Client
 from array import array
 import time
@@ -17,28 +19,37 @@ import functools
 from ... import config
 from ...lib import fusion360utils as futil
 
-#import fusion_interface
+from . import fusion_interface
 
-# send info to html palette
-PALETTE_ID = config.palette_id
-app = adsk.core.Application.get()
-ui = app.userInterface
-palette = ui.palettes.itemById(PALETTE_ID)
+
 
 def print(string):
     """redefine print for fusion env"""
     futil.log(str(string))
 
 
+
 class GptClient:
     """
     connects to command server running on seperate process
     """
-    def __init__(self, fusion_interface):
+    def __init__(self):
         """
         fusion_interface : class inst whose methods call Fusion API
         """
-        self.fusion_interface = fusion_interface
+
+        # send info to html palette
+        self.PALETTE_ID = config.palette_id
+        self.app = adsk.core.Application.get()
+
+        self.ui = self.app.userInterface
+        self.palette = self.ui.palettes.itemById(self.PALETTE_ID)
+
+        print(f"palette: {self.palette}:")
+        print(f"PALETTE_ID: {self.PALETTE_ID}:")
+
+        # Fusion360 interface, methodods availible to OpenAI Assistant
+        self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
 
         # must be defined here,
         self.app = adsk.core.Application.get()
@@ -48,6 +59,17 @@ class GptClient:
 
         # tool call history
         self.call_history = {}
+
+    def reload_interface(self):
+
+        self.palette = self.ui.palettes.itemById(self.PALETTE_ID)
+        print(f"PALETTE_ID: {self.PALETTE_ID}:")
+        print(f"palette: {self.palette}:")
+
+        importlib.reload(fusion_interface)
+        self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
+        print("fusion_interface reloded")
+
 
     def connect(self):
         """
@@ -63,14 +85,16 @@ class GptClient:
     def sendToBrowser(self, function_name, data):
         json_data = json.dumps(data)
         # create run output section in html
-        palette.sendInfoToHTML(function_name, json_data)
+
+        self.palette.sendInfoToHTML(function_name, json_data)
+
 
     def upload_tools(self):
         """
         upload tools to assistant
         """
 
-        tools = self.fusion_interface.get_docstr()
+        tools = self.fusion_itf.get_docstr()
 
         message = {
             "message_type": "tool_update",
@@ -86,7 +110,6 @@ class GptClient:
         message_confirmation = self.conn.send(message)
 
         print(f"  message sent,  waiting for result...")
-
 
 
     def send_message(self, message):
@@ -143,8 +166,10 @@ class GptClient:
                 function_name = api_result["function_name"]
                 function_args = api_result["function_args"]
                 function_result = self.call_function(function_name, function_args)
+
                 message = {"message_type": "thread_update", "content": function_result}
                 message = json.dumps(message)
+
                 self.conn.send(function_result)
 
             # thread complete break loop
@@ -161,6 +186,7 @@ class GptClient:
         call function passed from Assistants API
         """
 
+
         if function_args == "":
             function_args = None
 
@@ -171,7 +197,7 @@ class GptClient:
         print(f"CALL FUNCTION: {name}, {function_args}")
 
         # check of FusionInterface inst has requested method
-        function = getattr(self.fusion_interface, name, None )
+        function = getattr(self.fusion_itf, name, None )
 
         if callable(function):
             if function_args == None:
@@ -187,6 +213,9 @@ class GptClient:
 
 
         return result
+
+
+
 
 
 
