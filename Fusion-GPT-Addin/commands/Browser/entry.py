@@ -225,14 +225,23 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
     elif message_action == "upload_tools":
         server_itf.upload_tools()
 
+
+    elif message_action == "start_record":
+        server_itf.start_record()
+        html_args.returnData = ''
+
+    elif message_action == "stop_record":
+        audio_text = server_itf.stop_record()
+
+        #audio_text = {"audio_text": audio_text["content"]}
+        html_args.returnData = json.dumps(audio_text)
+
     elif message_action == "get_tools":
         """
         get available tools, display in window
         """
         server_itf.reload_interface()
-
         methods = server_itf.fusion_itf.get_tools()
-
         html_args.returnData = json.dumps(methods)
 
 

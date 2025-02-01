@@ -14,6 +14,7 @@ from multiprocessing.connection import Client
 from array import array
 import time
 
+
 import functools
 
 from ... import config
@@ -21,6 +22,7 @@ from ...lib import fusion360utils as futil
 
 from . import fusion_interface
 
+import asyncio
 
 
 def print(string):
@@ -60,8 +62,51 @@ class GptClient:
         # tool call history
         self.call_history = {}
 
+
+    #def async start_record(self):
+    def start_record(self):
+        message = {
+            "message_type": "start_record",
+            "content": None
+        }
+        message = json.dumps(message)
+
+        if self.connected == False:
+            self.connect()
+
+        message_confirmation = self.conn.send(message)
+        print(f"START RECORD: message sent,  waiting for result...")
+        start_confirm = self.conn.recv()
+        print(f"{start_confirm}")
+
+    def stop_record(self):
+        message = {
+            "message_type": "stop_record",
+            "content": None
+        }
+
+        message = json.dumps(message)
+        if self.connected == False:
+            self.connect()
+        #print(f"conn closed: {self.conn.closed}")
+
+        # start message
+        self.conn.send(message)
+        print(f"END RECORD:  waiting for result...")
+
+        # audio transcription
+        audio_text = self.conn.recv()
+        audio_text = json.loads(audio_text)
+
+        return audio_text
+
+
+
+
+
     def reload_interface(self):
 
+        self.connected = False
         self.palette = self.ui.palettes.itemById(self.PALETTE_ID)
         print(f"PALETTE_ID: {self.PALETTE_ID}:")
         print(f"palette: {self.palette}:")

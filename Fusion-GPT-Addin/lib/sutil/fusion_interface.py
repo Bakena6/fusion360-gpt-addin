@@ -28,6 +28,10 @@ def print(string):
     futil.log(str(string))
 
 
+
+
+
+
 class FusionInterface:
     """
     interface between Fusion360 api and OpenAI Assistant
@@ -49,6 +53,7 @@ class FusionInterface:
             Sketches(),
             Joints(),
             Timeline(),
+            NonCad(),
         ]
 
         fusion_methods = {}
@@ -67,7 +72,6 @@ class FusionInterface:
         # add modules and create methods
         for mod in self.submodules:
             class_name = mod.__class__.__name__
-
 
             # class name used for display
             methods[class_name] = {}
@@ -121,7 +125,6 @@ class FusionInterface:
 
 
         return methods
-
 
 
 
@@ -279,8 +282,6 @@ class FusionSubmodule:
 
         return targetOccurrence
 
-
-
     def _find_sketch_by_name(self, component, sketch_name):
 
         # Find the target sketch
@@ -292,6 +293,16 @@ class FusionSubmodule:
 
         return targetSketch
 
+    def _find_body_by_name(self, component, body_name):
+        """
+        """
+        body = None
+        for b in component.bRepBodies:
+            if b.name == body_name:
+                body = b
+                break
+
+        return body
 
 
 class StateData(FusionSubmodule):
@@ -340,8 +351,6 @@ class StateData(FusionSubmodule):
                 ent_info[attr] = attr_val
 
         return ent_info
-
-
 
 
     def get_design_as_json(self) -> str:
@@ -1556,6 +1565,149 @@ class Sketches(FusionSubmodule):
         except Exception as e:
             return f'Error: Failed to create polygon in sketch: {e}'
 
+
+    def create_arcs_and_lines_in_sketch(
+        self,
+        component_name: str = "comp1",
+        sketch_name: str = "Sketch1",
+        geometry_list: list = None
+    ) -> str:
+        """
+            {
+              "name": "create_arcs_and_lines_in_sketch",
+              "description": "Creates SketchArcs (by three points) and SketchLines (by two points) in the specified sketch. This allows complex profiles made of arcs and lines.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "component_name": {
+                    "type": "string",
+                    "description": "The name of the component containing the target sketch."
+                  },
+                  "sketch_name": {
+                    "type": "string",
+                    "description": "The name of the sketch in which arcs/lines will be created."
+                  },
+                  "geometry_list": {
+                    "type": "array",
+                    "description": "An array of geometry creation instructions. Each item: { 'object_type': 'arc' | 'line', 'start': [x,y,z], 'middle': [x,y,z or null], 'end': [x,y,z] }",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "object_type": {
+                          "type": "string",
+                          "description": "'arc' or 'line'."
+                        },
+                        "start": {
+                          "type": "array",
+                          "items": { "type": "number" },
+                          "description": "[x,y,z] for the start point of the geometry in the sketch plane coordinate system (Z=0)."
+                        },
+                        "middle": {
+                          "type": ["array","null"],
+                          "description": "For arcs, the 3D point on the arc. For lines, typically null or ignored."
+                        },
+                        "end": {
+                          "type": "array",
+                          "items": { "type": "number" },
+                          "description": "[x,y,z] for the end point of the geometry in the sketch plane coordinate system."
+                        }
+                      },
+                      "required": ["object_type", "start", "end"]
+                    }
+                  }
+                },
+                "required": ["component_name", "sketch_name", "geometry_list"],
+                "returns": {
+                  "type": "string",
+                  "description": "A message summarizing how many arcs/lines were created or any errors encountered."
+                }
+              }
+            }
+        """
+        import adsk.core, adsk.fusion, traceback
+
+        try:
+            if not geometry_list or not isinstance(geometry_list, list):
+                return "Error: 'geometry_list' must be a list of geometry instructions."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # Locate the target component
+            target_comp = None
+            for c in design.allComponents:
+                if c.name == component_name:
+                    target_comp = c
+                    break
+            if not target_comp:
+                return f"Error: Component '{component_name}' not found."
+
+            # Locate the specified sketch
+            target_sketch = None
+            for sk in target_comp.sketches:
+                if sk.name == sketch_name:
+                    target_sketch = sk
+                    break
+            if not target_sketch:
+                return f"Error: Sketch '{sketch_name}' not found in component '{component_name}'."
+
+            # We'll create arcs and lines within this sketch
+            lines_collection = target_sketch.sketchCurves.sketchLines
+            arcs_collection = target_sketch.sketchCurves.sketchArcs
+
+            created_arcs = 0
+            created_lines = 0
+
+            for item in geometry_list:
+                obj_type = item.get("object_type", "").lower()
+                start_pt = item.get("start", None)
+                mid_pt = item.get("middle", None)
+                end_pt = item.get("end", None)
+
+                # Basic validation
+                if not (isinstance(start_pt, list) and len(start_pt) == 3 and
+                        isinstance(end_pt, list) and len(end_pt) == 3):
+                    continue  # or record an error
+
+                # Convert to 3D points in the sketch's plane coordinate system (Z=0).
+                # The sketch is typically on some plane in 3D space, but
+                # we pass [x, y, 0] to create the geometry in sketch coordinates.
+                startP = adsk.core.Point3D.create(start_pt[0], start_pt[1], start_pt[2])
+                endP = adsk.core.Point3D.create(end_pt[0], end_pt[1], end_pt[2])
+
+                if obj_type == "line":
+                    # Lines only need start, end
+                    lines_collection.addByTwoPoints(startP, endP)
+                    created_lines += 1
+
+                elif obj_type == "arc":
+                    # Arcs typically need three points (start, some point on the arc, end)
+                    # We'll assume 'middle' is a 3D point on the arc, or we skip if missing
+                    if not (isinstance(mid_pt, list) and len(mid_pt) == 3):
+                        # If we don't have a valid mid-point, skip
+                        continue
+                    midP = adsk.core.Point3D.create(mid_pt[0], mid_pt[1], mid_pt[2])
+                    arcs_collection.addByThreePoints(startP, midP, endP)
+                    created_arcs += 1
+                else:
+                    # Unknown object_type, skip
+                    pass
+
+            return f"Created {created_lines} line(s) and {created_arcs} arc(s) in sketch '{sketch_name}'."
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+class CreateObjects(FusionSubmodule):
+
     def extrude_profiles_in_sketch(
         self,
         component_name: str = "comp1",
@@ -1716,64 +1868,65 @@ class Sketches(FusionSubmodule):
         except Exception as e:
             return f"Error: An unexpected exception occurred: {e}"
 
-    def _extrude_profiles_in_sketch(
+    def revolve_profile_in_sketch(
         self,
         component_name: str = "comp1",
         sketch_name: str = "Sketch1",
-        profiles_list: list = [[0, 1], [1, 2]],
+        profile_index: int = 0,
+        revolve_axis: str = "Z",
+        revolve_degrees: float = 180.0,
         operation_type: str = "NewBodyFeatureOperation"
     ) -> str:
         """
-            {
-                "name": "extrude_profiles_in_sketch",
-                "description": "Extrudes one or more profiles in a specified sketch by different amounts. The profiles are indexed by descending area, where 0 refers to the largest profile. Each item in profiles_list is [profileIndex, extrudeDistance]. The operation_type parameter selects which FeatureOperation to use. The unit for extrudeDistance is centimeters.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "component_name": {
-                            "type": "string",
-                            "description": "The name of the component in the current design containing the sketch."
-                        },
-                        "sketch_name": {
-                            "type": "string",
-                            "description": "The name of the sketch inside the specified component containing the profiles."
-                        },
-                        "profiles_list": {
-                            "type": "array",
-                            "items": {
-                                "type": "array",
-                                "items": {
-                                    "type": "number"
-                                },
-                                "minItems": 2,
-                                "maxItems": 2,
-                                "description": "Each element is [profileIndex, extrudeDistance]. profileIndex is an integer referencing the area-sorted profile, and extrudeDistance (in centimeters) is a number specifying how far to extrude."
-                            },
-                            "description": "A list of profileIndex / extrudeDistance pairs specifying which profiles to extrude and by how much."
-                        },
-                        "operation_type": {
-                            "type": "string",
-                            "enum": [
-                                "CutFeatureOperation",
-                                "IntersectFeatureOperation",
-                                "JoinFeatureOperation",
-                                "NewBodyFeatureOperation",
-                                "NewComponentFeatureOperation"
-                            ],
-                            "description": "Specifies the Fusion 360 FeatureOperation to apply. Valid values: CutFeatureOperation, IntersectFeatureOperation, JoinFeatureOperation, NewBodyFeatureOperation, NewComponentFeatureOperation."
-                        }
-                    },
-
-                    "required": ["component_name", "sketch_name", "profiles_list"],
-                    "returns": {
-                        "type": "string",
-                        "description": "A message indicating whether the extrude operation compleated successfully or not."
-                    }
-                }
+        {
+          "name": "revolve_profile_in_sketch",
+          "description": "Revolves a specified sketch profile around one of the global axes (X, Y, or Z) by a given angle. The revolve is added to the timeline as a new feature.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "component_name": {
+                "type": "string",
+                "description": "Name of the component in the current design containing the sketch."
+              },
+              "sketch_name": {
+                "type": "string",
+                "description": "Name of the sketch containing the profiles to revolve."
+              },
+              "profile_index": {
+                "type": "number",
+                "description": "Index of the profile in the sketch (sorted by descending area). 0 refers to the largest profile."
+              },
+              "revolve_axis": {
+                "type": "string",
+                "description": "Which global axis to revolve around: 'X', 'Y', or 'Z'."
+              },
+              "revolve_degrees": {
+                "type": "number",
+                "description": "Angle (in degrees) to revolve. Can be positive or negative. Default 180."
+              },
+              "operation_type": {
+                "type": "string",
+                "enum": [
+                  "CutFeatureOperation",
+                  "IntersectFeatureOperation",
+                  "JoinFeatureOperation",
+                  "NewBodyFeatureOperation",
+                  "NewComponentFeatureOperation"
+                ],
+                "description": "Specifies the Fusion 360 FeatureOperation. Default 'NewBodyFeatureOperation'."
+              }
+            },
+            "required": ["component_name", "sketch_name", "profile_index", "revolve_axis", "revolve_degrees"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating whether the revolve operation completed successfully or not."
             }
+          }
+        }
         """
+
         try:
-            # A small dictionary to map string inputs to the appropriate enumerations.
+            # Maps the string operation to the Fusion 360 enum
             operation_map = {
                 "CutFeatureOperation": adsk.fusion.FeatureOperations.CutFeatureOperation,
                 "IntersectFeatureOperation": adsk.fusion.FeatureOperations.IntersectFeatureOperation,
@@ -1782,76 +1935,89 @@ class Sketches(FusionSubmodule):
                 "NewComponentFeatureOperation": adsk.fusion.FeatureOperations.NewComponentFeatureOperation
             }
 
-            # Validate the requested operation_type.
             if operation_type not in operation_map:
                 return (f'Error: operation_type "{operation_type}" is not recognized. '
-                        f'Valid options are: {", ".join(operation_map.keys())}.')
+                        f'Valid: {", ".join(operation_map.keys())}.')
 
-            # Access the active design.
+            # Access the active design
             app = adsk.core.Application.get()
-            design = adsk.fusion.Design.cast(app.activeProduct)
+            if not app:
+                return "Error: Fusion 360 is not running."
 
-            # Locate the target component by name (using a local helper method).
+            product = app.activeProduct
+            design = adsk.fusion.Design.cast(product)
+            if not design:
+                return "Error: No active Fusion 360 design found."
+
             targetComponent = self._find_component_by_name(component_name)
             if not targetComponent:
                 return f'Error: Component "{component_name}" not found.'
 
-            # Locate the sketch by name (within the target component).
             targetSketch = self._find_sketch_by_name(targetComponent, sketch_name)
             if not targetSketch:
                 return f'Error: Sketch "{sketch_name}" not found in component "{component_name}".'
 
             if not targetSketch.profiles or targetSketch.profiles.count == 0:
-                return f'Error: Sketch "{sketch_name}" has no profiles to extrude.'
+                return f"Error: Sketch '{sketch_name}' has no profiles."
 
-            # Collect and sort profiles by area in descending order (largest first).
-            profile_info = []
+            # Sort profiles by area in descending order
+            prof_info = []
             for prof in targetSketch.profiles:
-                props = prof.areaProperties()
-                profile_info.append((prof, props.area))
-            profile_info.sort(key=lambda x: x[1], reverse=True)
+                area_props = prof.areaProperties()
+                prof_info.append((prof, area_props.area))
+            prof_info.sort(key=lambda x: x[1], reverse=True)
 
-            # Extrude each profile according to profiles_list.
-            results = []
-            extrudes = targetComponent.features.extrudeFeatures
-            for pair in profiles_list:
-                if not isinstance(pair, list) or len(pair) < 2:
-                    results.append("Error: Invalid profiles_list entry (expected [profileIndex, distance]).")
-                    continue
+            # Validate profile_index
+            if profile_index < 0 or profile_index >= len(prof_info):
+                return f"Error: profile_index {profile_index} is out of range (0..{len(prof_info)-1})."
 
-                profileIndex, extrudeDist = pair[0], pair[1]
+            selectedProfile = prof_info[profile_index][0]
 
-                # Check the valid index range.
-                if profileIndex < 0 or profileIndex >= len(profile_info):
-                    results.append(f"Error: Invalid profile index {profileIndex}.")
-                    continue
+            # Create a revolve axis (construction axis) in the component based on revolve_axis
+            revolve_axis = revolve_axis.upper()
+            if revolve_axis not in ["X", "Y", "Z"]:
 
-                selectedProfile = profile_info[profileIndex][0]
-
-                try:
-                    distanceVal = adsk.core.ValueInput.createByReal(float(extrudeDist))
-
-                    # Create the extrude feature input with the requested operation type.
-                    extInput = extrudes.createInput(
-                        selectedProfile,
-                        operation_map[operation_type]
-                    )
-
-                    # Set the extent as a one-side distance.
-                    extInput.setDistanceExtent(False, distanceVal)
-                    extrudes.add(extInput)
-                    results.append(f"Profile index {profileIndex} extruded by {extrudeDist} using {operation_type}.")
-                except Exception as e:
-                    results.append(f"Error: Could not extrude profile {profileIndex}. Reason: {e}")
-
-            # Combine all messages.
-            return "\n".join(results)
-
-        except Exception as e:
-            return f"Error: An unexpected exception occurred: {e}"
+                return f"Error: revolve_axis '{revolve_axis}' is invalid. Must be 'X', 'Y', or 'Z'."
 
 
-class CreateObjects(FusionSubmodule):
+
+            # Define two points in the chosen axis direction (in the component's coordinate system)
+            #p0 = adsk.core.Point3D.create(0, 0, 0)
+            if revolve_axis == "X":
+                #p1 = adsk.core.Point3D.create(1, 0, 0)
+                axis = targetComponent.xConstructionAxis
+            elif revolve_axis == "Y":
+                #p1 = adsk.core.Point3D.create(0, 1, 0)
+                axis = targetComponent.yConstructionAxis
+            else:  # "Z"
+                #p1 = adsk.core.Point3D.create(0, 0, 1)
+                axis = targetComponent.zConstructionAxis
+
+            # Create a construction axis
+            #axes = targetComponent.constructionAxes
+            #axis_input = axes.createInput()
+            #axis_input.setByTwoPoints(p0, p1)
+            #revolveAxisObj = axes.add(axis_input)
+            revolveAxisObj = axis
+
+            # Create revolve input
+            revolve_feats = targetComponent.features.revolveFeatures
+            rev_input = revolve_feats.createInput(selectedProfile, revolveAxisObj, operation_map[operation_type])
+            # One-sided revolve angle
+            angleVal = adsk.core.ValueInput.createByString(f"{revolve_degrees} deg")
+            rev_input.setAngleExtent(False, angleVal)
+
+            try:
+                revolve_feats.add(rev_input)
+                return (f"Revolved profile index {profile_index} in sketch '{sketch_name}' around {revolve_axis}-axis by "
+                        f"{revolve_degrees} degrees using {operation_type}.")
+            except Exception as e:
+                return f"Error creating revolve: {e}"
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
 
     def create_new_component(self, parent_component_name: str="comp1", component_name: str="comp2") -> str:
         """
@@ -1978,70 +2144,6 @@ class CreateObjects(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    def _set_parameter_value(self, parameter_name: str="d1", new_value: float=1.6) -> str:
-        """
-        {
-          "name": "set_parameter_value",
-          "description": "Sets the value of a specified parameter in the active Fusion 360 design to a new numeric value. If the parameter doesn't exist or is read-only, an error is returned. Otherwise, a success message is returned.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "parameter_name": {
-                "type": "string",
-                "description": "The name of the parameter to update."
-              },
-              "new_value": {
-                "type": "number",
-                "description": "The new numeric value to set."
-              }
-            },
-            "required": ["parameter_name", "new_value"],
-            "returns": {
-              "type": "string",
-              "description": "A message indicating whether the parameter was successfully updated."
-            }
-          }
-        }
-        """
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            # Attempt to find the parameter by name
-            param = design.allParameters.itemByName(parameter_name)
-            if not param:
-                return f"Error: Parameter '{parameter_name}' not found."
-
-            # Attempt to set the new value
-            # For user parameters, you can directly assign to 'value'.
-            # For model parameters, you can also try param.expression = "..."
-            # if direct value assignment isn't allowed.
-            try:
-                param.value = new_value
-            except:
-                # Some parameters may be read-only or locked, in which case
-                # you might try setting the expression instead.
-                try:
-                    # Construct an expression by combining new_value with the parameter's unit
-                    # (assuming the unit is valid for expressions).
-                    if param.unit:
-                        param.expression = f"{new_value} {param.unit}"
-                    else:
-                        param.expression = str(new_value)
-                except:
-                    return f"Error: Failed to update parameter '{parameter_name}'."
-
-            return f"Parameter '{parameter_name}' successfully updated to {new_value}."
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
     ### ================== IMPORT ============================ ###
     def import_fusion_component(self, parent_component_name: str, file_path: str) -> str:
@@ -2215,8 +2317,63 @@ class CreateObjects(FusionSubmodule):
 
 
 
+class NonCad(FusionSubmodule):
 
-class ModifyObjects(FusionSubmodule):
+    def set_occurrence_grounded(self, occurrence_name: str, grounded: bool = True) -> str:
+        """
+        {
+          "name": "set_occurrence_grounded",
+          "description": "Grounds or ungrouds a specified occurrence by toggling its isGrounded property in the root assembly.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "occurrence_name": {
+                "type": "string",
+                "description": "Name of the Fusion 360 occurrence to ground or unground."
+              },
+              "grounded": {
+                "type": "boolean",
+                "description": "True to ground, False to unground."
+              }
+            },
+            "required": ["occurrence_name"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating success or any errors."
+            }
+          }
+        }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            root_comp = design.rootComponent
+
+            targetOccurrence = self._find_occurrence_by_name(occurrence_name)
+
+            if not targetOccurrence:
+                return f"Error: Could not find occurrence {occurrence_name} in the root assembly."
+
+            # Set isGrounded
+            #targetOccurrence.isGrounded = grounded
+            targetOccurrence.isGroundToParent = grounded
+
+
+            if grounded:
+                return f"Occurrence '{occurrence_name}' is now grounded."
+            else:
+                return f"Occurrence '{occurrence_name}' is no longer grounded."
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
     def rename_model_parameters(self, old_new_names: list) -> str:
         """
@@ -2326,6 +2483,388 @@ class ModifyObjects(FusionSubmodule):
             return new_name
         except Exception as e:
             return 'Error: Failed to rename the component:\n{}'.format(new_name)
+
+    def set_appearance_on_components(
+        self, appearance_updates: list = [{"component_name": "comp1","appearance_name":"Paint - Enamel Glossy (Green)"}]) -> str:
+
+        """
+            {
+              "name": "set_appearance_on_components",
+              "description": "Sets the appearance on a list of components. Each item in appearance_updates is {'component_name': <COMPONENT_NAME>, 'appearance_name': <APPEARANCE_NAME>}.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "appearance_updates": {
+                    "type": "array",
+                    "description": "An array of objects with the form {'component_name': <COMPONENT_NAME>, 'appearance_name': <APPEARANCE_NAME>}.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "component_name": {
+                          "type": "string"
+                        },
+                        "appearance_name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["component_name", "appearance_name"]
+                    }
+                  }
+                },
+                "required": ["appearance_updates"],
+                "returns": {
+                  "type": "string",
+                  "description": "A summary message about which components were updated or any errors encountered."
+                }
+              }
+            }
+        """
+
+        try:
+            if not appearance_updates or not isinstance(appearance_updates, list):
+                return "Error: Must provide an array of updates in the form [{'component_name': '...', 'appearance_name': '...'}, ...]."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            root_comp = design.rootComponent
+
+            # A helper function to find an appearance by name in the design
+            # (Optionally search the appearance libraries if not found in design).
+            def find_appearance_by_name(appearance_name: str):
+                print(appearance_name)
+
+                # 1) Check the design's local appearances
+                local_appearance = design.appearances.itemByName(appearance_name)
+                if local_appearance:
+                    return local_appearance
+
+                # 2) Optionally, check libraries if not found in local. Comment this out if not needed.
+                appearance_libraries = app.materialLibraries
+                for i in range(appearance_libraries.count):
+
+                    a_lib = appearance_libraries.item(i)
+                    if a_lib.name not in ["Fusion Appearance Library"]:
+                        continue
+
+                    lib_app = a_lib.appearances.itemByName(appearance_name)
+
+                    if lib_app:
+                        # You typically need to copy the library appearance into the design before applying
+                        return design.appearances.addByCopy(lib_app, appearance_name)
+
+                return None
+
+            results = []
+
+            # Process each update item
+            for update in appearance_updates:
+                # Validate each item in the array
+                if not isinstance(update, dict):
+                    results.append("Error: Appearance update must be a dictionary.")
+                    continue
+
+                comp_name = update.get("component_name")
+                app_name = update.get("appearance_name")
+                if not comp_name or not app_name:
+                    results.append(f"Error: Missing component_name or appearance_name in {update}.")
+                    continue
+
+                # Find the appearance by name
+                appearance = find_appearance_by_name(app_name)
+                if not appearance:
+                    results.append(f"Error: Appearance '{app_name}' not found in design or libraries.")
+                    continue
+
+                # Find all occurrences that reference this component name
+                #self._find_component_by_name(component_name)
+
+                found_occurrences = []
+                for occ in root_comp.allOccurrences:
+                    print(occ.name)
+                    if occ.component.name == comp_name:
+                        found_occurrences.append(occ)
+
+                #  in case occurrences was passed in
+                if not found_occurrences:
+                    found_occurrences.append(self._find_occurrence_by_name(comp_name))
+
+
+                if not found_occurrences:
+                    results.append(f"Error: No occurrences found for component '{comp_name}'.")
+                    continue
+
+                # Apply the appearance override to each matching occurrence
+                for occ in found_occurrences:
+                    try:
+                        # Setting the appearance property on an occurrence
+                        occ.appearance = appearance
+                        # If needed, you can enforce override with:
+                        # occ.appearance.isOverride = True
+                    except Exception as e:
+                        results.append(f"Error: error setting appearance on occurrence {occ.name}: {str(e)}")
+                        continue
+
+                results.append(f"Set appearance '{app_name}' on component '{comp_name}' ({len(found_occurrences)} occurrence(s)).")
+
+            return "\n".join(results)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    def set_visibility( self, objects_to_set: list = [ {"object_type": "component", "object_name": "comp1", "visible": False} ]) -> str: 
+        """
+            {
+              "name": "set_visibility",
+              "description": "Sets the visibility for various Fusion 360 objects (components, bodies, sketches, joints, joint_origins) based on the provided instructions.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "objects_to_set": {
+                    "type": "array",
+                    "description": "Array of items specifying object type, name, and visibility. Example: [{'object_type': 'component', 'object_name': 'comp1', 'visible': True}, ...]",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "object_type": {
+                          "type": "string",
+                          "description": "'component', 'body', 'sketch', 'joint', 'joint_origin'."
+                        },
+                        "object_name": {
+                          "type": "string",
+                          "description": "The name of the object in Fusion 360."
+                        },
+                        "visible": {
+                          "type": "boolean",
+                          "description": "True to show, False to hide."
+                        }
+                      },
+                      "required": ["object_type", "object_name", "visible"]
+                    }
+                  }
+                },
+                "required": ["objects_to_set"],
+                "returns": {
+                  "type": "string",
+                  "description": "A summary message about which objects were updated or any errors encountered."
+                }
+              }
+            }
+        """
+
+        try:
+            # Validate input
+            if not objects_to_set or not isinstance(objects_to_set, list):
+                return "Error: Must provide a list of objects to set visibility on."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            root_comp = design.rootComponent
+
+            # Helper: gather ALL components in the design in a list for quick searching
+            all_comps = []
+            def collect_all_components(comp):
+                all_comps.append(comp)
+                for occ in comp.occurrences:
+                    collect_all_components(occ.component)
+
+            collect_all_components(root_comp)
+
+            # Helper: gather ALL bodies and sketches across all components
+            all_bodies = []
+            all_sketches = []
+            all_joints = []
+            all_joint_origins = []
+
+            for comp in all_comps:
+                for body in comp.bRepBodies:
+                    all_bodies.append(body)
+                for sk in comp.sketches:
+                    all_sketches.append(sk)
+                for joint in comp.joints:
+                    all_joints.append(joint)
+                for joint_origin in comp.jointOrigins:
+                    all_joint_origins.append(joint_origin)
+
+            messages = []
+
+            # Process each visibility instruction
+            for item in objects_to_set:
+                obj_type = item.get('object_type')
+                obj_name = item.get('object_name')
+                visible = item.get('visible')
+
+                if not obj_type or not obj_name or visible is None:
+                    messages.append(f"Error: Missing or invalid fields in {item}.")
+                    continue
+
+                if obj_type.lower() == 'component':
+                    # Hide/show all occurrences referencing this component name
+                    found_occurrences = []
+                    for comp in all_comps:
+                        if comp.name == obj_name:
+                            # Look in root for occurrences referencing comp
+                            for i in range(root_comp.occurrences.count):
+                                occ = root_comp.occurrences.item(i)
+                                if occ.component == comp:
+                                    found_occurrences.append(occ)
+                            # Also look in sub-assemblies (occurrences of occurrences)
+                            # but since we recursively gather "all_comps," the root's
+                            # occurrences might suffice if the user consistently named
+                            # components. If needed, you could do a more advanced search.
+
+                    if not found_occurrences:
+                        messages.append(f"Error: No occurrences found for component '{obj_name}'.")
+                        continue
+
+                    for occ in found_occurrences:
+                        try:
+                            occ.isLightBulbOn = bool(visible)
+                        except Exception as e:
+                            messages.append(f"Error: Could not set visibility on occurrence '{occ.name}': {e}")
+                    messages.append(f"Set visibility for component '{obj_name}' to {visible} (affected {len(found_occurrences)} occurrence(s)).")
+
+                elif obj_type.lower() == 'body':
+                    # Hide/show bodies by name
+                    found_bodies = [b for b in all_bodies if b.name == obj_name]
+                    if not found_bodies:
+                        messages.append(f"Error: No body found with name '{obj_name}'.")
+                        continue
+
+                    for b in found_bodies:
+                        try:
+                            b.isLightBulbOn = bool(visible)
+                        except Exception as e:
+                            messages.append(f"Error: Could not set visibility on body '{b.name}': {e}")
+                    messages.append(f"Set visibility for body '{obj_name}' to {visible} (affected {len(found_bodies)} body/ies).")
+                elif obj_type.lower() == 'joint':
+                    # Hide/show joints by name
+                    found_joints = [jt for jt in all_joints if jt.name == obj_name]
+                    if not found_joints:
+                        messages.append(f"Error: No joint found with name '{obj_name}'.")
+                        continue
+                    for jt in found_joints:
+                        try:
+                            jt.isLightBulbOn = bool(visible)
+                        except Exception as e:
+                            messages.append(f"Error: Could not set visibility on joint '{jt.name}': {e}")
+                    messages.append(f"Set visibility for body '{obj_name}' to {visible} (affected {len(found_joints)} joints).")
+                elif obj_type.lower() == 'joint_origin':
+                    # Hide/show joint origins by name
+                    found_joint_origins = [jo for jo in all_joint_origins if jo.name == obj_name]
+                    if not found_joint_origins:
+                        messages.append(f"Error: No joint origin found with name '{obj_name}'.")
+                        continue
+                    for jo in found_joint_origins:
+                        try:
+                            jo.isLightBulbOn = bool(visible)
+                        except Exception as e:
+                            messages.append(f"Error: Could not set visibility on joint '{jo.name}': {e}")
+                    messages.append(f"Set visibility for body '{obj_name}' to {visible} (affected {len(found_joint_origins)} joint origins).")
+
+
+
+                elif obj_type.lower() == 'sketch':
+                    # Hide/show sketches by name
+                    found_sketches = [s for s in all_sketches if s.name == obj_name]
+                    if not found_sketches:
+                        messages.append(f"Error: No sketch found with name '{obj_name}'.")
+                        continue
+
+                    for sk in found_sketches:
+                        try:
+                            sk.isLightBulbOn = bool(visible)
+                        except Exception as e:
+                            messages.append(f"Error: Could not set visibility on sketch '{sk.name}': {e}")
+                    messages.append(f"Set visibility for sketch '{obj_name}' to {visible} (affected {len(found_sketches)} sketch(es)).")
+
+                else:
+                    messages.append(f"Error: Unknown object_type '{obj_type}' in {item}.")
+
+            return "\n".join(messages)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    # TODO
+    def capture_component_position(self, component_name: str = "comp1") -> str:
+        """
+        {
+          "name": "capture_component_position",
+          "description": "Retrieves the current global position (translation) of each occurrence referencing the specified component.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "component_name": {
+                "type": "string",
+                "description": "The name of the Fusion 360 component whose occurrences' positions will be captured."
+              }
+            },
+            "required": ["component_name"],
+            "returns": {
+              "type": "string",
+              "description": "A JSON array where each element has an 'occurrenceName' and 'position' [x, y, z] in centimeters."
+            }
+          }
+        }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            root_comp = design.rootComponent
+
+            # Find all occurrences of this component
+            target_occurrences = []
+            for i in range(root_comp.occurrences.count):
+                occ = root_comp.occurrences.item(i)
+                if occ.component.name == component_name:
+                    target_occurrences.append(occ)
+
+            if not target_occurrences:
+                return f"Error: No occurrences found for component '{component_name}'."
+
+            # Collect the translation vector (x, y, z) for each occurrence
+            positions_info = []
+            for occ in target_occurrences:
+                transform = occ.transform
+                translation = transform.translation
+                positions_info.append({
+                    "occurrenceName": occ.name,
+                    "position": [translation.x, translation.y, translation.z]
+                })
+
+            # Return the data as a JSON array string
+            return json.dumps(positions_info)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
+
+class ModifyObjects(FusionSubmodule):
+
 
     def copy_component(self, source_component_name: str, target_parent_component_name: str) -> str:
         """
@@ -2507,143 +3046,6 @@ class ModifyObjects(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    def set_appearance_on_components(
-        self, appearance_updates: list = [{"component_name": "comp1","appearance_name":"Paint - Enamel Glossy (Green)"}]) -> str:
-
-        """
-            {
-              "name": "set_appearance_on_components",
-              "description": "Sets the appearance on a list of components. Each item in appearance_updates is {'component_name': <COMPONENT_NAME>, 'appearance_name': <APPEARANCE_NAME>}.",
-              "parameters": {
-                "type": "object",
-                "properties": {
-                  "appearance_updates": {
-                    "type": "array",
-                    "description": "An array of objects with the form {'component_name': <COMPONENT_NAME>, 'appearance_name': <APPEARANCE_NAME>}.",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "component_name": {
-                          "type": "string"
-                        },
-                        "appearance_name": {
-                          "type": "string"
-                        }
-                      },
-                      "required": ["component_name", "appearance_name"]
-                    }
-                  }
-                },
-                "required": ["appearance_updates"],
-                "returns": {
-                  "type": "string",
-                  "description": "A summary message about which components were updated or any errors encountered."
-                }
-              }
-            }
-        """
-
-        try:
-            if not appearance_updates or not isinstance(appearance_updates, list):
-                return "Error: Must provide an array of updates in the form [{'component_name': '...', 'appearance_name': '...'}, ...]."
-
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-            root_comp = design.rootComponent
-
-            # A helper function to find an appearance by name in the design
-            # (Optionally search the appearance libraries if not found in design).
-            def find_appearance_by_name(appearance_name: str):
-                print(appearance_name)
-
-                # 1) Check the design's local appearances
-                local_appearance = design.appearances.itemByName(appearance_name)
-                if local_appearance:
-                    return local_appearance
-
-                # 2) Optionally, check libraries if not found in local. Comment this out if not needed.
-                appearance_libraries = app.materialLibraries
-                for i in range(appearance_libraries.count):
-
-                    a_lib = appearance_libraries.item(i)
-                    if a_lib.name not in ["Fusion Appearance Library"]:
-                        continue
-
-                    lib_app = a_lib.appearances.itemByName(appearance_name)
-
-                    if lib_app:
-                        # You typically need to copy the library appearance into the design before applying
-                        return design.appearances.addByCopy(lib_app, appearance_name)
-
-                return None
-
-            results = []
-
-            # Process each update item
-            for update in appearance_updates:
-                # Validate each item in the array
-                if not isinstance(update, dict):
-                    results.append("Error: Appearance update must be a dictionary.")
-                    continue
-
-                comp_name = update.get("component_name")
-                app_name = update.get("appearance_name")
-                if not comp_name or not app_name:
-                    results.append(f"Error: Missing component_name or appearance_name in {update}.")
-                    continue
-
-                # Find the appearance by name
-                appearance = find_appearance_by_name(app_name)
-                if not appearance:
-                    results.append(f"Error: Appearance '{app_name}' not found in design or libraries.")
-                    continue
-
-                # Find all occurrences that reference this component name
-                #self._find_component_by_name(component_name)
-
-                found_occurrences = []
-                for occ in root_comp.allOccurrences:
-                    print(occ.name)
-                    if occ.component.name == comp_name:
-                        found_occurrences.append(occ)
-
-                #  in case occurrences was passed in
-                if not found_occurrences:
-                    found_occurrences.append(self._find_occurrence_by_name(comp_name))
-
-
-                if not found_occurrences:
-                    results.append(f"Error: No occurrences found for component '{comp_name}'.")
-                    continue
-
-                # Apply the appearance override to each matching occurrence
-                for occ in found_occurrences:
-                    try:
-                        # Setting the appearance property on an occurrence
-                        occ.appearance = appearance
-                        # If needed, you can enforce override with:
-                        # occ.appearance.isOverride = True
-                    except Exception as e:
-                        results.append(f"Error: error setting appearance on occurrence {occ.name}: {str(e)}")
-                        continue
-
-                results.append(f"Set appearance '{app_name}' on component '{comp_name}' ({len(found_occurrences)} occurrence(s)).")
-
-            return "\n".join(results)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-
-
-
     def move_component(self,
                        occurrence_name: str = "comp1:1",
                        move_position: list = [1.0, 1.0, 0.0]) -> str:
@@ -2715,35 +3117,62 @@ class ModifyObjects(FusionSubmodule):
 
 
             return (f"Moved occurrence '{occurrence_name}' to "
-                    # TODI
-                    f"[{x_val}, {y_val}, {z_val}] cm. Affected {[len(targetOccurrence)]} occurrence(s).")
+                    # TODO
+                    f"[{x_val}, {y_val}, {z_val}] cm. Affected {len([targetOccurrence])} occurrence(s).")
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    def capture_component_position(self, component_name: str = "comp1") -> str:
+    def mirror_body_in_component(
+        self,
+        component_name: str = "comp1",
+        body_name: str = "Body1",
+        operation_type: str = "NewBodyFeatureOperation",
+        mirror_plane: str = "XY"
+    ) -> str:
         """
         {
-          "name": "capture_component_position",
-          "description": "Retrieves the current global position (translation) of each occurrence referencing the specified component.",
+          "name": "mirror_body_in_component",
+          "description": "Mirrors a specified body in a component along one of the component's planes (XY, XZ, YZ) or a planar face in the body by face index. It creates a MirrorFeature in the timeline.",
           "parameters": {
             "type": "object",
             "properties": {
               "component_name": {
                 "type": "string",
-                "description": "The name of the Fusion 360 component whose occurrences' positions will be captured."
+                "description": "The name of the component containing the target body."
+              },
+              "body_name": {
+                "type": "string",
+                "description": "The name of the BRepBody to mirror."
+              },
+              "operation_type": {
+                "type": "string",
+                "description": "Either 'JoinFeatureOperation' or 'NewBodyFeatureOperation'.",
+                "enum": [
+                  "JoinFeatureOperation",
+                  "NewBodyFeatureOperation"
+                ]
+              },
+              "mirror_plane": {
+                "type": "string",
+                "description": "The plane to mirror about. Accepted values: 'XY', 'XZ', 'YZ' (the component's origin planes) OR a face reference in the form 'FaceIndex=3'."
               }
             },
-            "required": ["component_name"],
+            "required": ["component_name", "body_name", "operation_type", "mirror_plane"],
             "returns": {
               "type": "string",
-              "description": "A JSON array where each element has an 'occurrenceName' and 'position' [x, y, z] in centimeters."
+              "description": "A message indicating success or any error encountered."
             }
           }
         }
         """
 
         try:
+            # Validate operation_type
+            valid_ops = ["JoinFeatureOperation", "NewBodyFeatureOperation"]
+            if operation_type not in valid_ops:
+                return (f"Error: operation_type '{operation_type}' must be one of: {valid_ops}.")
+
             app = adsk.core.Application.get()
             if not app:
                 return "Error: Fusion 360 is not running."
@@ -2753,216 +3182,83 @@ class ModifyObjects(FusionSubmodule):
                 return "Error: No active Fusion 360 design found."
 
             design = adsk.fusion.Design.cast(product)
-            root_comp = design.rootComponent
 
-            # Find all occurrences of this component
-            target_occurrences = []
-            for i in range(root_comp.occurrences.count):
-                occ = root_comp.occurrences.item(i)
-                if occ.component.name == component_name:
-                    target_occurrences.append(occ)
+            # Locate the target component by name
+            target_comp = self._find_component_by_name(component_name)
+            if not target_comp:
+                return f"Error: Component '{component_name}' not found."
 
-            if not target_occurrences:
-                return f"Error: No occurrences found for component '{component_name}'."
+            body_to_mirror = self._find_body_by_name(target_comp, body_name)
+            if not body_to_mirror:
+                return f"Error: Body '{body_name}' not found in component '{component_name}'."
 
-            # Collect the translation vector (x, y, z) for each occurrence
-            positions_info = []
-            for occ in target_occurrences:
-                transform = occ.transform
-                translation = transform.translation
-                positions_info.append({
-                    "occurrenceName": occ.name,
-                    "position": [translation.x, translation.y, translation.z]
-                })
+            # Decide on the mirror plane
+            mirror_plane_obj = None
 
-            # Return the data as a JSON array string
-            return json.dumps(positions_info)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-    def set_visibility(
-            self, objects_to_set: list = [ {"object_type": "component", "object_name": "comp1", "visible": False} ]
-) -> str:
-        """
-            {
-              "name": "set_visibility",
-              "description": "Sets the visibility for various Fusion 360 objects (components, bodies, sketches, joints, joint_origins) based on the provided instructions.",
-              "parameters": {
-                "type": "object",
-                "properties": {
-                  "objects_to_set": {
-                    "type": "array",
-                    "description": "Array of items specifying object type, name, and visibility. Example: [{'object_type': 'component', 'object_name': 'comp1', 'visible': True}, ...]",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "object_type": {
-                          "type": "string",
-                          "description": "'component', 'body', 'sketch', 'joint', 'joint_origin'."
-                        },
-                        "object_name": {
-                          "type": "string",
-                          "description": "The name of the object in Fusion 360."
-                        },
-                        "visible": {
-                          "type": "boolean",
-                          "description": "True to show, False to hide."
-                        }
-                      },
-                      "required": ["object_type", "object_name", "visible"]
-                    }
-                  }
-                },
-                "required": ["objects_to_set"],
-                "returns": {
-                  "type": "string",
-                  "description": "A summary message about which objects were updated or any errors encountered."
+            # 1) If it's one of 'XY', 'XZ', or 'YZ', use the component's origin planes
+            plane_label = mirror_plane.upper().strip()
+            if plane_label in ["XY", "XZ", "YZ"]:
+                planes = target_comp.constructionPlanes
+                #TODO
+                origin_planes = target_comp.originConstructionPlanes
+                # originConstructionPlanes has .item(0)=XY, .item(1)=XZ, .item(2)=YZ in typical order
+                # But let's map them carefully:
+                plane_map = {
+                    "XY": origin_planes.item(0),  # Usually the XY plane
+                    "XZ": origin_planes.item(1),  # Usually the XZ plane
+                    "YZ": origin_planes.item(2)   # Usually the YZ plane
                 }
-              }
-            }
-        """
+                mirror_plane_obj = plane_map.get(plane_label)
 
-        try:
-            # Validate input
-            if not objects_to_set or not isinstance(objects_to_set, list):
-                return "Error: Must provide a list of objects to set visibility on."
+            # 2) If it starts with 'FaceIndex=', interpret it as a face index on the body
+            elif plane_label.startswith("FACEINDEX="):
+                # Parse out the integer
+                try:
+                    face_index = int(plane_label.split("=")[1])
+                except:
+                    return f"Error: Could not parse face index from '{mirror_plane}'."
+                if face_index < 0 or face_index >= body_to_mirror.faces.count:
+                    return f"Error: Face index {face_index} out of range for body '{body_name}'."
+                face_obj = body_to_mirror.faces.item(face_index)
+                # The face must be planar
+                plane_face = adsk.fusion.BRepFace.cast(face_obj)
+                if not plane_face or not plane_face.geometry or not isinstance(plane_face.geometry, adsk.core.Plane):
+                    return f"Error: Face {face_index} is not planar, cannot mirror about it."
+                mirror_plane_obj = plane_face
 
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
+            else:
+                return (f"Error: mirror_plane '{mirror_plane}' is invalid. "
+                        "Use 'XY', 'XZ', 'YZ', or 'FaceIndex=N' with a planar face.")
 
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
+            if not mirror_plane_obj:
+                return f"Error: Could not obtain a valid mirror plane from '{mirror_plane}'."
 
-            design = adsk.fusion.Design.cast(product)
-            root_comp = design.rootComponent
+            # Build the input for the MirrorFeature
+            mirror_feats = target_comp.features.mirrorFeatures
+            input_entities = adsk.core.ObjectCollection.create()
+            input_entities.add(body_to_mirror)
 
-            # Helper: gather ALL components in the design in a list for quick searching
-            all_comps = []
-            def collect_all_components(comp):
-                all_comps.append(comp)
-                for occ in comp.occurrences:
-                    collect_all_components(occ.component)
+            mirror_input = mirror_feats.createInput(input_entities, mirror_plane_obj)
 
-            collect_all_components(root_comp)
+            # If you want to specify Join vs NewBody, do so via isCombine for MirrorFeatures
+            # https://help.autodesk.com/view/fusion360/ENU/?guid=Fusion360_API_Reference_manual_cpp_ref_classadsk_1_1fusion_1_1_mirror_feature_input_html
+            if operation_type == "JoinFeatureOperation":
+                mirror_input.isCombine = True
+            else:
+                mirror_input.isCombine = False
 
-            # Helper: gather ALL bodies and sketches across all components
-            all_bodies = []
-            all_sketches = []
-            all_joints = []
-            all_joint_origins = []
-
-            for comp in all_comps:
-                for body in comp.bRepBodies:
-                    all_bodies.append(body)
-                for sk in comp.sketches:
-                    all_sketches.append(sk)
-                for joint in comp.joints:
-                    all_joints.append(joint)
-                for joint_origin in comp.jointOrigins:
-                    all_joint_origins.append(joint_origin)
-
-            messages = []
-
-            # Process each visibility instruction
-            for item in objects_to_set:
-                obj_type = item.get('object_type')
-                obj_name = item.get('object_name')
-                visible = item.get('visible')
-
-                if not obj_type or not obj_name or visible is None:
-                    messages.append(f"Error: Missing or invalid fields in {item}.")
-                    continue
-
-                if obj_type.lower() == 'component':
-                    # Hide/show all occurrences referencing this component name
-                    found_occurrences = []
-                    for comp in all_comps:
-                        if comp.name == obj_name:
-                            # Look in root for occurrences referencing comp
-                            for i in range(root_comp.occurrences.count):
-                                occ = root_comp.occurrences.item(i)
-                                if occ.component == comp:
-                                    found_occurrences.append(occ)
-                            # Also look in sub-assemblies (occurrences of occurrences)
-                            # but since we recursively gather "all_comps," the root's
-                            # occurrences might suffice if the user consistently named
-                            # components. If needed, you could do a more advanced search.
-
-                    if not found_occurrences:
-                        messages.append(f"Error: No occurrences found for component '{obj_name}'.")
-                        continue
-
-                    for occ in found_occurrences:
-                        try:
-                            occ.isLightBulbOn = bool(visible)
-                        except Exception as e:
-                            messages.append(f"Error: Could not set visibility on occurrence '{occ.name}': {e}")
-                    messages.append(f"Set visibility for component '{obj_name}' to {visible} (affected {len(found_occurrences)} occurrence(s)).")
-
-                elif obj_type.lower() == 'body':
-                    # Hide/show bodies by name
-                    found_bodies = [b for b in all_bodies if b.name == obj_name]
-                    if not found_bodies:
-                        messages.append(f"Error: No body found with name '{obj_name}'.")
-                        continue
-
-                    for b in found_bodies:
-                        try:
-                            b.isLightBulbOn = bool(visible)
-                        except Exception as e:
-                            messages.append(f"Error: Could not set visibility on body '{b.name}': {e}")
-                    messages.append(f"Set visibility for body '{obj_name}' to {visible} (affected {len(found_bodies)} body/ies).")
-                elif obj_type.lower() == 'joint':
-                    # Hide/show joints by name
-                    found_joints = [jt for jt in all_joints if jt.name == obj_name]
-                    if not found_joints:
-                        messages.append(f"Error: No joint found with name '{obj_name}'.")
-                        continue
-                    for jt in found_joints:
-                        try:
-                            jt.isLightBulbOn = bool(visible)
-                        except Exception as e:
-                            messages.append(f"Error: Could not set visibility on joint '{jt.name}': {e}")
-                    messages.append(f"Set visibility for body '{obj_name}' to {visible} (affected {len(found_joints)} joints).")
-                elif obj_type.lower() == 'joint_origin':
-                    # Hide/show joint origins by name
-                    found_joint_origins = [jo for jo in all_joint_origins if jo.name == obj_name]
-                    if not found_joint_origins:
-                        messages.append(f"Error: No joint origin found with name '{obj_name}'.")
-                        continue
-                    for jo in found_joint_origins:
-                        try:
-                            jo.isLightBulbOn = bool(visible)
-                        except Exception as e:
-                            messages.append(f"Error: Could not set visibility on joint '{jo.name}': {e}")
-                    messages.append(f"Set visibility for body '{obj_name}' to {visible} (affected {len(found_joint_origins)} joint origins).")
-
-
-
-                elif obj_type.lower() == 'sketch':
-                    # Hide/show sketches by name
-                    found_sketches = [s for s in all_sketches if s.name == obj_name]
-                    if not found_sketches:
-                        messages.append(f"Error: No sketch found with name '{obj_name}'.")
-                        continue
-
-                    for sk in found_sketches:
-                        try:
-                            sk.isLightBulbOn = bool(visible)
-                        except Exception as e:
-                            messages.append(f"Error: Could not set visibility on sketch '{sk.name}': {e}")
-                    messages.append(f"Set visibility for sketch '{obj_name}' to {visible} (affected {len(found_sketches)} sketch(es)).")
-
-                else:
-                    messages.append(f"Error: Unknown object_type '{obj_type}' in {item}.")
-
-            return "\n".join(messages)
+            try:
+                mirror_feature = mirror_feats.add(mirror_input)
+                return (f"Mirrored body '{body_name}' in component '{component_name}' about "
+                        f"plane '{mirror_plane}' with operation '{operation_type}'.")
+            except Exception as e:
+                return f"Error creating mirror feature: {str(e)}"
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
 
 
 
@@ -3077,9 +3373,6 @@ class DeleteObjects(FusionSubmodule):
             targetComponent = self._find_component_by_name(component_name)
             if not targetComponent:
                 return f'Error: Component "{component_name}" not found.'
-            print(targetComponent)
-
-            print(sketch_name)
             # Find the target sketch by name in the component.
             targetSketch = self._find_sketch_by_name(targetComponent, sketch_name)
             if not targetSketch:
@@ -3183,7 +3476,13 @@ class Joints(FusionSubmodule):
             if not targetComponent:
                 return f"Error: Component '{component_name}' not found."
 
-            references_list = []
+            references_list = {
+                "faces": [],
+                "edges": [],
+                "vertices": [],
+                "sketch_points": [],
+
+            }
 
             # A helper to get the bounding box center in [x, y, z].
             def bounding_box_center(bbox: adsk.core.BoundingBox3D):
@@ -3192,6 +3491,7 @@ class Joints(FusionSubmodule):
                 z = 0.5 * (bbox.minPoint.z + bbox.maxPoint.z)
                 return [x, y, z]
 
+
             # 1) Collect faces (using bounding box center)
             for bodyIndex, body in enumerate(targetComponent.bRepBodies):
                 for faceIndex, face in enumerate(body.faces):
@@ -3199,9 +3499,17 @@ class Joints(FusionSubmodule):
                     bbox = face.boundingBox
                     loc = bounding_box_center(bbox) if bbox else [0, 0, 0]
 
-                    references_list.append({
+                    face_type = face.geometry.objectType
+                    #face_type = face.geometry.surfaceType
+                    #print(dir(face.geometry))
+                    print(f"{faceIndex}: {face_type}")
+
+                    references_list["faces"].append({
                         "referenceId": refId,
                         "geometryType": "face",
+                        "faceType": face_type,
+                        "number_of_edges": face.edges.count,
+                        "area": face.area,
                         "bodyName": body.name,
                         "faceIndex": faceIndex,
                         "location": loc
@@ -3227,7 +3535,7 @@ class Joints(FusionSubmodule):
                         print(edge.geometry)
                         loc = None
 
-                    references_list.append({
+                    references_list["edges"].append({
                         "referenceId": refId,
                         "geometryType": f"Edge_{geoType}",
                         "bodyName": body.name,
@@ -3246,7 +3554,7 @@ class Joints(FusionSubmodule):
                         loc = None
 
                     #loc = bounding_box_center(bbox) if bbox else [0, 0, 0]
-                    references_list.append({
+                    references_list["vertices"].append({
                         "referenceId": refId,
                         "geometryType": "vertex",
                         "bodyName": body.name,
@@ -3262,7 +3570,7 @@ class Joints(FusionSubmodule):
 
                     loc = [geo.x, geo.y, geo.z]
 
-                    references_list.append({
+                    references_list["sketch_points"].append({
                         "referenceId": refId,
                         "geometryType": "sketchPoint",
                         "sketchName": sketch.name,
@@ -3270,7 +3578,11 @@ class Joints(FusionSubmodule):
                         "location": loc
                     })
 
-            return json.dumps(references_list)
+
+            references_list.pop("vertices")
+            references_list.pop("edges")
+            references_list.pop("sketch_points")
+            return json.dumps(references_list, indent=4)
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
@@ -3461,19 +3773,38 @@ class Joints(FusionSubmodule):
                 if subType == "face":
                     if geomIndex >= theBody.faces.count:
                         return f"Error: Face index {geomIndex} out of range on body {bodyIndex}."
+
                     faceObj = theBody.faces.item(geomIndex)
-                    # This example assumes the face is planar
-                    # For non-planar, use createByNonPlanarFace, etc.
-                    planarFace = adsk.fusion.BRepFace.cast(faceObj)
-                    if not planarFace or not planarFace.geometry or not isinstance(planarFace.geometry, adsk.core.Plane):
-                        return "Error: The specified face is not planar. For non-planar, use createByNonPlanarFace, etc."
-                    refGeom = adsk.fusion.JointGeometry.createByPlanarFace(
-                        planarFace, #face
-                        None, # edge
-                        adsk.fusion.JointKeyPointTypes.CenterKeyPoint  # or MidPointKeyPoint, etc.
-                    )
+                    faceGeo = faceObj.geometry
+
+                    if isinstance(faceGeo, adsk.core.Plane ):
+                        # This example assumes the face is planar
+                        # For non-planar, use createByNonPlanarFace, etc.
+                        planarFace = adsk.fusion.BRepFace.cast(faceObj)
+
+                        if not planarFace or not planarFace.geometry or not isinstance(planarFace.geometry, adsk.core.Plane):
+                            return "Error: The specified face is not planar. For non-planar, use createByNonPlanarFace, etc."
+
+                        refGeom = adsk.fusion.JointGeometry.createByPlanarFace(
+                            planarFace, #face
+                            None, # edge
+                            adsk.fusion.JointKeyPointTypes.CenterKeyPoint  # or MidPointKeyPoint, etc.
+                        )
+
+                    # center of cylinder
+                    elif isinstance(faceGeo, adsk.core.Cylinder ):
+                        # This example assumes the face is planar
+                        # For non-planar, use createByNonPlanarFace, etc.
+                        nonPlanarFace = adsk.fusion.BRepFace.cast(faceObj)
+                        print(nonPlanarFace)
+
+                        refGeom = adsk.fusion.JointGeometry.createByNonPlanarFace(
+                            nonPlanarFace, #face
+                            adsk.fusion.JointKeyPointTypes.MiddleKeyPoint  # or MidPointKeyPoint, etc.
+                        )
 
                 elif subType == "edge":
+
                     if geomIndex >= theBody.edges.count:
                         return f"Error: Edge index {geomIndex} out of range on body {bodyIndex}."
                     edgeObj = theBody.edges.item(geomIndex)

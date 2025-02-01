@@ -428,28 +428,70 @@ function loadTools() {
 //function
 
 
+
+function record(){
+
+
+
+    let recordButton = document.getElementById('recordButton');
+    recordButton.style.backgroundColor = "gray";
+
+    if ( recordButton.textContent == "Start Record"){
+
+        const args = {  };
+        adsk.fusionSendData("start_record", JSON.stringify(args)).then((result) =>{ 
+
+            recordButton.style.backgroundColor = "red";
+            recordButton.textContent = "Recording";
+
+        });
+
+
+        
+    } else {
+
+        recordButton.textContent = "Transcribing...";
+        const args = {  };
+        // Send the data to Fusion as a JSON string. The return value is a Promise.
+        adsk.fusionSendData("stop_record", JSON.stringify(args))
+            .then((result) =>{ 
+
+                recordButton.style.backgroundColor = "green";
+                recordButton.textContent = "Start Record";
+
+                let response = JSON.parse(result);
+                let audio_text = response["content"];
+                console.log(audio_text)
+
+                var promptTextInput = document.getElementById('promptTextInput');
+                promptTextInput.value = promptTextInput.value + " " + audio_text;
+
+            });
+
+
+    }; // end else
+
+
+
+
+
+
+
+}; // end start record
+
+
+
+
+
+
 function toggleTools() {
 
-    //let toolTestContainer = document.getElementById('toolTestContainer');
-    //console.log(toolTestContainer);
-    //
-    //toolTestContainer.style.height = "0px";
-    //toolTestContainer.innerHTML = "";
     showHideElement("toolTestContainer");
 
     setWindowHeight();
 
 } // end hide tools
 
-
-//function hideTools() {
-//
-//    let toolTestContainer = document.getElementById('toolTestContainer');
-//    toolTestContainer.style.height = "0px";
-//    toolTestContainer.innerHTML = "";
-//    setWindowHeight();
-//
-//} // end hide tools
 
 
  function setWindowHeight() {

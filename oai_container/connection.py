@@ -14,6 +14,11 @@ from openai import OpenAI
 import adsk
 
 
+import whisper
+import pyaudio
+import wave
+
+
 user_config = configparser.ConfigParser()
 # path to config file containing open ai API keys, Python env path
 parent_dir = os.path.dirname(os.getcwd())
@@ -28,6 +33,10 @@ os.environ['OPENAI_API_KEY'] =  OPENAI_API_KEY
 ASSISTANT_ID = default_config["ASSISTANT_ID"]
 
 client = OpenAI()
+
+
+
+
 
 
 class Assistant:
@@ -45,11 +54,97 @@ class Assistant:
         self.assistant_id = assistant_id
         print(f'assistant_id: {assistant_id}')
 
+        #self.audio_interface = AudioInterface()
+
         # TODO eventualy, user should be able to restart thred from Fusion
         # start assistant thread (conversation)
         self.start_thread()
+
         # run local process server, how Fusion connects
         #self.start_server()
+
+        model_size = "base"
+        self.model = whisper.load_model(model_size)  # Load the selected model
+
+    def start_record(self, conn):
+        """
+        Records audio from the default input device and saves it as a WAV file.
+        :param filename: The name of the output WAV file.
+        :param duration: Duration of the recording in seconds.
+        :param sample_rate: Sample rate in Hz.
+        :param chunk_size: Number of frames per buffer.
+        :param channels: Number of audio channels (1 for mono, 2 for stereo).
+        :param format: pyaudio format (default: pyaudio.paInt16).
+        """
+
+        filename="output.wav"
+        sample_rate=44100
+        chunk_size=1024
+        channels=1
+        audio_format=pyaudio.paInt32 #pyaudio.paInt32
+        audio = pyaudio.PyAudio()
+
+        # Open stream
+        stream = audio.open(format=audio_format,
+                            channels=channels,
+                            rate=sample_rate,
+                            input=True,
+                            frames_per_buffer=chunk_size)
+
+        fusion_call = {
+            "content": "recording_started"
+        }
+        conn.send(json.dumps(fusion_call))
+
+        frames = []
+
+        #self.record = True
+        while True:
+            data = stream.read(chunk_size)
+            frames.append(data)
+
+            if conn.poll():
+                # wait for message from user
+                message_raw = conn.recv()
+                message = json.loads(message_raw)
+                print(f"conn.poll: {message}")
+                #message_type = message["message_type"]
+                break
+
+
+        print("Recording finished.")
+
+        # Stop and close the stream
+        stream.stop_stream()
+        stream.close()
+        audio.terminate()
+
+        # Save the recorded data as a WAV file
+        with wave.open(filename, 'wb') as wf:
+            wf.setnchannels(channels)
+            wf.setsampwidth(audio.get_sample_size(audio_format))
+            wf.setframerate(sample_rate)
+            wf.writeframes(b''.join(frames))
+
+        print(f"Audio recorded and saved to {filename}")
+        return self.transcribe_audio()
+
+
+    def transcribe_audio(self, filename="output.wav"):
+        """
+        Transcribes an audio file using OpenAI's Whisper model.
+        :param filename: The path to the audio file to transcribe.
+        :param model_size: The size of the Whisper model to use (tiny, base, small, medium, large).
+        :return: The transcribed text.
+        """
+        print(f"Transcribing {filename}...")
+        result = self.model.transcribe(filename, language='en', fp16=False)
+
+        text = result["text"]
+        print("Transcription completed:")
+        print(text)
+        return text
+
 
     def format_str(self, string, n_char):
         """uniform print spacing """
@@ -96,6 +191,9 @@ class Assistant:
         self.run_steps = None
         print(f'Thread created: {self.thread.id}')
 
+
+
+    #def process_audio
     def start_server(self):
         # run on local host, Fusion client must connect to this address
         address = ('localhost', 6000) # family is deduced to be 'AF_INET'
@@ -108,16 +206,13 @@ class Assistant:
                 i = 0
                 while True:
                     print(f"{i} Waiting for user command...")
-
                     # wait for message from user
                     message_raw = conn.recv()
-
                     message = json.loads(message_raw)
-
                     message_type = message["message_type"]
 
-                    #print(f" MESSAGE RECIEVED: {message['content'] }")
-                    print(f" MESSAGE RECIEVED")
+                    print(f" MESSAGE RECIEVED: {message_raw}")
+                    #print(f" MESSAGE RECIEVED")
 
 
                     if message_type == "thread_update":
@@ -129,11 +224,14 @@ class Assistant:
                         self.update_tools(tools)
                         continue
 
-                    # update Assistant meta data
-                    #elif message_type == "reconnect":
-                    #    tools = message["content"]
-                    #    self.update_tools(tools)
-                    #    continue
+                    # start audio recording
+                    elif message_type == "start_record":
+                        # stop_record handled in self.start_record poll loop
+                        audio_text = self.start_record(conn)
+                        fusion_call = { "content": audio_text }
+                        conn.send(json.dumps(fusion_call))
+                        continue
+
 
                     # add message to thread
                     self.add_message(message_text)
@@ -356,8 +454,6 @@ class Assistant:
 
 
 
-
-
     def add_message(self, message_text: str):
         """
         create new message and add it to thread
@@ -438,8 +534,6 @@ class Assistant:
 
 
 
-
-
     def send_func_response(self, response_list: list):
         """
         send tool call responses
@@ -458,8 +552,8 @@ class Assistant:
 
     def cancel_run(self):
         run = self.client.beta.threads.runs.cancel(
-          thread_id=self.thread_id,
-          run_id=self.run_id
+            thread_id=self.thread_id,
+            run_id=self.run_id
         )
         print('RUN CANCEL')
 
