@@ -159,9 +159,20 @@ class Assistant:
         update assistant tools, and initial prompt instructions
         """
 
+        #print(models)
+        #print(dir(models))
+        #print(models.to_json())
+        # for m in json.loads():
+        #     print(m["id"])
+
+        #models = client.models.list()
+        #print(models.to_json())
+
         # base assistant prompt
         with open("system_instructions.txt") as f:
+        #with open("system_instructions_v1.txt") as f:
             instructions = f.read()
+            instructions = instructions.strip()
 
         # functions
         tools = json.loads(tools)
@@ -169,13 +180,20 @@ class Assistant:
         for tool in tools:
             updated_tools.append({"type": "function", "function": tool})
 
+        #model_name = "o1-mini"
+        #model_name = "o1-preview"
+        #model_name = "o3-mini"
+        #model_name = "o3-mini-2025-01-31"
+        #model_name = "4o"
+
         updated_assistant = client.beta.assistants.update(
             self.assistant_id,
             tools=updated_tools,
+            #model=model_name,
             instructions=instructions,
         )
 
-        print(updated_assistant)
+        #print(updated_assistant)
 
 
     def start_thread(self):
@@ -334,8 +352,13 @@ class Assistant:
 
                             elif event_type == "thread.run.step.delta":
 
-                                function = event.data.delta.step_details.tool_calls[0].function
-                                #print(function)
+                                print(event.data.delta.step_details.tool_calls)
+                                try:
+                                    function = event.data.delta.step_details.tool_calls[0].function
+
+                                except Exception as e:
+                                    print(e)
+                                    continue
 
                                 step_id = event.data.id
 
@@ -412,12 +435,16 @@ class Assistant:
 
                                 step_details = event.data.step_details
                                 step_type = step_details.type
+                                print(step_details)
 
                                 # skip response for mesage completion
                                 if step_type == "message_creation":
                                     continue
 
-                                function = step_details.tool_calls[0].function
+                                try:
+                                    function = step_details.tool_calls[0].function
+                                except Exception as e:
+                                    continue
                                 #print(function)
 
                                 step_id = event.data.id
