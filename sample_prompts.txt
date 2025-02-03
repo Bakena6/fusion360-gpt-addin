@@ -22,8 +22,8 @@ I am designing a common TKL keyboard. It will have a main body, which should be 
 
 
 
-
-
+# vase
+Can you create a vase. It should have a very detailed, highly contoured profile, and you should probably use the spline tool. Make sure the walls are sufficiently far from the Z axis. The walls should be a few mm thick.
 
 
 

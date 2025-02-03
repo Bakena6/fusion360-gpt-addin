@@ -14,6 +14,7 @@ import time
 
 import functools
 
+
 from ... import config
 from ...lib import fusion360utils as futil
 
@@ -50,6 +51,7 @@ class FusionInterface:
             CreateObjects(),
             ModifyObjects(),
             DeleteObjects(),
+            ImportExport(),
             Sketches(),
             Joints(),
             Timeline(),
@@ -122,8 +124,6 @@ class FusionInterface:
 
                     methods[class_name][attr_name] = param_dict
 
-
-
         return methods
 
 
@@ -166,6 +166,7 @@ class FusionInterface:
 
         self.tools_json = method_list
 
+        #print(method_list)
         return method_list
 
     # TODO function calls should be wrapped
@@ -219,7 +220,6 @@ class FusionSubmodule:
 
         return methods
 
-
     def _find_component_by_name(self, component_name:str="comp1"):
         """
         called from methods, not Assistant directly
@@ -230,10 +230,8 @@ class FusionSubmodule:
         design = adsk.fusion.Design.cast(app.activeProduct)
         rootComp = design.rootComponent
 
-        #if ":" in 
-
         if component_name == rootComp.name:
-            return rootComp
+            return rootComp, None
 
         # Find the target component
         targetComponent = None
@@ -242,13 +240,25 @@ class FusionSubmodule:
                 targetComponent = occ.component
                 break
 
-        #if not targetComponent:
-        #    return f'Component "{component_name}" not found'
 
-        return targetComponent
+        # return non errors when comp is found
+        errors = None
+        if not targetComponent:
+            # include list of availble comp names
+            componentNameList = set()
+            componentNameList.add(rootComp.name)
 
-    def _find_occurrence_by_name(self, occurrence_name:str="comp1:1"):
+            for occ in rootComp.allOccurrences:
+                componentNameList.add(occ.component.name)
 
+            errors =  f'Error: Component "{component_name}" not found. Available Components: \n{componentNameList}'
+
+
+        return targetComponent, errors
+
+
+
+    def _find_occurrence_by_name(self, occurrence_name: str="comp1:1"):
         """
         called from methods, not Assistant directly
         """
@@ -258,32 +268,42 @@ class FusionSubmodule:
         design = adsk.fusion.Design.cast(app.activeProduct)
         rootComp = design.rootComponent
 
-        # Search all occurrences (including nested).
-        targetOccurrence = None
-        for occ in rootComp.allOccurrences:
-            if occ.name == occurrence_name:
-                targetOccurrence = occ
+        errors = None
 
-        # check beck occ path
-        if targetOccurrence is None:
+        try:
+
+            # Search all occurrences (including nested).
+            targetOccurrence = None
             for occ in rootComp.allOccurrences:
-                print(occ.fullPathName)
-                if occ.fullPathName == occurrence_name:
+                if occ.name == occurrence_name:
                     targetOccurrence = occ
 
-        if targetOccurrence is None:
-            occ_parts = occurrence_name.split(":")
-            occurrence_name = ''.join([ occ_parts[-2], ":", occ_parts[-1]])
-            print(occurrence_name)
+            # check beck occ path
+            if targetOccurrence is None:
+                for occ in rootComp.allOccurrences:
+                    if occ.fullPathName == occurrence_name:
+                        targetOccurrence = occ
 
-            if occ.name == occurrence_name:
-                targetOccurrence = occ
+            if targetOccurrence is None:
+                occ_parts = occurrence_name.split(":")
+                occurrence_name = ''.join([ occ_parts[-2], ":", occ_parts[-1]])
+                for occ in rootComp.allOccurrences:
+                    if occ.name == occurrence_name:
+                        targetOccurrence = occ
 
+        except Exception as e:
+            print(e)
 
-        return targetOccurrence
+        if not targetOccurrence:
+            errors = f"Error: No occurrence found for '{occurrence_name}'."
+
+        return targetOccurrence, errors
+
 
     def _find_sketch_by_name(self, component, sketch_name):
-
+        """
+        called from methods, not Assistant directly, selects sketch in component
+        """
         # Find the target sketch
         targetSketch = None
         for sketch in component.sketches:
@@ -291,18 +311,42 @@ class FusionSubmodule:
                 targetSketch = sketch
                 break
 
-        return targetSketch
+        errors = None
+        if not targetSketch:
+            sketch_names = []
+            for sketch in component.sketches:
+                sketch_names.append(sketch.name)
+
+            errors =  f'Error: Sketch "{sketch_name}" not found in component {component.name}. Available sketches in Component {component.name}: \n{sketch_names}'
+
+
+        return targetSketch, errors
+
+
 
     def _find_body_by_name(self, component, body_name):
         """
+        called from methods, not Assistant directly, selects sketch in component
         """
         body = None
+
+        body_names = []
         for b in component.bRepBodies:
+            body_names.append(b.name)
             if b.name == body_name:
                 body = b
                 break
 
-        return body
+        errors = None
+        if not body:
+            errors =  f'Error: Body "{body_name}" not found in component {component.name}. Available bodies in Component {component.name}: \n{body_names}'
+
+
+        return body, errors
+
+
+
+
 
 
 class StateData(FusionSubmodule):
@@ -351,6 +395,67 @@ class StateData(FusionSubmodule):
                 ent_info[attr] = attr_val
 
         return ent_info
+
+    def list_occurrence_tree(self) -> str:
+        """
+        {
+          "name": "list_occurrence_tree",
+          "description": "Generates a JSON representation of the Fusion 360 browser tree, showing occurrences nested inside their parent occurrences.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+            },
+            "required": [],
+            "returns": {
+              "type": "string",
+              "description": "A JSON array of top-level occurrences. Each occurrence has a 'name', 'componentName', and 'children'."
+            }
+          }
+        }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            root_comp = design.rootComponent
+
+            def gather_occurrences(occ_list: adsk.fusion.OccurrenceList) -> list:
+                """
+                Recursively build a list of dict objects representing
+                each occurrence, including nested children occurrences.
+                """
+                result = []
+                for i in range(occ_list.count):
+                    occ = occ_list.item(i)
+                    children_data = gather_occurrences(occ.childOccurrences)
+
+                    occ_data = {
+                        "occurrenceName": occ.name,
+                        #"componentName": occ.component.name if occ.component else None,
+                    }
+
+                    if len(children_data) != 0:
+                        occ_data["children"] = children_data
+
+                    result.append(occ_data)
+
+                return result
+
+            # Gather the top-level occurrences from the root component
+            tree_data = gather_occurrences(root_comp.occurrences)
+
+            # Convert to JSON and return
+            return json.dumps(tree_data, indent=2)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
     def get_design_as_json(self) -> str:
@@ -415,7 +520,6 @@ class StateData(FusionSubmodule):
                 ent_info = self._get_ent_attrs(sketch, sketch_params)
                 comp_dict["sketches"].append(ent_info)
 
-
             joint_params = ["name","isLightBulbOn", "healthState" ]
             # Collect joints
             for joint in component.joints:
@@ -448,6 +552,11 @@ class StateData(FusionSubmodule):
 
         # Convert dictionary to a JSON string with indentation
         return json.dumps(design_data, indent=4)
+
+
+
+
+
 
     def _get_design_parameters_as_json(self) -> str:
         """
@@ -580,7 +689,7 @@ class StateData(FusionSubmodule):
         return json.dumps(design_data, indent=4)
 
 
-    def get_sketch_profiles(self, component_name: str = "comp1", sketch_name: str = "sketch1"):
+    def get_sketch_profiles(self, component_name: str = "comp1", sketch_name: str = "Sketch1"):
         """
         {
             "name": "get_sketch_profiles",
@@ -609,15 +718,15 @@ class StateData(FusionSubmodule):
             # Access the active design
             app = adsk.core.Application.get()
             design = adsk.fusion.Design.cast(app.activeProduct)
-            # Use a local helper method to find the target component
-            targetComponent = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return f'Error: Component "{component_name}" not found.'
 
-            # Use a local helper method to find the specified sketch
-            targetSketch = self._find_sketch_by_name(targetComponent, sketch_name)
+            # Use a local helper method to find the target component
+            targetComponent, errors = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return errors
+
+            targetSketch, errors = self._find_sketch_by_name(targetComponent, sketch_name)
             if not targetSketch:
-                return f'Error: Sketch "{sketch_name}" not found in component "{component_name}".'
+                return errors
 
             if not targetSketch.profiles or targetSketch.profiles.count == 0:
                 return "No profiles found in the sketch."
@@ -690,18 +799,13 @@ class StateData(FusionSubmodule):
             design = adsk.fusion.Design.cast(product)
 
             # Locate the target component by name (assuming you have a helper method)
-            targetComponent = self._find_component_by_name(component_name)
+            targetComponent, errors = self._find_component_by_name(component_name)
             if not targetComponent:
-                return f'Error: Component "{component_name}" not found.'
+                return errors
 
-            # Locate the specified body by name within the component
-            body = None
-            for b in targetComponent.bRepBodies:
-                if b.name == body_name:
-                    body = b
-                    break
+            body, errors = self._find_body_by_name(targetComponent, body_name)
             if not body:
-                return f'Error: Body "{body_name}" not found in component "{component_name}".'
+                return errors
 
             edges = body.edges
             edge_data_list = []
@@ -835,19 +939,14 @@ class StateData(FusionSubmodule):
 
             design = adsk.fusion.Design.cast(product)
 
-            # Locate the target component by name (assuming you have a local helper method).
-            targetComponent = self._find_component_by_name(component_name)
+            # Find the target component by name (assuming you have a local helper method).
+            targetComponent, errors = self._find_component_by_name(component_name)
             if not targetComponent:
-                return f'Error: Component "{component_name}" not found.'
+                return errors
 
-            # Locate the specified body by name within the component.
-            body = None
-            for b in targetComponent.bRepBodies:
-                if b.name == body_name:
-                    body = b
-                    break
+            body, errors = self._find_body_by_name(targetComponent, body_name)
             if not body:
-                return f'Error: Body "{body_name}" not found in component "{component_name}".'
+                return errors
 
             faces = body.faces
             face_data_list = []
@@ -1010,7 +1109,7 @@ class StateData(FusionSubmodule):
 
 class Sketches(FusionSubmodule):
 
-    def create_sketch(self, component_name: str="comp1", sketch_name: str ="sketch1", sketch_plane: str ="xy"):
+    def create_sketch(self, component_name: str="comp1", sketch_name: str ="Sketch1", sketch_plane: str ="xy"):
         """
             {
               "name": "create_sketch",
@@ -1048,10 +1147,11 @@ class Sketches(FusionSubmodule):
             design = adsk.fusion.Design.cast(app.activeProduct)
             rootComp = design.rootComponent
 
-            # use base class method
-            targetComponent = self._find_component_by_name(component_name)
+
+            targetComponent, errors = self._find_component_by_name(component_name)
             if not targetComponent:
-                return f'Error: Component "{component_name}" not found'
+                return errors
+
 
             # Determine the sketch plane
             if sketch_plane.lower() == "xz":
@@ -1071,169 +1171,7 @@ class Sketches(FusionSubmodule):
             return f'Error: Failed to create sketch: {e}'
 
 
-    def create_rectangles_in_sketch(self, component_name: str="comp1", sketch_name: str="sketch1", center_point_list: list=[[1,1,0]], rectangle_size_list:list=[[2,4]]):
-        """
-        {
-          "name": "create_rectangles_in_sketch",
-          "description": "Creates rectangles in a specified sketch within a specified component in Fusion 360 using addCenterPointRectangle. Each rectangle is defined by a center point (from center_point_list) and a size (width, height) from rectangle_size_list. A corner point is calculated automatically from the center and half the width and height, and two distance dimensions (horizontal and vertical) are applied. The number of elemenets in center_point_list must be equal to the number of elements in rectangle_size_lis. The unit for center_point_list and rectangle_size_list is centimeters",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "component_name": {
-                "type": "string",
-                "description": "The name of the component in the current design."
-              },
-              "sketch_name": {
-                "type": "string",
-                "description": "The name of the sketch inside the specified component."
-              },
-              "center_point_list": {
-                "type": "array",
-                "items": {
-                  "type": "array",
-                  "items": {
-                    "type": "number"
-                  },
-                  "minItems": 3,
-                  "maxItems": 3,
-                  "description": "A list representing an XYZ point (x, y, z)."
-                },
-                "description": "A list of center points in 3D space for each rectangle to be created."
-              },
-              "rectangle_size_list": {
-                "type": "array",
-                "items": {
-                  "type": "array",
-                  "items": {
-                    "type": "number"
-                  },
-                  "minItems": 2,
-                  "maxItems": 2,
-                  "description": "A list representing the width and height of the rectangle."
-                },
-                "description": "A list of [width, height] pairs, corresponding to each center point in center_point_list."
-              }
-            },
-            "required": ["component_name", "sketch_name", "center_point_list", "rectangle_size_list"],
-            "returns": {
-              "type": "string",
-              "description": "A message indicating the success or failure of the rectangle creation."
-            }
-          }
-        }
-        """
-
-        try:
-
-
-            # if dim list passed in as string from user input box
-            if isinstance(center_point_list, str):
-                center_point_list = json.loads(center_point_list)
-            if isinstance(rectangle_size_list, str):
-                rectangle_size_list = json.loads(rectangle_size_list)
-
-
-            # Validate input lengths
-            if len(center_point_list) != len(rectangle_size_list):
-
-                center_point_len = len(center_point_list)
-                rectangle_size_len = len(rectangle_size_list)
-
-                message = f"The lengths of center_point_list ({center_point_len}) and rectangle_size_list ({rectangle_size_len}) must be equal."
-
-                return message
-
-            # Access the active design
-            app = adsk.core.Application.get()
-            ui = app.userInterface
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            if not design:
-                return "Error: No active Fusion 360 design found."
-
-            root_comp = design.rootComponent
-
-            # Find the target component
-            targetComponent = None
-            for occ in root_comp.allOccurrences:
-                if occ.component.name == component_name:
-                    targetComponent = occ.component
-                    break
-
-            # use base class method
-            targetComponent = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return f'Error: Component "{component_name}" not found.'
-
-            # Find the target sketch
-            targetSketch = None
-            for sketch in targetComponent.sketches:
-                if sketch.name == sketch_name:
-                    targetSketch = sketch
-                    break
-
-            if not targetSketch:
-                return f'Error: Sketch "{sketch_name}" not found in component "{component_name}".'
-
-            # Create rectangles in the sketch
-            for center_point, size in zip(center_point_list, rectangle_size_list):
-                width, height = size[0], size[1]
-
-                # Create the center point 3D object
-                center3D = adsk.core.Point3D.create(center_point[0], center_point[1], center_point[2])
-
-                # Calculate the corner point (relative to center)
-                # For an axis-aligned rectangle, corner is (center.x + width/2, center.y + height/2, center.z).
-                corner3D = adsk.core.Point3D.create(
-                    center_point[0] + width / 2.0,
-                    center_point[1] + height / 2.0,
-                    center_point[2]
-                )
-
-                # Create the rectangle using addCenterPointRectangle
-                rectangleLines = targetSketch.sketchCurves.sketchLines.addCenterPointRectangle(center3D, corner3D)
-
-                # The addCenterPointRectangle returns a list of four SketchLine objects.
-                # Typically:
-                #   lines[0]: horizontal line (top or bottom)
-                #   lines[1]: vertical line (left or right)
-                #   lines[2]: horizontal line (the other top/bottom)
-                #   lines[3]: vertical line (the other left/right)
-
-                dimensions = targetSketch.sketchDimensions
-
-                # Dimension the first horizontal line as the 'width'
-                horizontalLine = rectangleLines[0]
-                dimPointWidth = adsk.core.Point3D.create(center_point[0], center_point[1] - 1, center_point[2])
-                dimWidth = dimensions.addDistanceDimension(
-                    horizontalLine.startSketchPoint,
-                    horizontalLine.endSketchPoint,
-                    adsk.fusion.DimensionOrientations.HorizontalDimensionOrientation,
-                    dimPointWidth
-                )
-
-                # Dimension the first vertical line as the 'height'
-                verticalLine = rectangleLines[1]
-                dimPointHeight = adsk.core.Point3D.create(center_point[0] - 1, center_point[1], center_point[2])
-                dimHeight = dimensions.addDistanceDimension(
-                    verticalLine.startSketchPoint,
-                    verticalLine.endSketchPoint,
-                    adsk.fusion.DimensionOrientations.VerticalDimensionOrientation,
-                    dimPointHeight
-                )
-
-                # Optionally set exact values of the parameters to fix the rectangle size
-                # Uncomment if you need these to be parametric at exactly 'width' and 'height':
-                #
-                # dimWidth.parameter.value = width
-                # dimHeight.parameter.value = height
-
-            return f'Rectangles created in sketch "{sketch_name}" using center-point rectangle method.'
-
-        except Exception as e:
-
-            return f'Error: Failed to create rectangles in sketch: {e}'
-
-    def create_circles_in_sketch(self, component_name:str="comp1", sketch_name:str="sketch1", point_list:str=[[1,1,0]], circle_diameter_list:list=[10]):
+    def create_circles_in_sketch(self, component_name:str="comp1", sketch_name:str="Sketch1", point_list:str=[[1,1,0]], circle_diameter_list:list=[10]):
         """
         {
           "name": "create_circles_in_sketch",
@@ -1285,14 +1223,15 @@ class Sketches(FusionSubmodule):
 
             # Access the active design
             app = adsk.core.Application.get()
-            ui = app.userInterface
+            #ui = app.userInterface
             design = adsk.fusion.Design.cast(app.activeProduct)
             rootComp = design.rootComponent
 
             # use base class method
-            targetComponent = self._find_component_by_name(component_name)
+            targetComponent, errors = self._find_component_by_name(component_name)
             if not targetComponent:
-                return f'Error: Component "{component_name}" not found.'
+                return errors
+
 
             # Find the target sketch
             targetSketch = None
@@ -1394,15 +1333,14 @@ class Sketches(FusionSubmodule):
 
             design = adsk.fusion.Design.cast(product)
 
-            # Locate the target component by name (assuming you have a helper method).
-            targetComponent = self._find_component_by_name(component_name)
+            targetComponent, errors = self._find_component_by_name(component_name)
             if not targetComponent:
-                return f'Error: Component "{component_name}" not found.'
+                return errors
 
-            # Locate the specified sketch by name.
-            targetSketch = self._find_sketch_by_name(targetComponent, sketch_name)
+            targetSketch, errors = self._find_sketch_by_name(targetComponent, sketch_name)
             if not targetSketch:
-                return f'Error: Sketch "{sketch_name}" not found in component "{component_name}".'
+                return errors
+
 
             # Validate parameters.
             if number_of_sides < 3:
@@ -1430,11 +1368,6 @@ class Sketches(FusionSubmodule):
             # - radius: float (distance from center to vertex if isInscribed = True, else to side midpoint)
             # - isInscribed: bool
 
-            print("before pg")
-            for index, p in enumerate(targetSketch.sketchPoints):
-                print(f"{index}, {p}, {p.geometry.asArray()}")
-
-            print("after pg")
             scribed_polygon = sketchLines_var.addScribedPolygon(
                 centerPnt,
                 number_of_sides,
@@ -1442,15 +1375,6 @@ class Sketches(FusionSubmodule):
                 radius,
                 is_inscribed
             )
-
-
-            for index, l in enumerate(scribed_polygon):
-                print(f"{index}, {l}, {l.geometry}")
-
-
-            for index, p in enumerate(targetSketch.sketchPoints):
-                print(f"{index}, {p}, {p.geometry.asArray()}")
-
 
 
             n_sketch_points = targetSketch.sketchPoints.count
@@ -1495,6 +1419,391 @@ class Sketches(FusionSubmodule):
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    def create_spline_in_sketch(self, component_name: str = "comp1", sketch_name: str = "Sketch1", point_list: list = [[0, 0, 0], [1, 1, 0], [2, 0, 0]]):
+        """
+        {
+          "name": "create_spline_in_sketch",
+          "description": "Creates a spline in a specified sketch within a specified component in Fusion 360. The spline is defined by an array of points (each an [x, y, z] coordinate in centimeters) that the spline will interpolate through. This function finds the target component and sketch, then constructs a fitted spline based on the provided points.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "component_name": {
+                "type": "string",
+                "description": "The name of the component in the current design."
+              },
+              "sketch_name": {
+                "type": "string",
+                "description": "The name of the sketch inside the specified component."
+              },
+              "point_list": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "A list representing an XYZ point (x, y, z) on the sketch plane."
+                },
+                "description": "An array of points through which the spline will be drawn. The unit for point coordinates is centimeters."
+              }
+            },
+            "required": ["component_name", "sketch_name", "point_list"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating the success or failure of the spline creation."
+            }
+          }
+        }
+        """
+
+        try:
+            # If point_list is passed as a JSON string, convert it to a list
+            if isinstance(point_list, str):
+                point_list = json.loads(point_list)
+
+            # Access the active Fusion 360 design
+            app = adsk.core.Application.get()
+            ui = app.userInterface
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            if not design:
+                return "Error: No active Fusion 360 design found."
+
+            root_comp = design.rootComponent
+
+            targetComponent, errors = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return errors
+
+            targetSketch, errors = self._find_sketch_by_name(targetComponent, sketch_name)
+            if not targetSketch:
+                return errors
+
+            # Create an object collection for the spline points
+            points_collection = adsk.core.ObjectCollection.create()
+            for pt in point_list:
+                if len(pt) != 3:
+                    return "Error: Each point in point_list must have three coordinates (x, y, z)."
+                point3D = adsk.core.Point3D.create(pt[0], pt[1], pt[2])
+                points_collection.add(point3D)
+
+            # Create the spline in the sketch using the fitted spline method
+            spline = targetSketch.sketchCurves.sketchFittedSplines.add(points_collection)
+
+            return f"Spline created in sketch '{sketch_name}' of component '{component_name}'."
+        except Exception as e:
+            return f"Error: Failed to create spline in sketch: {e}"
+
+
+    def create_rectangles_in_sketch(self, component_name: str="comp1", sketch_name: str="Sketch1", center_point_list: list=[[1,1,0]], rectangle_size_list:list=[[2,4]]):
+        """
+        {
+          "name": "create_rectangles_in_sketch",
+          "description": "Creates rectangles in a specified sketch within a specified component in Fusion 360 using addCenterPointRectangle. Each rectangle is defined by a center point (from center_point_list) and a size (width, height) from rectangle_size_list. A corner point is calculated automatically from the center and half the width and height, and two distance dimensions (horizontal and vertical) are applied. The number of elemenets in center_point_list must be equal to the number of elements in rectangle_size_lis. The unit for center_point_list and rectangle_size_list is centimeters",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "component_name": {
+                "type": "string",
+                "description": "The name of the component in the current design."
+              },
+              "sketch_name": {
+                "type": "string",
+                "description": "The name of the sketch inside the specified component."
+              },
+              "center_point_list": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "description": "A list representing an XYZ point (x, y, z)."
+                },
+                "description": "A list of center points in 3D space for each rectangle to be created."
+              },
+              "rectangle_size_list": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "description": "A list representing the width and height of the rectangle."
+                },
+                "description": "A list of [width, height] pairs, corresponding to each center point in center_point_list."
+              }
+            },
+            "required": ["component_name", "sketch_name", "center_point_list", "rectangle_size_list"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating the success or failure of the rectangle creation."
+            }
+          }
+        }
+        """
+
+        try:
+
+
+            # if dim list passed in as string from user input box
+            if isinstance(center_point_list, str):
+                center_point_list = json.loads(center_point_list)
+            if isinstance(rectangle_size_list, str):
+                rectangle_size_list = json.loads(rectangle_size_list)
+
+
+            # Validate input lengths
+            if len(center_point_list) != len(rectangle_size_list):
+
+                center_point_len = len(center_point_list)
+                rectangle_size_len = len(rectangle_size_list)
+
+                message = f"The lengths of center_point_list ({center_point_len}) and rectangle_size_list ({rectangle_size_len}) must be equal."
+
+                return message
+
+            # Access the active design
+            app = adsk.core.Application.get()
+            #ui = app.userInterface
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            if not design:
+                return "Error: No active Fusion 360 design found."
+
+            root_comp = design.rootComponent
+
+            # Find the target component
+            targetComponent = None
+            for occ in root_comp.allOccurrences:
+                if occ.component.name == component_name:
+                    targetComponent = occ.component
+                    break
+
+            # use base class method
+            targetComponent, errors = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return errors
+
+
+            targetSketch, errors = self._find_sketch_by_name(targetComponent, sketch_name)
+            if not targetSketch:
+                return errors
+
+            # Create rectangles in the sketch
+            for center_point, size in zip(center_point_list, rectangle_size_list):
+                width, height = size[0], size[1]
+
+                # Create the center point 3D object
+                center3D = adsk.core.Point3D.create(center_point[0], center_point[1], center_point[2])
+
+                # Calculate the corner point (relative to center)
+                # For an axis-aligned rectangle, corner is (center.x + width/2, center.y + height/2, center.z).
+                corner3D = adsk.core.Point3D.create(
+                    center_point[0] + width / 2.0,
+                    center_point[1] + height / 2.0,
+                    center_point[2]
+                )
+
+                # Create the rectangle using addCenterPointRectangle
+                rectangleLines = targetSketch.sketchCurves.sketchLines.addCenterPointRectangle(center3D, corner3D)
+
+                # The addCenterPointRectangle returns a list of four SketchLine objects.
+                # Typically:
+                #   lines[0]: horizontal line (top or bottom)
+                #   lines[1]: vertical line (left or right)
+                #   lines[2]: horizontal line (the other top/bottom)
+                #   lines[3]: vertical line (the other left/right)
+
+                dimensions = targetSketch.sketchDimensions
+
+                # Dimension the first horizontal line as the 'width'
+                horizontalLine = rectangleLines[0]
+                dimPointWidth = adsk.core.Point3D.create(center_point[0], center_point[1] - 1, center_point[2])
+                dimWidth = dimensions.addDistanceDimension(
+                    horizontalLine.startSketchPoint,
+                    horizontalLine.endSketchPoint,
+                    adsk.fusion.DimensionOrientations.HorizontalDimensionOrientation,
+                    dimPointWidth
+                )
+
+                # Dimension the first vertical line as the 'height'
+                verticalLine = rectangleLines[1]
+                dimPointHeight = adsk.core.Point3D.create(center_point[0] - 1, center_point[1], center_point[2])
+                dimHeight = dimensions.addDistanceDimension(
+                    verticalLine.startSketchPoint,
+                    verticalLine.endSketchPoint,
+                    adsk.fusion.DimensionOrientations.VerticalDimensionOrientation,
+                    dimPointHeight
+                )
+
+                # Optionally set exact values of the parameters to fix the rectangle size
+                # Uncomment if you need these to be parametric at exactly 'width' and 'height':
+                #
+                # dimWidth.parameter.value = width
+                # dimHeight.parameter.value = height
+
+            return f'Rectangles created in sketch "{sketch_name}" using center-point rectangle method.'
+
+        except Exception as e:
+
+            return f'Error: Failed to create rectangles in sketch: {e}'
+
+
+    def _create_rectangles_in_sketch(self, component_name: str="comp1", sketch_name: str="Sketch1", center_point_list: list=[[1,1,0]], rectangle_size_list:list=[[2,4]]):
+        """
+            {
+              "name": "create_rectangles_in_sketch",
+              "description": "Creates rectangles in a specified sketch within a specified component in Fusion 360 using addCenterPointRectangle. Each rectangle is defined by a center point (from center_point_list) and a size (width, height) from rectangle_size_list. A corner point is calculated automatically from the center and half the width and height, and two distance dimensions (horizontal and vertical) are applied. The number of elemenets in center_point_list must be equal to the number of elements in rectangle_size_lis. The unit for center_point_list and rectangle_size_list is centimeters",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "component_name": {
+                    "type": "string",
+                    "description": "The name of the component in the current design."
+                  },
+                  "sketch_name": {
+                    "type": "string",
+                    "description": "The name of the sketch inside the specified component."
+                  },
+                  "center_point_list": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 3,
+                      "maxItems": 3,
+                      "description": "A list representing an XYZ point (x, y, z)."
+                    },
+                    "description": "A list of center points in 3D space for each rectangle to be created."
+                  },
+                  "rectangle_size_list": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2,
+                      "description": "A list representing the width and height of the rectangle."
+                    },
+                    "description": "A list of [width, height] pairs, corresponding to each center point in center_point_list."
+                  }
+                },
+                "required": ["component_name", "sketch_name", "center_point_list", "rectangle_size_list"],
+                "returns": {
+                  "type": "string",
+                  "description": "A message indicating the success or failure of the rectangle creation."
+                }
+              }
+            }
+        """
+
+        try:
+
+
+            # if dim list passed in as string from user input box
+            if isinstance(center_point_list, str):
+                center_point_list = json.loads(center_point_list)
+            if isinstance(rectangle_size_list, str):
+                rectangle_size_list = json.loads(rectangle_size_list)
+
+
+            # Validate input lengths
+            if len(center_point_list) != len(rectangle_size_list):
+
+                center_point_len = len(center_point_list)
+                rectangle_size_len = len(rectangle_size_list)
+
+                message = f"The lengths of center_point_list ({center_point_len}) and rectangle_size_list ({rectangle_size_len}) must be equal."
+
+                return message
+
+            # Access the active design
+            app = adsk.core.Application.get()
+            ui = app.userInterface
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            if not design:
+                return "Error: No active Fusion 360 design found."
+
+            root_comp = design.rootComponent
+
+            # use base class method
+            targetComponent, errors = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return errors
+
+            targetSketch, errors = self._find_sketch_by_name(targetComponent, sketch_name)
+            if not targetSketch:
+                return errors
+
+            # Create rectangles in the sketch
+            for center_point, size in zip(center_point_list, rectangle_size_list):
+                width, height = size[0], size[1]
+
+                # Create the center point 3D object
+                center3D = adsk.core.Point3D.create(center_point[0], center_point[1], center_point[2])
+
+                # Calculate the corner point (relative to center)
+                # For an axis-aligned rectangle, corner is (center.x + width/2, center.y + height/2, center.z).
+                corner3D = adsk.core.Point3D.create(
+                    center_point[0] + width / 2.0,
+                    center_point[1] + height / 2.0,
+                    center_point[2]
+                )
+
+                # Create the rectangle using addCenterPointRectangle
+                rectangleLines = targetSketch.sketchCurves.sketchLines.addCenterPointRectangle(center3D, corner3D)
+
+                # The addCenterPointRectangle returns a list of four SketchLine objects.
+                # Typically:
+                #   lines[0]: horizontal line (top or bottom)
+                #   lines[1]: vertical line (left or right)
+                #   lines[2]: horizontal line (the other top/bottom)
+                #   lines[3]: vertical line (the other left/right)
+
+                dimensions = targetSketch.sketchDimensions
+
+                # Dimension the first horizontal line as the 'width'
+                horizontalLine = rectangleLines[0]
+                dimPointWidth = adsk.core.Point3D.create(center_point[0], center_point[1] - 1, center_point[2])
+                dimWidth = dimensions.addDistanceDimension(
+                    horizontalLine.startSketchPoint,
+                    horizontalLine.endSketchPoint,
+                    adsk.fusion.DimensionOrientations.HorizontalDimensionOrientation,
+                    dimPointWidth
+                )
+
+                # Dimension the first vertical line as the 'height'
+                verticalLine = rectangleLines[1]
+                dimPointHeight = adsk.core.Point3D.create(center_point[0] - 1, center_point[1], center_point[2])
+                dimHeight = dimensions.addDistanceDimension(
+                    verticalLine.startSketchPoint,
+                    verticalLine.endSketchPoint,
+                    adsk.fusion.DimensionOrientations.VerticalDimensionOrientation,
+                    dimPointHeight
+                )
+
+                # Optionally set exact values of the parameters to fix the rectangle size
+                # Uncomment if you need these to be parametric at exactly 'width' and 'height':
+                #
+                # dimWidth.parameter.value = width
+                # dimHeight.parameter.value = height
+
+            return f'Rectangles created in sketch "{sketch_name}" using center-point rectangle method.'
+
+        except Exception as e:
+
+            return f'Error: Failed to create rectangles in sketch: {e}'
+
 
     def create_irregular_polygon_in_sketch(self, parent_component_name:str="comp1", sketch_name:str="Sketch1", point_list:list=[[0,0,0], [0,1,0], [1,2,0]]):
         """
@@ -1541,15 +1850,13 @@ class Sketches(FusionSubmodule):
             design = adsk.fusion.Design.cast(app.activeProduct)
             rootComp = design.rootComponent
 
-            # use base class method
-            parentComponent = self._find_component_by_name(parent_component_name)
+            parentComponent, errors = self._find_component_by_name(parent_component_name)
             if not parentComponent:
-                return f'Error: Parent component "{parent_component_name}" not found'
+                return errors
 
-            # Find the existing sketch
-            targetSketch = self._find_sketch_by_name(parentComponent, sketch_name)
+            targetSketch, errors = self._find_sketch_by_name(parentComponent, sketch_name)
             if not targetSketch:
-                return f'Error: Sketch "{sketch_name}" not found in component "{parent_component_name}"'
+                return errors
 
 
             # Add points and lines to the sketch to form the polygon
@@ -1570,12 +1877,15 @@ class Sketches(FusionSubmodule):
         self,
         component_name: str = "comp1",
         sketch_name: str = "Sketch1",
-        geometry_list: list = None
+        geometry_list: list = [
+            { 'object_type': 'arc', 'start': [.5,1,0], 'middle': [.7, .5, 0], 'end': [1,1,0 ] },
+            { 'object_type': 'line', 'start': [1,1,0], 'middle': [0,0,0], 'end': [1.2,2,0 ] },
+        ]
     ) -> str:
         """
             {
               "name": "create_arcs_and_lines_in_sketch",
-              "description": "Creates SketchArcs (by three points) and SketchLines (by two points) in the specified sketch. This allows complex profiles made of arcs and lines.",
+              "description": "Creates SketchArcs (by three points) and SketchLines (by two points) in the specified sketch. This allows complex profiles made of arcs and lines. For sketch lines, the middle point will be ignored",
               "parameters": {
                 "type": "object",
                 "properties": {
@@ -1603,7 +1913,8 @@ class Sketches(FusionSubmodule):
                           "description": "[x,y,z] for the start point of the geometry in the sketch plane coordinate system (Z=0)."
                         },
                         "middle": {
-                          "type": ["array","null"],
+                          "type": "array",
+                          "items": { "type": "number" },
                           "description": "For arcs, the 3D point on the arc. For lines, typically null or ignored."
                         },
                         "end": {
@@ -1624,7 +1935,6 @@ class Sketches(FusionSubmodule):
               }
             }
         """
-        import adsk.core, adsk.fusion, traceback
 
         try:
             if not geometry_list or not isinstance(geometry_list, list):
@@ -1792,15 +2102,14 @@ class CreateObjects(FusionSubmodule):
             app = adsk.core.Application.get()
             design = adsk.fusion.Design.cast(app.activeProduct)
 
-            # Locate the target component by name (using a local helper method).
-            targetComponent = self._find_component_by_name(component_name)
+            targetComponent, errors = self._find_component_by_name(component_name)
             if not targetComponent:
-                return f'Error: Component "{component_name}" not found.'
+                return errors
 
             # Locate the sketch by name (within the target component).
-            targetSketch = self._find_sketch_by_name(targetComponent, sketch_name)
+            targetSketch, errors = self._find_sketch_by_name(targetComponent, sketch_name)
             if not targetSketch:
-                return f'Error: Sketch "{sketch_name}" not found in component "{component_name}".'
+                return errors
 
             if not targetSketch.profiles or targetSketch.profiles.count == 0:
                 return f'Error: Sketch "{sketch_name}" has no profiles to extrude.'
@@ -1949,13 +2258,14 @@ class CreateObjects(FusionSubmodule):
             if not design:
                 return "Error: No active Fusion 360 design found."
 
-            targetComponent = self._find_component_by_name(component_name)
+            targetComponent, errors = self._find_component_by_name(component_name)
             if not targetComponent:
-                return f'Error: Component "{component_name}" not found.'
+                return errors
 
-            targetSketch = self._find_sketch_by_name(targetComponent, sketch_name)
+            targetSketch, errors = self._find_sketch_by_name(targetComponent, sketch_name)
             if not targetSketch:
-                return f'Error: Sketch "{sketch_name}" not found in component "{component_name}".'
+                return errors
+
 
             if not targetSketch.profiles or targetSketch.profiles.count == 0:
                 return f"Error: Sketch '{sketch_name}' has no profiles."
@@ -1978,8 +2288,6 @@ class CreateObjects(FusionSubmodule):
             if revolve_axis not in ["X", "Y", "Z"]:
 
                 return f"Error: revolve_axis '{revolve_axis}' is invalid. Must be 'X', 'Y', or 'Z'."
-
-
 
             # Define two points in the chosen axis direction (in the component's coordinate system)
             #p0 = adsk.core.Point3D.create(0, 0, 0)
@@ -2051,9 +2359,9 @@ class CreateObjects(FusionSubmodule):
             design = adsk.fusion.Design.cast(app.activeProduct)
             rootComp = design.rootComponent
 
-            parentComponent = self._find_component_by_name(parent_component_name)
+            parentComponent, errors = self._find_component_by_name(parent_component_name)
             if not parentComponent:
-                return f'Error: Parent component "{parent_component_name}" not found'
+                return errors
 
             # Create a new component
             newOccurrence = parentComponent.occurrences.addNewComponent(adsk.core.Matrix3D.create())
@@ -2145,115 +2453,6 @@ class CreateObjects(FusionSubmodule):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
-    ### ================== IMPORT ============================ ###
-    def import_fusion_component(self, parent_component_name: str, file_path: str) -> str:
-        """
-            {
-              "name": "import_fusion_component",
-              "description": "Imports a FusionArchive file into a specified parent component within the current Fusion 360 design.",
-              "parameters": {
-                "type": "object",
-                "properties": {
-                  "parent_component_name": {
-                    "type": "string",
-                    "description": "The name of the parent component in the current design where the FusionArchive file will be imported."
-                  },
-                  "file_path": {
-                    "type": "string",
-                    "description": "The local file path to the FusionArchive file to be imported."
-                  }
-                },
-                "required": ["parent_component_name", "file_path"],
-                "returns": {
-                  "type": "string",
-                  "description": "A message indicating the success or failure of the import operation."
-                }
-              }
-            }
-        """
-        try:
-            # Access the active design
-            app = adsk.core.Application.get()
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            rootComp = design.rootComponent
-
-            # use base class method
-            parentComponent = self._find_component_by_name(parent_component_name)
-            if not targetComponent:
-                return f'Parent component "{parent_component_name}" not found'
-
-            # Access the import manager and create import options
-            importManager = app.importManager
-            fusionArchiveOptions = importManager.createFusionArchiveImportOptions(file_path)
-
-            # Import the FusionArchive file into the parent component
-            importManager.importToTarget(fusionArchiveOptions, parentComponent)
-
-            return f'FusionArchive file imported into component "{parent_component_name}"'
-
-        except Exception as e:
-            return f'Failed to import FusionArchive file: {e}'
-
-    def import_dxf_to_component(self, target_component : str, dxf_file_path: str):
-        """
-            {
-              "name": "import_dxf_to_component",
-              "description": "Imports a DXF file into a specified target component on its XY plane in Fusion 360. The function renames the new sketch to match the name of the DXF file, excluding the file extension.",
-
-              "parameters": {
-                "type": "object",
-                "properties": {
-                  "target_component": {
-                    "type": "string",
-                    "description": "The target component in Fusion 360 where the DXF file will be imported."
-                  },
-                  "dxf_file_path": {
-                    "type": "string",
-                    "description": "The file path of the DXF file to be imported."
-                  }
-                },
-                "required": ["target_component", "dxf_file_path"]
-              }
-            }
-        """
-
-        newSketch = None
-        try:
-            # Check if target_component is a valid Fusion 360 Component object
-            if not isinstance(self, target_component, adsk.fusion.Component):
-                raise ValueError("target_component must be a fusion 360 Component object")
-
-            app = adsk.core.Application.get()
-
-            # Access the import manager
-            importManager = app.importManager
-
-            # Get the XY plane of the target component
-            xyPlane = target_component.xYConstructionPlane
-
-            # Create DXF import options
-            dxfOptions = importManager.createDXF2DImportOptions(dxf_file_path, xyPlane)
-
-            # Import the DXF file into the target component
-            importManager.importToTarget(dxfOptions, target_component)
-
-            # Extract the file name without extension
-            file_name = os.path.splitext(os.path.basename(dxf_file_path))[0]
-
-            # Find the newly created sketch by default name "0" and rename it
-            for sketch in target_component.sketches:
-                if sketch.name == "0":
-                    sketch.name = file_name
-                    newSketch = sketch
-                    break
-
-        except:
-            if ui:
-                ui.messageBox('Error: Failed to import DXF file:\n{}'.format(traceback.format_exc()))
-
-
-        return newSketch
-
 
 
     def copy_component_as_new(self, source_component_name: str="comp1", target_parent_component_name: str="comp_container", new_component_name: str="new_comp_1") -> str:
@@ -2292,15 +2491,13 @@ class CreateObjects(FusionSubmodule):
             if not design:
                 return "Error: No active Fusion 360 design found."
 
-            # Locate the source component
-            sourceComp = self._find_component_by_name(source_component_name)
-            if not sourceComp:
-                return f'Error: Source component "{source_component_name}" not found.'
-
-            # Locate the target parent component
-            targetParentComp = self._find_component_by_name(target_parent_component_name)
+            sourceComp, sourceComp = self._find_component_by_name(source_component_name)
             if not targetParentComp:
-                return f'Error: Parent component "{target_parent_component_name}" not found.'
+                return errors
+
+            targetParentComp, errors = self._find_component_by_name(target_parent_component_name)
+            if not targetParentComp:
+                return errors
 
             # Create a new, independent copy of the source component
             transform = adsk.core.Matrix3D.create()  # Identity transform
@@ -2317,9 +2514,228 @@ class CreateObjects(FusionSubmodule):
 
 
 
+
 class NonCad(FusionSubmodule):
 
-    def set_occurrence_grounded(self, occurrence_name: str, grounded: bool = True) -> str:
+    def set_object_values(self, object_array:list=[
+
+            {"component_name": "comp1",
+             "object_type":"sketches",
+             "object_name":"Sketch1",
+             "action": "isLightBulbOn", "value": "true"
+             },
+
+            {"component_name": "comp1",
+             "object_type":"bRepBodies",
+             "object_name":"Body1",
+             "action": "appearance", "value": "Paint - Enamel Glossy (Green)"
+
+             },
+            {"component_name": "comp1",
+             "object_type":"bRepBodies",
+             "object_name":"Body1",
+             "action": "opacity", "value": 1
+             },
+
+            {"component_name": "GPTEST2 v1",
+             "object_type":"occurrences",
+             "object_name":"comp1:1",
+             "action": "isLightBulbOn", "value": "true"
+             },
+
+
+
+    ] ) -> str:
+        """
+        {
+            "name": "set_object_values",
+            "description": "Sets object properties for core object visible in the browser tree, such as occurrences, bodies, sketches, joints, jointOrigins, etc.. When setting visibility (isLightBulbOn) the value should be a bool",
+            "parameters": {
+                "type": "object",
+                "properties": {
+
+                    "object_array": {
+                        "type": "array",
+                        "description": "Array of objects to set value or perfom action",
+
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "component_name": {
+                                    "type": "string",
+                                    "description": "name of the parent component containing the object"
+                                },
+                                "object_type": {
+                                    "type": "string",
+                                    "description": "type of object to delete",
+                                    "enum": ["sketches", "bRepBodies", "meshBodies", "joints", "jointOrigins", "occurrences", "rigidGroups" ]
+                                },
+                                "object_name": {
+                                    "type": "string",
+                                    "description": "The name of the object to delete"
+                                },
+
+                                "action": {
+                                    "type": "string",
+                                    "description": "action to perform",
+                                    "enum": [
+                                        "isLightBulbOn",
+                                        "opacity",
+                                        "material",
+                                        "appearance" ]
+                                },
+                                "value": {
+                                    "type": "string",
+                                    "description": "action to perform"
+                                }
+
+                            },
+
+                            "required": ["component_name", "object_type", "object_name", "action", "value"]
+                        }
+
+                    }
+                },
+
+                "required": ["object_array"],
+                "returns": {
+                    "type": "string",
+                    "description": "A message indicating success or failure of the options"
+                }
+            }
+        }
+
+        """
+
+        try:
+            # Access the active design.
+            app = adsk.core.Application.get()
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            rootComp = design.rootComponent
+
+            # check arg type
+            if not isinstance(object_array, list):
+                return "Error: object_array must be an array/ list"
+
+            object_enums = [
+                "sketches",
+                "bRepBodies",
+                "meshBodies",
+                "joints",
+                "jointOrigins",
+                "occurrences",
+                "rigidGroups",
+
+                # TODO
+                "isBodiesFolderLightBulbOn",
+                "isConstructionFolderLightBulbOn"
+
+
+            ]
+
+            # add object to delete to dict, faster this way
+            action_dict = {}
+
+            results = []
+            # jonied as string and returned
+            # items in array, each representing a delete task
+            for object_dict in object_array:
+                component_name = object_dict.get("component_name")
+                object_type = object_dict.get("object_type")
+                object_name = object_dict.get("object_name")
+                action = object_dict.get("action")
+                value = object_dict.get("value")
+
+                # all objects have a parent/target component
+                targetComponent, errors = self._find_component_by_name(component_name)
+                print(dir(targetComponent))
+
+                if not targetComponent:
+                    # if results, add error to return list
+                    results.append(errors)
+                    continue
+
+                # comp.sketches, comp.bodies, comp.joints etc
+                object_class = getattr(targetComponent, object_type, None)
+
+                # check if delete object class list exists
+                if object_class == None:
+                    results.append(f"Error: Component {component_name} has not attribute '{object_type}'.")
+                    continue
+
+                if hasattr(object_class, "__iter__"):
+                    # check that attr has 'itemByName' method before calling it
+                    if hasattr(object_class, "itemByName") == False:
+                        errors = f"Error: Component {component_name}.{object_type} has no method 'itemByName'."
+                        results.append(errors)
+                        continue
+                    # select object by name, sketch, body, joint, etc
+                    target_object = object_class.itemByName(object_name)
+                else:
+                    target_class = target_object
+
+                # check if item by name is None
+                if target_object == None:
+                    errors = f"Error: Component {component_name}: {object_type} has no item {object_name}."
+                    available_objects = [o.name for o in object_class]
+                    errors += f" Available objects in {component_name}.{object_type}: {available_objects}"
+                    results.append(errors)
+                    continue
+
+
+                # check if item has the associated action attribute
+                if hasattr(target_object, action) == False:
+                    errors = f"Error: Component {component_name}.{object_type} object {object_name} has no attribute {action}."
+                    results.append(errors)
+                    continue
+
+                object_action_dict = {
+                    "target_object": target_object,
+                    "action": action,
+                    "value": value
+                }
+
+                action_dict[f"{component_name}:{object_type}:{target_object.name}:{action}"] = object_action_dict 
+
+                #results.append(f'Added {component_name}.{object_type} "{target_object.name}" to delete list.')
+
+
+            #if len(list(delete_dict.keys())) == 0:
+            if len(action_dict) == 0:
+                results.append(f"No objects to delete.")
+
+            for k, v in action_dict.items():
+
+                target_object = v["target_object"]
+                action = v["action"]
+                value = v["value"]
+
+                if value.lower() == "true":
+                    value = True
+                elif value.lower() == "false":
+                    value = False
+
+                print(action)
+                set_result = setattr(target_object, action, value)
+                results.append(f"Set {target_object} {action} to {value}: {set_result}")
+
+
+            results.append(f"Success")
+
+            return "\n".join(results).strip()
+
+        except:
+            return f'Error: Failed to modify objects:\n{traceback.format_exc()}'
+
+
+
+
+
+
+
+
+
+    def _set_occurrence_grounded(self, occurrence_name: str, grounded: bool = True) -> str:
         """
         {
           "name": "set_occurrence_grounded",
@@ -2357,10 +2773,9 @@ class NonCad(FusionSubmodule):
             design = adsk.fusion.Design.cast(product)
             root_comp = design.rootComponent
 
-            targetOccurrence = self._find_occurrence_by_name(occurrence_name)
-
+            targetOccurrence, errors = self._find_occurrence_by_name(occurrence_name)
             if not targetOccurrence:
-                return f"Error: Could not find occurrence {occurrence_name} in the root assembly."
+                return errors
 
             # Set isGrounded
             #targetOccurrence.isGrounded = grounded
@@ -2477,26 +2892,31 @@ class NonCad(FusionSubmodule):
         """
 
         try:
-            targetComponent = self._find_component_by_name(component_name)
+            targetComponent, errors = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return errors
+
             # Set the new name for the component
             targetComponent.name = new_name
             return new_name
+
         except Exception as e:
             return 'Error: Failed to rename the component:\n{}'.format(new_name)
 
-    def set_appearance_on_components(
-        self, appearance_updates: list = [{"component_name": "comp1","appearance_name":"Paint - Enamel Glossy (Green)"}]) -> str:
+
+    def _set_appearance_on_occurrences(
+        self, appearance_updates: list = [{"occurrence_name": "comp1:1","appearance_name":"Paint - Enamel Glossy (Green)"}]) -> str:
 
         """
             {
-              "name": "set_appearance_on_components",
-              "description": "Sets the appearance on a list of components. Each item in appearance_updates is {'component_name': <COMPONENT_NAME>, 'appearance_name': <APPEARANCE_NAME>}.",
+              "name": "set_appearance_on_occurrences",
+              "description": "Sets the appearance on a list of occurrence. Each item in appearance_updates is {'occurrence_name': <occurrence_name>, 'appearance_name': <appearance_name>}.",
               "parameters": {
                 "type": "object",
                 "properties": {
                   "appearance_updates": {
                     "type": "array",
-                    "description": "An array of objects with the form {'component_name': <COMPONENT_NAME>, 'appearance_name': <APPEARANCE_NAME>}.",
+                    "description": "An array of objects with the form {'occurrence_name': <occurrence_name>, 'appearance_name': <appearance_name>}.",
                     "items": {
                       "type": "object",
                       "properties": {
@@ -2507,22 +2927,23 @@ class NonCad(FusionSubmodule):
                           "type": "string"
                         }
                       },
-                      "required": ["component_name", "appearance_name"]
+                      "required": ["occurrence_name", "appearance_name"]
                     }
                   }
                 },
                 "required": ["appearance_updates"],
                 "returns": {
                   "type": "string",
-                  "description": "A summary message about which components were updated or any errors encountered."
+                  "description": "A summary message about which occurrence were updated or any errors encountered."
                 }
               }
             }
         """
 
+        print("abc")
         try:
             if not appearance_updates or not isinstance(appearance_updates, list):
-                return "Error: Must provide an array of updates in the form [{'component_name': '...', 'appearance_name': '...'}, ...]."
+                return "Error: Must provide an array of updates in the form [{'occurrence_name': '...', 'appearance_name': '...'}, ...]."
 
             app = adsk.core.Application.get()
             if not app:
@@ -2538,8 +2959,6 @@ class NonCad(FusionSubmodule):
             # A helper function to find an appearance by name in the design
             # (Optionally search the appearance libraries if not found in design).
             def find_appearance_by_name(appearance_name: str):
-                print(appearance_name)
-
                 # 1) Check the design's local appearances
                 local_appearance = design.appearances.itemByName(appearance_name)
                 if local_appearance:
@@ -2562,7 +2981,6 @@ class NonCad(FusionSubmodule):
                 return None
 
             results = []
-
             # Process each update item
             for update in appearance_updates:
                 # Validate each item in the array
@@ -2570,71 +2988,62 @@ class NonCad(FusionSubmodule):
                     results.append("Error: Appearance update must be a dictionary.")
                     continue
 
-                comp_name = update.get("component_name")
+                occ_name = update.get("occurrence_name")
                 app_name = update.get("appearance_name")
-                if not comp_name or not app_name:
-                    results.append(f"Error: Missing component_name or appearance_name in {update}.")
+
+                if not occ_name or not app_name:
+                    results.append(f"Error: Missing occurrence_name or appearance_name in {update}.")
+                    print("contine")
                     continue
 
                 # Find the appearance by name
                 appearance = find_appearance_by_name(app_name)
+
                 if not appearance:
                     results.append(f"Error: Appearance '{app_name}' not found in design or libraries.")
                     continue
 
-                # Find all occurrences that reference this component name
-                #self._find_component_by_name(component_name)
-
-                found_occurrences = []
-                for occ in root_comp.allOccurrences:
-                    print(occ.name)
-                    if occ.component.name == comp_name:
-                        found_occurrences.append(occ)
-
                 #  in case occurrences was passed in
-                if not found_occurrences:
-                    found_occurrences.append(self._find_occurrence_by_name(comp_name))
-
-
-                if not found_occurrences:
-                    results.append(f"Error: No occurrences found for component '{comp_name}'.")
+                targetOcc, errors = self._find_occurrence_by_name(occ_name)
+                print(f"targetOcc: {targetOcc}")
+                if not targetOcc:
+                    results.append(f"Error: Appearance '{app_name}' not found in design or libraries.")
                     continue
 
-                # Apply the appearance override to each matching occurrence
-                for occ in found_occurrences:
-                    try:
-                        # Setting the appearance property on an occurrence
-                        occ.appearance = appearance
-                        # If needed, you can enforce override with:
-                        # occ.appearance.isOverride = True
-                    except Exception as e:
-                        results.append(f"Error: error setting appearance on occurrence {occ.name}: {str(e)}")
-                        continue
+                # Setting the appearance property on an occurrence
+                targetOcc.appearance = appearance
+                # If needed, you can enforce override with:
+                #targetOcc.appearance.isOverride = True
+                results.append(f"Appearance set on occurrence: {occ_name}")
 
-                results.append(f"Set appearance '{app_name}' on component '{comp_name}' ({len(found_occurrences)} occurrence(s)).")
 
             return "\n".join(results)
 
         except:
+            print("ERROR")
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    def set_visibility( self, objects_to_set: list = [ {"object_type": "component", "object_name": "comp1", "visible": False} ]) -> str: 
+
+
+
+
+    def _set_visibility( self, objects_to_set: list = [ {"object_type": "occurrence", "object_name": "comp1", "visible": False} ]) -> str: 
         """
             {
               "name": "set_visibility",
-              "description": "Sets the visibility for various Fusion 360 objects (components, bodies, sketches, joints, joint_origins) based on the provided instructions.",
+              "description": "Sets the visibility for various Fusion 360 objects (occurrence, bodies, sketches, joints, joint_origins) based on the provided instructions.",
               "parameters": {
                 "type": "object",
                 "properties": {
                   "objects_to_set": {
                     "type": "array",
-                    "description": "Array of items specifying object type, name, and visibility. Example: [{'object_type': 'component', 'object_name': 'comp1', 'visible': True}, ...]",
+                    "description": "Array of items specifying object type, name, and visibility. Example: [{'object_type': 'occurrence', 'object_name': 'comp1:1', 'visible': True}, ...]",
                     "items": {
                       "type": "object",
                       "properties": {
                         "object_type": {
                           "type": "string",
-                          "description": "'component', 'body', 'sketch', 'joint', 'joint_origin'."
+                          "description": "'occurrence', 'body', 'sketch', 'joint', 'joint_origin'."
                         },
                         "object_name": {
                           "type": "string",
@@ -2682,6 +3091,8 @@ class NonCad(FusionSubmodule):
                     collect_all_components(occ.component)
 
             collect_all_components(root_comp)
+
+
 
             # Helper: gather ALL bodies and sketches across all components
             all_bodies = []
@@ -2822,6 +3233,7 @@ class NonCad(FusionSubmodule):
         }
         """
 
+        return ""
         try:
             app = adsk.core.Application.get()
             if not app:
@@ -2900,14 +3312,14 @@ class ModifyObjects(FusionSubmodule):
                 return "Error: No active Fusion 360 design found."
 
             # Locate the source component using a helper method (assumed to exist in your environment)
-            sourceComp = self._find_component_by_name(source_component_name)
-            if not sourceComp:
-                return f'Error: Source component "{source_component_name}" not found.'
 
-            # Locate the target parent component
-            targetParentComp = self._find_component_by_name(target_parent_component_name)
+            sourceComp, errors = self._find_component_by_name(source_component_name)
+            if not sourceComp:
+                return errors
+
+            targetParentComp, errors = self._find_component_by_name(target_parent_component_name)
             if not targetParentComp:
-                return f'Error: Parent component "{target_parent_component_name}" not found.'
+                return errors
 
             # Create a new occurrence of the source component in the target parent component
             transform = adsk.core.Matrix3D.create()  # Identity transform (no rotation, no translation)
@@ -2978,19 +3390,15 @@ class ModifyObjects(FusionSubmodule):
 
             design = adsk.fusion.Design.cast(product)
 
-            # Locate the target component by name.
-            targetComponent = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return f'Error: Component "{component_name}" not found.'
 
-            # Locate the specified body by name within the component.
-            body = None
-            for b in targetComponent.bRepBodies:
-                if b.name == body_name:
-                    body = b
-                    break
+            # find the target component by name (assuming you have a local helper method).
+            targetComponent, errors = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return errors
+
+            body, errors  = self._find_body_by_name(targetComponent, body_name)
             if not body:
-                return f'Error: Body "{body_name}" not found in component "{component_name}".'
+                return errors
 
             # Validate operation_type
             op_type_lower = operation_type.lower()
@@ -3046,12 +3454,12 @@ class ModifyObjects(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    def move_component(self,
+    def move_occurrence(self,
                        occurrence_name: str = "comp1:1",
                        move_position: list = [1.0, 1.0, 0.0]) -> str:
         """
         {
-          "name": "move_component",
+          "name": "move_occurrence",
           "description": "Moves the specified occurrence so that its local origin is placed at the given [x, y, z] point in centimeters.",
           "parameters": {
             "type": "object",
@@ -3095,9 +3503,9 @@ class ModifyObjects(FusionSubmodule):
             # Extract the coordinates (in centimeters)
             x_val, y_val, z_val = move_position
 
-            targetOccurrence = self._find_occurrence_by_name(occurrence_name)
+            targetOccurrence, errors = self._find_occurrence_by_name(occurrence_name)
             if not targetOccurrence:
-                return f"Error: No occurrences found for '{occurrence_name}'."
+                return errors
 
             # Create a transform with the translation [x_val, y_val, z_val].
             transform = adsk.core.Matrix3D.create()
@@ -3118,16 +3526,101 @@ class ModifyObjects(FusionSubmodule):
 
             return (f"Moved occurrence '{occurrence_name}' to "
                     # TODO
-                    f"[{x_val}, {y_val}, {z_val}] cm. Affected {len([targetOccurrence])} occurrence(s).")
+                    f"[{x_val}, {y_val}, {z_val}] cm")
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    def reorient_occurrence(self, occurrence_name: str = "comp1:1", axis: list = [0, 0, 1], target_vector: list = [1, 0, 0]) -> str:
+        """
+        {
+          "name": "reorient_occurrence",
+          "description": "Reorients the specified occurrence by rotating its local orientation so that a given axis is aligned with a specified target vector. Both the axis and target vector should be provided as arrays of three numbers representing 3D directions. The function uses Matrix3D.setToRotateTo to compute the necessary rotation transform.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "occurrence_name": {
+                "type": "string",
+                "description": "Name of the Fusion 360 occurrence to reorient."
+              },
+              "axis": {
+                "type": "array",
+                "description": "A list of three numbers representing the current orientation axis (direction vector) of the occurrence that will be rotated.",
+                "items": { "type": "number" },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "target_vector": {
+                "type": "array",
+                "description": "A list of three numbers representing the target direction for the specified axis.",
+                "items": { "type": "number" },
+                "minItems": 3,
+                "maxItems": 3
+              }
+            },
+            "required": ["occurrence_name", "axis", "target_vector"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating the result of the reorientation operation."
+            }
+          }
+        }
+        """
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            root_comp = design.rootComponent
+
+            # Validate the axis and target_vector parameters: expecting lists of 3 numbers each.
+            if not (isinstance(axis, list) and len(axis) == 3):
+                return "Error: 'axis' must be a list of 3 numbers."
+            if not (isinstance(target_vector, list) and len(target_vector) == 3):
+                return "Error: 'target_vector' must be a list of 3 numbers."
+
+            # Create Vector3D objects from the provided lists.
+            fromVector = adsk.core.Vector3D.create(axis[0], axis[1], axis[2])
+            toVector = adsk.core.Vector3D.create(target_vector[0], target_vector[1], target_vector[2])
+
+            # Create a transformation matrix and set it to rotate from the 'fromVector' to the 'toVector'
+            transform = adsk.core.Matrix3D.create()
+            success = transform.setToRotateTo(fromVector, toVector)
+            if not success:
+                return "Error: Could not compute rotation transform using setToRotateTo."
+
+            # Find the target occurrence using a helper method.
+            targetOccurrence, errors = self._find_occurrence_by_name(occurrence_name)
+            if not targetOccurrence:
+                return f"Error: No occurrence found for '{occurrence_name}'."
+
+            try:
+                targetOccurrence.timelineObject.rollTo(False)
+                targetOccurrence.initialTransform = transform
+            except Exception as e:
+                return f"Error: Could not reorient occurrence '{occurrence_name}'. Reason: {e}"
+
+            timeline = design.timeline
+            timeline.moveToEnd()
+
+            return (f"Reoriented occurrence '{occurrence_name}' such that the axis {axis} is rotated "
+                    f"to align with {target_vector}.")
+        except Exception as e:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
 
     def mirror_body_in_component(
         self,
         component_name: str = "comp1",
         body_name: str = "Body1",
-        operation_type: str = "NewBodyFeatureOperation",
+        operation_type: str = "JoinFeatureOperation",
         mirror_plane: str = "XY"
     ) -> str:
         """
@@ -3183,14 +3676,15 @@ class ModifyObjects(FusionSubmodule):
 
             design = adsk.fusion.Design.cast(product)
 
-            # Locate the target component by name
-            target_comp = self._find_component_by_name(component_name)
-            if not target_comp:
-                return f"Error: Component '{component_name}' not found."
 
-            body_to_mirror = self._find_body_by_name(target_comp, body_name)
+            # Find the target component by name (assuming you have a helper method).
+            targetComponent, errors = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return errors
+
+            body_to_mirror, errors  = self._find_body_by_name(targetComponent, body_name)
             if not body_to_mirror:
-                return f"Error: Body '{body_name}' not found in component '{component_name}'."
+                return errors
 
             # Decide on the mirror plane
             mirror_plane_obj = None
@@ -3198,15 +3692,16 @@ class ModifyObjects(FusionSubmodule):
             # 1) If it's one of 'XY', 'XZ', or 'YZ', use the component's origin planes
             plane_label = mirror_plane.upper().strip()
             if plane_label in ["XY", "XZ", "YZ"]:
-                planes = target_comp.constructionPlanes
+                planes = targetComponent.constructionPlanes
+
                 #TODO
-                origin_planes = target_comp.originConstructionPlanes
+                #origin_planes = target_comp.originConstructionPlanes
                 # originConstructionPlanes has .item(0)=XY, .item(1)=XZ, .item(2)=YZ in typical order
                 # But let's map them carefully:
                 plane_map = {
-                    "XY": origin_planes.item(0),  # Usually the XY plane
-                    "XZ": origin_planes.item(1),  # Usually the XZ plane
-                    "YZ": origin_planes.item(2)   # Usually the YZ plane
+                    "XY": targetComponent.xYConstructionPlane,
+                    "XZ": targetComponent.xZConstructionPlane,
+                    "YZ": targetComponent.yZConstructionPlane,
                 }
                 mirror_plane_obj = plane_map.get(plane_label)
 
@@ -3234,7 +3729,7 @@ class ModifyObjects(FusionSubmodule):
                 return f"Error: Could not obtain a valid mirror plane from '{mirror_plane}'."
 
             # Build the input for the MirrorFeature
-            mirror_feats = target_comp.features.mirrorFeatures
+            mirror_feats = targetComponent.features.mirrorFeatures
             input_entities = adsk.core.ObjectCollection.create()
             input_entities.add(body_to_mirror)
 
@@ -3259,56 +3754,382 @@ class ModifyObjects(FusionSubmodule):
 
 
 
+class ImportExport(FusionSubmodule):
+
+    def list_step_files_in_directory(self) -> str:
+        """
+        {
+          "name": "list_step_files_in_directory",
+          "description": "Recursively navigates a given directory and returns an organized JSON-like object containing the names and full file paths of all STEP files. STEP files are identified by the '.step' or '.stp' extension. The returned structure organizes the files by directory, listing files and nested subdirectories. The root directory path is hard coded by the user",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "returns": {
+              "type": "object",
+              "description": "An organized JSON-like object with keys 'files' and 'subdirectories'. 'files' is a list of objects each containing 'name' and 'path' for STEP files in the current directory, while 'subdirectories' is a dictionary mapping each subdirectory name to its own similar object."
+            }
+          }
+        }
+        """
+
+        try:
+
+            def recursive_scan(current_path):
+                # Initialize the result for the current directory
+                result = {"files": [], "subdirectories": {}}
+                with os.scandir(current_path) as it:
+                    for entry in it:
+                        if entry.is_file():
+                            # Check if file extension is .step or .stp (case-insensitive)
+                            if entry.name.lower().endswith(('.step', '.stp')):
+                                result["files"].append({
+                                    "name": entry.name,
+                                    "path": os.path.abspath(entry.path)
+                                })
+                        elif entry.is_dir():
+                            # Recursively scan subdirectories
+                            result["subdirectories"][entry.name] = recursive_scan(entry.path)
+                return result
+
+            directory_path = config.LOCAL_CAD_PATH
+
+            organized_result = recursive_scan(directory_path)
+
+            return json.dumps(organized_result)
+
+        except Exception as e:
+            return f"Error: Failed to scan local directory: {e}"
+
+    def import_step_file_to_component(self, target_component: str="comp1", file_path: str="paath"):
+        """
+        {
+          "name": "import_step_file_to_component",
+          "description": "Imports a STEP file into a specified target component in Fusion 360. The STEP file is read from the local file path and its geometry is inserted into the target component. This function uses the Fusion 360 import manager to create an import operation.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "target_component": {
+                "type": "string",
+                "description": "The name of the target component in the current design where the STEP file will be imported."
+              },
+              "file_path": {
+                "type": "string",
+                "description": "The local file path of the STEP file to be imported."
+              }
+            },
+            "required": ["target_component", "file_path"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating the success or failure of the STEP file import."
+            }
+          }
+        }
+        """
+        try:
+            # Access the active Fusion 360 design
+            app = adsk.core.Application.get()
+            ui = app.userInterface
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            if not design:
+                return "Error: No active Fusion 360 design found."
+
+            # find the target component by name (assuming you have a local helper method).
+            targetComp, errors = self._find_component_by_name(target_component)
+            if not targetComp:
+                return errors
+
+            # Get the import manager from the application
+            importMgr = app.importManager
+
+            # Create the STEP import options with the provided file path and target component.
+            # Note: The API method createSTEPImportOptions expects a file path and the target component.
+            stepOptions = importMgr.createSTEPImportOptions(file_path)
+            #prevent auto resize
+            stepOptions.isViewFit = False
+
+            # Execute the import operation into the target component
+            importOperation = importMgr.importToTarget(stepOptions, targetComp)
+
+            #camera_ = app.activeViewport.camera
+            #camera_.isFitView = True
+            #app.activeViewport.camera = camera_
+
+            return f"STEP file imported successfully into component '{target_component}'."
+        except Exception as e:
+            return f"Error: Failed to import STEP file: {e}"
+
+    def import_dxf_to_component(self, target_component : str, dxf_file_path: str):
+        """
+            {
+              "name": "import_dxf_to_component",
+              "description": "Imports a DXF file into a specified target component on its XY plane in Fusion 360. The function renames the new sketch to match the name of the DXF file, excluding the file extension.",
+
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "target_component": {
+                    "type": "string",
+                    "description": "The target component in Fusion 360 where the DXF file will be imported."
+                  },
+                  "dxf_file_path": {
+                    "type": "string",
+                    "description": "The file path of the DXF file to be imported."
+                  }
+                },
+                "required": ["target_component", "dxf_file_path"]
+              }
+            }
+        """
+
+        newSketch = None
+        try:
+            # Check if target_component is a valid Fusion 360 Component object
+            if not isinstance(self, target_component, adsk.fusion.Component):
+                raise ValueError("target_component must be a fusion 360 Component object")
+
+            app = adsk.core.Application.get()
+
+            # Access the import manager
+            importManager = app.importManager
+
+            # Get the XY plane of the target component
+            xyPlane = target_component.xYConstructionPlane
+
+            # Create DXF import options
+            dxfOptions = importManager.createDXF2DImportOptions(dxf_file_path, xyPlane)
+
+            # Import the DXF file into the target component
+            importManager.importToTarget(dxfOptions, target_component)
+
+            # Extract the file name without extension
+            file_name = os.path.splitext(os.path.basename(dxf_file_path))[0]
+
+            # Find the newly created sketch by default name "0" and rename it
+            for sketch in target_component.sketches:
+                if sketch.name == "0":
+                    sketch.name = file_name
+                    newSketch = sketch
+                    break
+
+        except:
+            if ui:
+                ui.messageBox('Error: Failed to import DXF file:\n{}'.format(traceback.format_exc()))
+
+
+        return newSketch
+
+    def import_fusion_component(self, parent_component_name: str, file_path: str) -> str:
+        """
+            {
+              "name": "import_fusion_component",
+              "description": "Imports a FusionArchive file into a specified parent component within the current Fusion 360 design.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "parent_component_name": {
+                    "type": "string",
+                    "description": "The name of the parent component in the current design where the FusionArchive file will be imported."
+                  },
+                  "file_path": {
+                    "type": "string",
+                    "description": "The local file path to the FusionArchive file to be imported."
+                  }
+                },
+                "required": ["parent_component_name", "file_path"],
+                "returns": {
+                  "type": "string",
+                  "description": "A message indicating the success or failure of the import operation."
+                }
+              }
+            }
+        """
+        try:
+            # Access the active design
+            app = adsk.core.Application.get()
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            rootComp = design.rootComponent
+
+            parentComponent, errors = self._find_component_by_name(parent_component_name)
+            if not parentComponent:
+                return errors
+
+            # Access the import manager and create import options
+            importManager = app.importManager
+            fusionArchiveOptions = importManager.createFusionArchiveImportOptions(file_path)
+
+            # Import the FusionArchive file into the parent component
+            importManager.importToTarget(fusionArchiveOptions, parentComponent)
+
+            return f'FusionArchive file imported into component "{parent_component_name}"'
+
+        except Exception as e:
+            return f'Failed to import FusionArchive file: {e}'
+
+
 
 
 
 class DeleteObjects(FusionSubmodule):
 
-    def delete_occurrence_by_name(self, occurrence_name: str) -> str:
+
+    def delete_component_sub_object(self, delete_object_array :list=[
+            {"component_name": "comp1", "object_type":"jointOrigins", "object_name":"Joint Origin1"},
+            {"component_name": "comp1", "object_type":"jointOrigins", "object_name":"Joint Origin1"},
+            {"component_name": "comp1", "object_type":"jointOrigins", "object_name":"Joint Origin1"},
+    ]) -> str:
+
         """
         {
-            "name": "delete_occurrence_by_name",
-            "description": "Deletes a component occurrence from the current Fusion 360 design based on the given occurrence name.",
+            "name": "delete_component_sub_object",
+            "description": "Deletes any valid object inside of component",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "occurrence_name": {
-                        "type": "string",
-                        "description": "The name of the occurrence to be deleted (e.g., 'MyComponent:1')."
+
+                    "delete_object_array": {
+                        "type": "array",
+                        "description": "Array of objects to delete",
+
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "component_name": {
+                                    "type": "string",
+                                    "description": "name of the component containing the object to delete"
+                                },
+                                "object_type": {
+                                    "type": "string",
+                                    "description": "type of object to delete",
+                                    "enum": [ "sketches",
+                                            "bRepBodies",
+                                            "meshBodies",
+                                            "joints",
+                                            "jointOrigins",
+                                            "occurrences",
+                                            "rigidGroups"]
+                                },
+                                "object_name": {
+                                    "type": "string",
+                                    "description": "The name of the object to delete"
+                                }
+                            },
+                            "required": ["component_name", "object_type", "object_name"]
+                        }
+
                     }
                 },
-                "required": ["occurrence_name"],
+
+                "required": ["delete_object_array"],
                 "returns": {
                     "type": "string",
-                    "description": "A message indicating success or failure of the deletion."
+                    "description": "A message indicating success or failure of the deletions."
                 }
             }
         }
         """
-
         try:
             # Access the active design.
             app = adsk.core.Application.get()
             design = adsk.fusion.Design.cast(app.activeProduct)
             rootComp = design.rootComponent
 
-            # Search all occurrences (including nested).
-            targetOccurrence = None
-            for occ in rootComp.allOccurrences:
-                if occ.name == occurrence_name:
-                    targetOccurrence = occ
-                    break
+            # check arg type
+            if not isinstance(delete_object_array, list):
+                return "Error: delete_object_array must be an array/ list"
 
-            if not targetOccurrence:
-                return f'Error: Occurrence "{occurrence_name}" not found in the design.'
+            delete_enums = [
+                "sketches",
+                "bRepBodies",
+                "meshBodies",
+                "joints",
+                "jointOrigins",
+                "occurrences",
+                "rigidGroups",
+            ]
 
-            # Delete the found occurrence.
-            targetOccurrence.deleteMe()
+            # add object to delete to dict, faster this way
+            delete_dict = {}
 
-            return f'Deleted occurrence "{occurrence_name}".'
+            results = []
+            # jonied as string and returned
+            # items in array, each representing a delete task
+            for delete_object in delete_object_array:
+                component_name = delete_object.get("component_name")
 
-        except Exception as e:
-            return f'Error: Failed to delete occurrence "{occurrence_name}":\n{e}'
+                object_type = delete_object.get("object_type")
+                object_name = delete_object.get("object_name")
+
+                targetComponent, errors = self._find_component_by_name(component_name)
+
+                if not targetComponent:
+                    # if results, add error to return list
+                    results.append(errors)
+                    continue
+
+                # comp.sketches, comp.bodies, comp.joints etc
+                object_class = getattr(targetComponent, object_type, None)
+
+                # check if delete object class list exists
+                if object_class == None:
+                    results.append(f"Error: Component {component_name} has not attribute '{object_type}'.")
+                    continue
+
+                # check that attr has 'itemByName' method before calling it
+                if hasattr(object_class, "itemByName") == False:
+                    errors = f"Error: Component {component_name}.{object_type} has no method 'itemByName'."
+                    results.append(errors)
+                    continue
+
+                # select object to delete by name, sketch, body, joint, etc
+                target_object = object_class.itemByName(object_name)
+
+                # check if item by name is None
+                if target_object == None:
+                    errors = f"Error: Component {component_name}: {object_type} has no item {object_name}."
+                    available_objects = [o.name for o in object_class]
+                    errors += f" Available objects in {component_name}.{object_type}: {available_objects}"
+                    results.append(errors)
+                    continue
+
+                # check if item can be delete
+                if hasattr(target_object,"deleteMe") == False:
+                    errors = f"Error: Component {component_name}.{object_type} object {object_name} has no attribute deleteMe."
+                    results.append(errors)
+                    continue
+
+
+                delete_dict[f"{component_name}.{object_type}.{target_object.name}"] = target_object
+                #results.append(f'Added {component_name}.{object_type} "{target_object.name}" to delete list.')
+
+
+            if len(list(delete_dict.keys())) == 0:
+                results.append(f"No objects to delete.")
+
+            for k, v in delete_dict.items():
+                delete_result = v.deleteMe()
+
+                if delete_result == True:
+                    results.append(f"Deleted {k}.")
+                else:
+                    results.append(f"Error deleting {k}.")
+
+
+            #delete_name_list = []
+            #deleteCollection = adsk.core.ObjectCollection.create()
+            #for deleteObject in delete_list:
+            #    deleteCollection.add(deleteObject)
+
+            #design.deleteEntities(deleteCollection)
+            #print(deleteCollection)
+
+            #results.append("All object deleted")
+
+            return "\n".join(results).strip()
+
+        except:
+            return f'Error: Failed to delete objects:\n{traceback.format_exc()}'
+
 
     def delete_occurrence(self, occurrence_name: str="comp1:1") -> str:
         """
@@ -3333,9 +4154,9 @@ class DeleteObjects(FusionSubmodule):
             design = adsk.fusion.Design.cast(app.activeProduct)
             rootComp = design.rootComponent
 
-            targetOccurrence = self._find_occurrence_by_name(occurrence_name)
+            targetOccurrence, errors, = self._find_occurrence_by_name(occurrence_name)
             if not targetOccurrence:
-                return f'Error: Occurrence "{occurrence_name}" not found.'
+                return errors
 
             targetOccurrence.deleteMe()
 
@@ -3343,93 +4164,6 @@ class DeleteObjects(FusionSubmodule):
 
         except Exception as e:
             return f'Error: Failed to delete occurrence "{occurrence_name}":\n{e}'
-
-
-
-    def delete_sketch(self, component_name: str="comp1", sketch_name: str="sketch1") -> str:
-        """
-        {
-            "name": "delete_sketch",
-            "description": "Deletes a sketch from the current Fusion 360 design based on the given component and sketch names.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "component_name": {
-                        "type": "string",
-                        "description": "The name of the Fusion 360 component containing the sketch."
-                    },
-                    "sketch_name": {
-                        "type": "string",
-                        "description": "The name of the sketch to be deleted."
-                    }
-                },
-                "required": ["component_name", "sketch_name"]
-            }
-        }
-        """
-        try:
-
-            # Find the target component by name (assuming you have a helper method).
-            targetComponent = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return f'Error: Component "{component_name}" not found.'
-            # Find the target sketch by name in the component.
-            targetSketch = self._find_sketch_by_name(targetComponent, sketch_name)
-            if not targetSketch:
-                return f'Error: Sketch "{sketch_name}" not found in component "{component_name}".'
-
-            # Delete the sketch.
-            targetSketch.deleteMe()
-
-            return f'Deleted sketch "{sketch_name}" from component "{component_name}".'
-
-        except Exception as e:
-            return f'Error: Failed to delete the sketch "{sketch_name}" from "{component_name}":\n{e}'
-    def delete_brep_body(self, component_name: str="comp1", body_name: str="body1") -> str:
-        """
-        {
-            "name": "delete_brep_body",
-            "description": "Deletes a BRep body from the current Fusion 360 design based on the given component name and body name.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "component_name": {
-                        "type": "string",
-                        "description": "The name of the Fusion 360 component containing the BRep body."
-                    },
-                    "body_name": {
-                        "type": "string",
-                        "description": "The name of the BRep body to be deleted."
-                    }
-                },
-                "required": ["component_name", "body_name"]
-            }
-        }
-        """
-        try:
-
-            # Find the target component by name
-            targetComponent = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return f'Error: Component "{component_name}" not found.'
-
-            # Search for the specified BRep body within the component
-            targetBody = None
-            for body in targetComponent.bRepBodies:
-                if body.name == body_name:
-                    targetBody = body
-                    break
-
-            if not targetBody:
-                return f'Error: BRep body "{body_name}" not found in component "{component_name}".'
-
-            # Delete the BRep body
-            targetBody.deleteMe()
-
-            return f'Deleted BRep body "{body_name}" from component "{component_name}".'
-
-        except Exception as e:
-            return f'Error: Failed to delete the BRep body "{body_name}" from "{component_name}":\n{e}'
 
 
 class Joints(FusionSubmodule):
@@ -3535,13 +4269,23 @@ class Joints(FusionSubmodule):
                         print(edge.geometry)
                         loc = None
 
-                    references_list["edges"].append({
+                    if geoType != "Circle3D":
+                        continue
+
+                    edgeDict = {
                         "referenceId": refId,
-                        "geometryType": f"Edge_{geoType}",
+                        "geometryType": f"Edge",
+                        "edgeType": geoType,
                         "bodyName": body.name,
                         "edgeIndex": edgeIndex,
                         "location": loc
-                    })
+                    }
+
+                    if geoType == "Circle3D":
+                        edgeDict["radius"] = edge.geometry.radius 
+
+                    references_list["edges"].append(edgeDict)
+
 
             # 3) Collect vertices (bounding box center = actual vertex coords)
             for bodyIndex, body in enumerate(targetComponent.bRepBodies):
@@ -3580,107 +4324,13 @@ class Joints(FusionSubmodule):
 
 
             references_list.pop("vertices")
-            references_list.pop("edges")
+            #references_list.pop("edges")
             references_list.pop("sketch_points")
+            references_list.pop("faces")
             return json.dumps(references_list, indent=4)
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-    def _old_list_joint_origin_references(self, component_name: str = "comp1") -> str:
-        """
-        {
-          "name": "list_joint_origin_references",
-          "description": "Finds potential reference geometry (faces, edges, vertices, sketch points) in the specified component that can host a Joint Origin. Returns a JSON array, each item including geometry type, name or index, and an internal reference ID that can be used to create a Joint Origin.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "component_name": {
-                "type": "string",
-                "description": "Name of the Fusion 360 component whose geometry references will be listed."
-              }
-            },
-            "required": ["component_name"],
-            "returns": {
-              "type": "string",
-              "description": "A JSON array of references. Each entry might look like { 'referenceId': 'someUniqueId', 'geometryType': 'face', 'index': 3 }"
-            }
-          }
-        }
-        """
-
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            # Find the target component by name
-            targetComponent = None
-            for comp in design.allComponents:
-                if comp.name == component_name:
-                    targetComponent = comp
-                    break
-            if not targetComponent:
-                return f"Error: Component '{component_name}' not found."
-
-            references_list = []
-
-            # 1) Collect faces
-            for bodyIndex, body in enumerate(targetComponent.bRepBodies):
-                for faceIndex, face in enumerate(body.faces):
-                    refId = f"face|body{bodyIndex}|face{faceIndex}"
-                    references_list.append({
-                        "referenceId": refId,
-                        "geometryType": "face",
-                        "bodyName": body.name,
-                        "faceIndex": faceIndex,
-                        "area": face.area
-                    })
-
-            # 2) Collect edges
-            for bodyIndex, body in enumerate(targetComponent.bRepBodies):
-                for edgeIndex, edge in enumerate(body.edges):
-                    refId = f"edge|body{bodyIndex}|edge{edgeIndex}"
-                    references_list.append({
-                        "referenceId": refId,
-                        "geometryType": "edge",
-                        "bodyName": body.name,
-                        "edgeIndex": edgeIndex
-                    })
-
-            # 3) Collect vertices
-            for bodyIndex, body in enumerate(targetComponent.bRepBodies):
-                for vertIndex, vertex in enumerate(body.vertices):
-                    refId = f"vertex|body{bodyIndex}|vertex{vertIndex}"
-                    references_list.append({
-                        "referenceId": refId,
-                        "geometryType": "vertex",
-                        "bodyName": body.name,
-                        "vertexIndex": vertIndex
-                    })
-
-            # 4) Collect sketch points
-            for sketchIndex, sketch in enumerate(targetComponent.sketches):
-                for pointIndex, point in enumerate(sketch.sketchPoints):
-                    refId = f"sketchPoint|sketch{sketchIndex}|point{pointIndex}"
-                    references_list.append({
-                        "referenceId": refId,
-                        "geometryType": "sketchPoint",
-                        "sketchName": sketch.name,
-                        "sketchPointIndex": pointIndex
-                    })
-
-            return json.dumps(references_list)
-
-        except:
-
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
 
     def create_joint_origin(self,
                             component_name: str = "comp1",
@@ -3880,13 +4530,14 @@ class Joints(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-
-    def create_joints_between_origins(self,
-                                      joint_requests: list = [{
-                                          "jointOrigin1":"JointOrigin1",
-                                          "jointOrigin2":"JoinOrigin2",
-                                          "jointType":"RigidJointType",
-                                      }]) -> str:
+    def create_joints_between_origins(self, joint_requests: list = [
+            { "occurrence_1_name": "comp1:1",
+             "joint_origin_1":"jointOrigin1",
+             "occurrence_2_name":"comp2:1",
+             "joint_origin_2":"jointOrigin2",
+            "jointType":"RigidJointType",
+                                      }]
+                                      ) -> str:
         """
         {
           "name": "create_joints_between_origins",
@@ -3896,18 +4547,20 @@ class Joints(FusionSubmodule):
             "properties": {
               "joint_requests": {
                 "type": "array",
-                "description": "An array of items: { 'jointOrigin1': <path>, 'jointOrigin2': <path>, 'jointType': 'RevoluteJointType' }",
+                "description": "An array of occurrence and joint names items",
                 "items": {
                   "type": "object",
                   "properties": {
-                    "jointOrigin1": { "type": "string", "description": "Reference or path to the first joint origin." },
-                    "jointOrigin2": { "type": "string", "description": "Reference or path to the second joint origin." },
+                    "occurrence_1_name": { "type": "string", "description": "Name of the first occurrence" },
+                    "joint_origin_1": { "type": "string", "description": "Name of the first joint origin." },
+                    "occurrence_2_name": { "type": "string", "description": "Name of the second occurrence" },
+                    "joint_origin_2": { "type": "string", "description": "Name of the second joint origin." },
                     "jointType": {
                       "type": "string",
                       "description": "The type of joint: 'RigidJointType', 'RevoluteJointType', etc."
                     }
                   },
-                  "required": ["jointOrigin1", "jointOrigin2", "jointType"]
+                  "required": ["occurrence_1_name", "joint_origin_1", "occurrence_2_name", "joint_origin_2", "jointType"]
                 }
               }
             },
@@ -3949,20 +4602,34 @@ class Joints(FusionSubmodule):
             results = []
 
             # A helper to find a joint origin by name or path (assuming unique naming)
-            def find_joint_origin_by_name(name_str):
+            def find_joint_origin_by_name(occ, name_str):
                 # Search in all components
-                for comp in design.allComponents:
-                    print(comp)
-                    for j_origin in comp.jointOrigins:
-                        if j_origin.name == name_str:
-                            return j_origin
+                for j_origin in occ.component.jointOrigins:
+                    print(j_origin.name)
+                    if j_origin.name == name_str:
+                        return j_origin
+
                 return None
+
 
             for request in joint_requests:
                 print(request)
-                j1_name = request.get("jointOrigin1")
-                j2_name = request.get("jointOrigin2")
+                occ_1_name = request.get("occurrence_1_name")
+                j1_name = request.get("joint_origin_1")
+                occ_2_name = request.get("occurrence_2_name")
+                j2_name = request.get("joint_origin_2")
+
                 j_type_str = request.get("jointType")
+
+                occ1, errors, = self._find_occurrence_by_name(occ_1_name)
+                if not occ1:
+                    results.append(errors)
+                    continue
+                occ2, errors, = self._find_occurrence_by_name(occ_2_name)
+                if not occ2:
+                    results.append(errors)
+                    continue
+
 
                 if not (j1_name and j2_name and j_type_str):
                     results.append(f"Error: Missing fields in {request}")
@@ -3975,13 +4642,17 @@ class Joints(FusionSubmodule):
                 the_joint_type = joint_type_map[j_type_str]
 
                 # Find the joint origins by their name or path
-                joint_origin_1 = find_joint_origin_by_name(j1_name)
-                joint_origin_2 = find_joint_origin_by_name(j2_name)
+                joint_origin_1 = find_joint_origin_by_name(occ1, j1_name)
+                joint_origin_2 = find_joint_origin_by_name(occ2, j2_name)
+
                 if not joint_origin_1 or not joint_origin_2:
                     results.append(f"Error: Could not find one or both JointOrigins '{j1_name}', '{j2_name}'.")
                     continue
 
                 # Create a JointInput
+                #joint_origin_1 = joint_origin_1.occurrenceForGeometry(occ1)
+                #joint_origin_2 = joint_origin_2.occurrenceForGeometry(occ2)
+
                 joints_collection = root_comp.joints
                 j_input = joints_collection.createInput(
                     joint_origin_1, joint_origin_2
@@ -4220,8 +4891,6 @@ class Timeline(FusionSubmodule):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
-
-
     def delete_timeline_items(self, indexes_to_delete: list = []) -> str:
         """
         {
@@ -4284,8 +4953,6 @@ class Timeline(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-
-
     def roll_back_to_timeline(self, index_to_rollback: int = 0) -> str:
         """
         {
@@ -4309,6 +4976,7 @@ class Timeline(FusionSubmodule):
         """
 
         try:
+
             app = adsk.core.Application.get()
             if not app:
                 return "Error: Fusion 360 is not running."
@@ -4331,6 +4999,173 @@ class Timeline(FusionSubmodule):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
+    def delete_timeline_groups(self, group_names: list) -> str:
+        """
+        {
+          "name": "delete_timeline_groups",
+          "description": "Deletes timeline groups from the active Fusion 360 design whose names match any in the provided list. The function iterates through the timeline, identifies items that are classified as groups (using their entityType or naming convention), and deletes them by collecting their indexes and calling the delete_timeline_items function.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "group_names": {
+                "type": "array",
+                "description": "A list of strings representing the names of timeline groups to delete.",
+                "items": { "type": "string" }
+              }
+            },
+            "required": ["group_names"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating which timeline groups were deleted, or an error message if the operation failed."
+            }
+          }
+        }
+        """
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
 
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
 
+            design = adsk.fusion.Design.cast(product)
+            timeline = design.timeline
+
+            # List to collect indexes of timeline items that are groups and match provided names.
+            indexes_to_delete = []
+
+            # Iterate over timeline items.
+            for i in range(timeline.count):
+                timelineItem = timeline.item(i)
+                # Assuming that timeline items representing groups have an entityType "TimelineGroup"
+                # or follow a naming convention. Here we check if the name of the item is in group_names.
+                # (Adjust the check below if your design uses a different method to mark groups.)
+                if timelineItem.name in group_names:
+                    indexes_to_delete.append(i)
+
+            if not indexes_to_delete:
+                return "No timeline groups matching the provided names were found."
+
+            # It's best to delete timeline items in reverse order to avoid index shifting.
+            indexes_to_delete.sort(reverse=True)
+
+            # Call the existing delete_timeline_items function.
+            result = self.delete_timeline_items(indexes_to_delete)
+            return f"Deleted timeline groups with names {group_names}. Details: {result}"
+        except Exception as e:
+            return "Error: Failed to delete timeline groups. Exception:\n" + traceback.format_exc()
+
+    def set_all_timeline_groups_state(self, collapse: bool = True) -> str:
+        """
+        {
+          "name": "set_all_timeline_groups_state",
+          "description": "Expands or collapses all timeline groups in the active Fusion 360 design. The 'collapse' parameter determines whether to expand (False) or collapse (True) all timeline groups in the timeline. The function iterates through all timeline items and, for those that support the 'isExpanded' property (indicating they are groups), sets their expansion state accordingly.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "collapse": {
+                "type": "boolean",
+                "description": "A boolean flag where True collapses all timeline groups and False expands them."
+              }
+            },
+            "required": ["expand"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating which timeline groups were modified, or an error message if the operation failed."
+            }
+          }
+        }
+        """
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            timelineGroups = design.timeline.timelineGroups
+
+            modified_groups = []
+            # Iterate over all timeline items.
+            for tlGroup in timelineGroups:
+
+                if hasattr(tlGroup, 'isCollapsed'):
+                    tlGroup.isCollapsed = collapse
+                    modified_groups.append(tlGroup.name)
+
+            if not modified_groups:
+                return "No timeline groups found or none could be modified."
+
+            state = "collapsed" if collapse else "expanded"
+            return f"All timeline groups were set to {state}. Modified groups: {modified_groups}"
+        except Exception as e:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    def set_timeline_groups_state(self, group_names: list, expand: bool = True) -> str:
+        """
+        {
+          "name": "set_timeline_groups_state",
+          "description": "Expands or collapses timeline groups in the active Fusion 360 design based on the provided group names. The 'expand' parameter determines whether to expand (True) or collapse (False) the matching timeline groups. This function iterates over timeline items, identifies groups by matching their names against the provided list, and then sets their expansion state using a property or method (if available) on the timeline group objects.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "group_names": {
+                "type": "array",
+                "description": "A list of strings representing the names of timeline groups to modify.",
+                "items": { "type": "string" }
+              },
+              "expand": {
+                "type": "boolean",
+                "description": "A boolean flag where True expands the timeline groups and False collapses them."
+              }
+            },
+            "required": ["group_names", "expand"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating which timeline groups were expanded or collapsed, or an error message if the operation failed."
+            }
+          }
+        }
+        """
+        try:
+            # Get the Fusion 360 application and active design.
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            timeline = design.timeline
+
+            modified_groups = []
+            # Iterate through timeline items.
+            for i in range(timeline.count):
+                timelineItem = timeline.item(i)
+                # Check if the timeline item name is one of the target group names.
+                if timelineItem.name in group_names:
+                    try:
+                        # Attempt to set the expansion state.
+                        # Note: This assumes that timeline group items expose an 'isExpanded' property.
+                        # If the API differs, adjust this section accordingly.
+                        timelineItem.isExpanded = expand
+                        modified_groups.append(timelineItem.name)
+                    except Exception as innerEx:
+                        # If an individual group cannot be modified, log and continue.
+                        pass
+
+            if not modified_groups:
+                return "No matching timeline groups found or none could be modified."
+
+            state = "expanded" if expand else "collapsed"
+            return f"Timeline groups {modified_groups} were set to {state}."
+        except Exception as e:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 

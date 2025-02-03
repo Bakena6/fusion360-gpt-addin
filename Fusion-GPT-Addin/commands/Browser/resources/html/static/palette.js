@@ -231,6 +231,7 @@ class Thread {
             this.toolContainer.appendChild(functionContainer);
 
 
+        // set function args height
         } else if (function_args != null){
             content = `${function_args}`;
 
@@ -238,7 +239,6 @@ class Thread {
 
             this.functionArgsEl.style.height = 'auto';
             this.functionArgsEl.style.height = this.functionArgsEl.scrollHeight + 'px';
-
             this.functionArgsEl.textContent = existingText + content;
             
 
@@ -271,10 +271,13 @@ function uploadTools() {
 function executeToolCall(function_name) {
     // text area
     const functionArgInputs = document.querySelectorAll(`.${function_name}__input`);
+    console.log("finput", functionArgInputs);
+
     let function_args = {};
     for (let i=0; i < functionArgInputs.length; i++) {
             const name = functionArgInputs[i].name;
             const val = functionArgInputs[i].value;
+            //console.log(val);
             function_args[name] = JSON.parse(val);
         };
 
@@ -300,10 +303,6 @@ function showHideElement(elementId){
 
 
 };
-
-
-
-
 
 
 
@@ -378,24 +377,38 @@ function loadTools() {
                     functionButton.className = "toolCallButton";
 
                     const inputContainer = document.createElement("span");
+                    inputContainer.style.padding="0px;"
 
                     // params
                     for (const [param_name, param_info] of Object.entries(params)) {
-                        const paramInput = document.createElement("input");
+                        //const paramInput = document.createElement("input");
+                        const paramInput = document.createElement("textarea");
+
                         const paramDefault = param_info.default_val;
                         paramInput.id = `${m_name}__${param_name}`;
                         paramInput.name = `${param_name}`;
-                        paramInput.type = "text";
-                        paramInput.className = `${m_name}__input`;
-                        paramInput.placeholder = `${param_name}`;
-                        
-                        // Set the oninput method dynamically
-                        paramInput.oninput = function () {
-                            resizeInput(paramInput);
-                        };
+                        //paramInput.rows = 1;
+                        //paramInput.wrap = "hard";
 
-                        //console.log("paramDefault", paramDefault);
+                        paramInput.type = "text";
+                        paramInput.className = `${m_name}__input param_input`;
+                        paramInput.placeholder = `${param_name}`;
+
                         paramInput.value = JSON.stringify(paramDefault);
+
+                        resizeInput(paramInput);
+
+
+                        function autoResizeTextarea(textarea) {
+                            textarea.style.height = "auto"; // Reset the height
+                            textarea.style.height = textarea.scrollHeight + "px"; // Set height to scroll height
+                        }
+
+                        paramInput.addEventListener("input", () => autoResizeTextarea(paramInput));
+
+                        // Initial resize on page load
+                        autoResizeTextarea(paramInput);
+
                         resizeInput(paramInput);
 
                         inputContainer.appendChild(paramInput);
@@ -479,6 +492,11 @@ function record(){
 
 }; // end start record
 
+function resizeInput(input) {
+    console.log("resize");
+
+    input.style.width = (input.value.length + 1) * 8 + "px"; // Adjust multiplier for better spacing
+  }
 
 
 
@@ -494,7 +512,7 @@ function toggleTools() {
 
 
 
- function setWindowHeight() {
+function setWindowHeight() {
 
     let outputContainer = document.getElementById('outputContainer');
     let toolTestContainer = document.getElementById('toolTestContainer');
@@ -532,9 +550,6 @@ window.addEventListener('load', (event) => {
 
 
 
-function resizeInput(input) {
-    input.style.width = (input.value.length + 1) * 8 + "px"; // Adjust multiplier for better spacing
-  }
 
 window.fusionJavaScriptHandler = {
 

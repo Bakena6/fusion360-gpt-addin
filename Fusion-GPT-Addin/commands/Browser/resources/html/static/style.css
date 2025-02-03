@@ -13,6 +13,10 @@
 
 }
 
+
+
+"Hello, I would like you to create a water bottle. Before you start the design, I want you to give me EXTREEMLY detailed text based instruction on how you would create a water bottle in Fusion 360. Then, you should find the best way to implmenent those instructions with the tools you have advdilible."
+
 body {
     margin: 0px;
     padding: 0px;
@@ -67,8 +71,6 @@ body {
     background-color: #1c1c1c;
  */
 
-rgb(249,70,249); /* vim magenta */
-rgb(136,249,168); /* vim green */
 #toolTestContainer{
     display: flex;
     width: auto;
@@ -94,14 +96,18 @@ rgb(136,249,168); /* vim green */
 
 }
 
-#toolTestContainer input{
-    width: auto;
+
+#toolTestContainer textarea{
     min-width: 5ch;
+    width: auto;
+    height: auto;
     font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
     margin-left: 1px;
     margin-right: 1px;
     margin-bottom: 1px;
     padding-bottom: 1px;
+    max-width: 90%;
+    min-height: 20px;
 
 }
 

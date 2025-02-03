@@ -79,7 +79,9 @@ class GptClient:
         start_confirm = self.conn.recv()
         print(f"{start_confirm}")
 
+
     def stop_record(self):
+
         message = {
             "message_type": "stop_record",
             "content": None
@@ -87,8 +89,8 @@ class GptClient:
 
         message = json.dumps(message)
         if self.connected == False:
+            print("connect")
             self.connect()
-        #print(f"conn closed: {self.conn.closed}")
 
         # start message
         self.conn.send(message)
@@ -108,8 +110,6 @@ class GptClient:
 
         self.connected = False
         self.palette = self.ui.palettes.itemById(self.PALETTE_ID)
-        print(f"PALETTE_ID: {self.PALETTE_ID}:")
-        print(f"palette: {self.palette}:")
 
         importlib.reload(fusion_interface)
         self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)

@@ -2,5 +2,6 @@
 [DEFAULT]
 OPEN_AI_API_KEY=paste_api_key_here
 ASSISTANT_ID=paste_open_ai_assistant_id_here
+LOCAL_CAD_PATH=path_to_local_directory_containing_step_files
 
 
