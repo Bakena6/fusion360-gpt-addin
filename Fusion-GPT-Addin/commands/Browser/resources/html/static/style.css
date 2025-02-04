@@ -105,7 +105,8 @@ body {
     margin-left: 1px;
     margin-right: 1px;
     margin-bottom: 1px;
-    padding-bottom: 1px;
+    padding: 5px;
+
     max-width: 90%;
     min-height: 20px;
 

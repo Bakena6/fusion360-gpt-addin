@@ -387,8 +387,8 @@ function loadTools() {
                         const paramDefault = param_info.default_val;
                         paramInput.id = `${m_name}__${param_name}`;
                         paramInput.name = `${param_name}`;
-                        //paramInput.rows = 1;
-                        //paramInput.wrap = "hard";
+                        paramInput.rows = 1;
+                        paramInput.wrap = "hard";
 
                         paramInput.type = "text";
                         paramInput.className = `${m_name}__input param_input`;
@@ -398,20 +398,15 @@ function loadTools() {
 
                         resizeInput(paramInput);
 
-
                         function autoResizeTextarea(textarea) {
                             textarea.style.height = "auto"; // Reset the height
-                            textarea.style.height = textarea.scrollHeight + "px"; // Set height to scroll height
+                            textarea.style.height = textarea.scrollHeight+4 + "px"; // Set height to scroll height
                         }
 
-                        paramInput.addEventListener("input", () => autoResizeTextarea(paramInput));
-
-                        // Initial resize on page load
-                        autoResizeTextarea(paramInput);
-
-                        resizeInput(paramInput);
+                        paramInput.addEventListener("click", () => autoResizeTextarea(paramInput));
 
                         inputContainer.appendChild(paramInput);
+
                     };
 
                     //responseDiv.className = 'message-response'; // Add class for styling
@@ -425,6 +420,9 @@ function loadTools() {
                 toolClassContainer.appendChild(methodsContainer);
 
                 toolTestContainer.appendChild(toolClassContainer);
+
+
+
 
             }// end for
 
@@ -493,9 +491,9 @@ function record(){
 }; // end start record
 
 function resizeInput(input) {
-    console.log("resize");
+    input.style.width = (input.value.length + 1) * 9 + "px"; // Adjust multiplier for better spacing
 
-    input.style.width = (input.value.length + 1) * 8 + "px"; // Adjust multiplier for better spacing
+
   }
 
 
