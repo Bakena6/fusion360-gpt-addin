@@ -377,7 +377,7 @@ function loadTools() {
                     functionButton.className = "toolCallButton";
 
                     const inputContainer = document.createElement("span");
-                    inputContainer.style.padding="0px;"
+                    inputContainer.className = "functionInputContainer";
 
                     // params
                     for (const [param_name, param_info] of Object.entries(params)) {
@@ -389,7 +389,6 @@ function loadTools() {
                         paramInput.name = `${param_name}`;
                         paramInput.rows = 1;
                         paramInput.wrap = "hard";
-
                         paramInput.type = "text";
                         paramInput.className = `${m_name}__input param_input`;
                         paramInput.placeholder = `${param_name}`;

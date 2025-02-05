@@ -247,8 +247,7 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
 
     elif message_action == "execute_tool_call":
 
-
-        server_itf.reload_interface()
+        #server_itf.reload_interface()
 
         function_name = message_data["function_name"]
         function_args = message_data["function_args"]

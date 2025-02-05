@@ -260,13 +260,15 @@ class Assistant:
                     event_type = ""
                     message_text = ""
 
+                    #step_count = 0
                     while event_type != "thread.run.completed":
                         print(f"THREAD START")
 
                         for event in self.stream:
                             event_type = event.event
                             data = event.data
-                            print(event_type)
+                            #print(event_type)
+                            #step_count += 1
 
                             if event_type == "thread.run.created":
 
@@ -352,7 +354,7 @@ class Assistant:
 
                             elif event_type == "thread.run.step.delta":
 
-                                print(event.data.delta.step_details.tool_calls)
+                                #print(event.data.delta.step_details.tool_calls)
                                 try:
                                     function = event.data.delta.step_details.tool_calls[0].function
 
@@ -376,10 +378,13 @@ class Assistant:
                                     "content": content
                                 }
 
+                                #if step_count % 10 == 0:
                                 conn.send(json.dumps(fusion_call))
 
                             elif event_type == "thread.message.completed":
                                 content = event.data.content
+                                #conn.send(json.dumps(fusion_call))
+
                                 for content_block in content:
                                     text = content_block.text.value
                                     message_text += text

@@ -23,8 +23,6 @@ from .shared import FusionSubmodule
 
 from . import shared
 from . import document_data
-
-importlib.reload(document_data)
 importlib.reload(document_data)
 
 for mod in sys.modules:
@@ -58,7 +56,8 @@ class FusionInterface:
 
         # method collections
         self.submodules = [
-            document_data.StateData(),
+            document_data.GetStateData(),
+            document_data.SetStateData(),
             CreateObjects(),
             ModifyObjects(),
             DeleteObjects(),
@@ -173,7 +172,7 @@ class FusionInterface:
 
                 method_list.append(json_method)
 
-        method_list = json.dumps(method_list, indent=4)
+        method_list = json.dumps(method_list)
 
         self.tools_json = method_list
 
@@ -205,6 +204,349 @@ class FusionInterface:
 
 
 class Sketches(FusionSubmodule):
+
+    ###### ====== cad design ====== ######
+    def get_sketch_profiles(self, component_name: str = "comp1", sketch_name: str = "Sketch1"):
+        """
+        {
+            "name": "get_sketch_profiles",
+            "description": "Retrieves all the profiles from a specified sketch within a specified component. Returns a JSON-like object containing each profile's area, center point, and areaIndex (with 0 being the largest profile).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "component_name": {
+                        "type": "string",
+                        "description": "The name of the component in the current design containing the sketch."
+                    },
+                    "sketch_name": {
+                        "type": "string",
+                        "description": "The name of the sketch inside the specified component."
+                    }
+                },
+                "required": ["component_name", "sketch_name"],
+                "returns": {
+                    "type": "object",
+                    "description": "A JSON-like dictionary with a 'profiles' key, listing each profile's area, centroid (x, y, z), and areaIndex sorted by descending area. If an error occurs, a string describing the error is returned instead."
+                }
+            }
+        }
+        """
+        try:
+            # Access the active design
+            app = adsk.core.Application.get()
+            design = adsk.fusion.Design.cast(app.activeProduct)
+
+            # Use a local helper method to find the target component
+            targetComponent, errors = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return errors
+
+            targetSketch, errors = self._find_sketch_by_name(targetComponent, sketch_name)
+            if not targetSketch:
+                return errors
+
+            if not targetSketch.profiles or targetSketch.profiles.count == 0:
+                return "No profiles found in the sketch."
+
+            # Gather profile information (area and centroid)
+            profile_data = []
+            for profile in targetSketch.profiles:
+                props = profile.areaProperties()
+                area = props.area
+                centroid = props.centroid
+                profile_data.append({
+                    "profile": profile,  # Storing the actual profile object (if needed)
+                    "area": area,
+                    "centroid": [centroid.x, centroid.y, centroid.z]
+                })
+
+            # Sort profiles by descending area
+            profile_data.sort(key=lambda p: p["area"], reverse=True)
+
+            # Create the final list of profile info for JSON-like output
+            results = []
+            for idx, data in enumerate(profile_data):
+                results.append({
+                    "areaIndex": idx,  # 0 = largest
+                    "area": data["area"],
+                    "centerPoint": data["centroid"]
+                })
+
+            # Return the JSON-like structure
+            return json.dumps({ "profiles": results })
+
+        except Exception as e:
+            return f"Error: {e}"
+
+    def get_edges_in_body(self, component_name: str="comp1", body_name: str="Body1") -> str:
+        """
+        {
+            "name": "get_edges_in_body",
+            "description": "Generates a list of all edges in a specified BRep body, including position and orientation data that can be used for future operations like fillets or chamfers.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "component_name": {
+                        "type": "string",
+                        "description": "The name of the component in the current design containing the body."
+                    },
+                    "body_name": {
+                        "type": "string",
+                        "description": "The name of the target body whose edges will be listed."
+                    }
+                },
+                "required": ["component_name", "body_name"],
+                "returns": {
+                    "type": "string",
+                    "description": "A JSON array of edge information. Each element contains 'index', 'geometryType', 'length', bounding-box data, and geometry-specific data like direction vectors or center points."
+                }
+            }
+        }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # Locate the target component by name (assuming you have a helper method)
+            targetComponent, errors = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return errors
+
+            body, errors = self._find_body_by_name(targetComponent, body_name)
+            if not body:
+                return errors
+
+            edges = body.edges
+            edge_data_list = []
+
+            for i, edge in enumerate(edges):
+                geom = edge.geometry
+                geometryType = type(geom).__name__  # e.g., "Line3D", "Arc3D", "Circle3D", etc.
+
+                # Basic edge info
+                edge_info = {
+                    "index": i,
+                    "geometryType": geometryType,
+                    "length": edge.length
+                }
+
+                # 1) Collect bounding box data
+                bb = edge.boundingBox
+                if bb:
+                    edge_info["boundingBox"] = {
+                        "minPoint": [bb.minPoint.x, bb.minPoint.y, bb.minPoint.z],
+                        "maxPoint": [bb.maxPoint.x, bb.maxPoint.y, bb.maxPoint.z]
+                    }
+
+                # 2) Collect geometry-specific data
+                if isinstance(geom, adsk.core.Line3D):
+                    # For finite lines, startPoint and endPoint will be non-null.
+                    startPt = geom.startPoint
+                    endPt = geom.endPoint
+
+                    # Compute direction: end - start
+                    if startPt and endPt:
+                        directionVec = adsk.core.Vector3D.create(
+                            endPt.x - startPt.x,
+                            endPt.y - startPt.y,
+                            endPt.z - startPt.z
+                        )
+                        edge_info["geometryData"] = {
+                            "startPoint": [startPt.x, startPt.y, startPt.z],
+                            "endPoint": [endPt.x, endPt.y, endPt.z],
+                            "direction": [directionVec.x, directionVec.y, directionVec.z]
+                        }
+                    else:
+                        # If the line is infinite (rare in typical Fusion designs),
+                        # the start/endPoints might be None.
+                        # You could call getData(...) here if needed.
+                        edge_info["geometryData"] = {
+                            "startPoint": None,
+                            "endPoint": None,
+                            "direction": None
+                        }
+
+                elif isinstance(geom, adsk.core.Arc3D):
+                    centerPt = geom.center
+                    normalVec = geom.normal
+                    edge_info["geometryData"] = {
+                        "centerPoint": [centerPt.x, centerPt.y, centerPt.z],
+                        "normal": [normalVec.x, normalVec.y, normalVec.z],
+                        "radius": geom.radius,
+                        "startAngle": geom.startAngle,
+                        "endAngle": geom.endAngle
+                    }
+
+                elif isinstance(geom, adsk.core.Circle3D):
+                    centerPt = geom.center
+                    normalVec = geom.normal
+                    edge_info["geometryData"] = {
+                        "centerPoint": [centerPt.x, centerPt.y, centerPt.z],
+                        "normal": [normalVec.x, normalVec.y, normalVec.z],
+                        "radius": geom.radius
+                    }
+
+                elif isinstance(geom, adsk.core.Ellipse3D):
+                    centerPt = geom.center
+                    normalVec = geom.normal
+                    edge_info["geometryData"] = {
+                        "centerPoint": [centerPt.x, centerPt.y, centerPt.z],
+                        "normal": [normalVec.x, normalVec.y, normalVec.z],
+                        "majorRadius": geom.majorRadius,
+                        "minorRadius": geom.minorRadius
+                    }
+
+                elif isinstance(geom, adsk.core.NurbsCurve3D):
+                    # NURBS curves can be more complex:
+                    # store some minimal data; adjust as needed
+                    edge_info["geometryData"] = {
+                        "isNurbs": True,
+                        "degree": geom.degree,
+                        "controlPointCount": geom.controlPointCount
+                    }
+
+                edge_data_list.append(edge_info)
+
+            # Return the collected info in JSON format
+            return json.dumps(edge_data_list)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    def get_faces_in_body(self, component_name: str="comp1", body_name: str = "Body1") -> str:
+        """
+        {
+            "name": "get_faces_in_body",
+            "description": "Generates a list of all faces in the specified BRep body. Returns face data in JSON format that can be used for future operations.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "component_name": {
+                        "type": "string",
+                        "description": "The name of the component in the current design containing the body."
+                    },
+                    "body_name": {
+                        "type": "string",
+                        "description": "The name of the target body whose faces will be listed."
+                    }
+                },
+                "required": ["component_name", "body_name"],
+                "returns": {
+                    "type": "string",
+                    "description": "A JSON array of face information. Each element contains keys such as 'index', 'surfaceType', 'area', and 'boundingBox'."
+                }
+            }
+        }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # Find the target component by name (assuming you have a local helper method).
+            targetComponent, errors = self._find_component_by_name(component_name)
+            if not targetComponent:
+                return errors
+
+            body, errors = self._find_body_by_name(targetComponent, body_name)
+            if not body:
+                return errors
+
+            faces = body.faces
+            face_data_list = []
+
+            for i, face in enumerate(faces):
+                geom = face.geometry
+                surface_type = type(geom).__name__  # e.g., "Plane", "Cylinder", "Cone", "Sphere", "Torus", "NurbsSurface"
+
+                # Store basic face info
+                face_info = {
+                    "index": i,
+                    "surfaceType": surface_type,
+                    "area": face.area
+                }
+
+                # Collect bounding box data for the face (if available)
+                bb = face.boundingBox
+                if bb:
+                    face_info["boundingBox"] = {
+                        "minPoint": [bb.minPoint.x, bb.minPoint.y, bb.minPoint.z],
+                        "maxPoint": [bb.maxPoint.x, bb.maxPoint.y, bb.maxPoint.z]
+                    }
+
+                # Collect geometry-specific data
+                geometry_data = {}
+                if isinstance(geom, adsk.core.Cylinder):
+                    # Cylindrical face
+                    axis = geom.axis
+                    origin = geom.origin
+                    geometry_data = {
+                        "axisVector": [axis.x, axis.y, axis.z],
+                        "origin": [origin.x, origin.y, origin.z],
+                        "radius": geom.radius
+                    }
+
+                elif isinstance(geom, adsk.core.Sphere):
+                    # Spherical face
+                    center = geom.center
+                    geometry_data = {
+                        "center": [center.x, center.y, center.z],
+                        "radius": geom.radius
+                    }
+
+                elif isinstance(geom, adsk.core.Torus):
+                    # Torus face
+                    center = geom.center
+                    axis = geom.axis
+                    geometry_data = {
+                        "center": [center.x, center.y, center.z],
+                        "axisVector": [axis.x, axis.y, axis.z],
+                        "majorRadius": geom.majorRadius,
+                        "minorRadius": geom.minorRadius
+                    }
+
+                elif isinstance(geom, adsk.core.Cone):
+                    # Conical face
+                    axis = geom.axis
+                    origin = geom.origin
+                    geometry_data = {
+                        "axisVector": [axis.x, axis.y, axis.z],
+                        "origin": [origin.x, origin.y, origin.z],
+                        "halfAngle": geom.halfAngle
+                    }
+
+                elif isinstance(geom, adsk.core.NurbsSurface):
+                    # Nurbs-based face
+                    geometry_data = {
+                        "isNurbsSurface": True,
+                        "uDegree": geom.degreeU,
+                        "vDegree": geom.degreeV,
+                        "controlPointCountU": geom.controlPointCountU,
+                        "controlPointCountV": geom.controlPointCountV
+                    }
+
+                if geometry_data:
+                    face_info["geometryData"] = geometry_data
+
+                face_data_list.append(face_info)
+
+            # Convert the collected face data to a JSON string
+            return json.dumps(face_data_list)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
     def create_sketch(self, component_name: str="comp1", sketch_name: str ="Sketch1", sketch_plane: str ="xy"):
         """
@@ -1422,8 +1764,6 @@ class CreateObjects(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-
-
     def create_new_component(self, parent_component_name: str="comp1", component_name: str="comp2") -> str:
         """
             {
@@ -1550,8 +1890,6 @@ class CreateObjects(FusionSubmodule):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
-
-
     def copy_component_as_new(self, source_component_name: str="comp1", target_parent_component_name: str="comp_container", new_component_name: str="new_comp_1") -> str:
         """
             {
@@ -1613,370 +1951,6 @@ class CreateObjects(FusionSubmodule):
 
 
 class NonCad(FusionSubmodule):
-
-
-    def set_object_values(self, object_array:list=[
-
-            {"component_name": "comp1",
-             "object_type":"sketches",
-             "object_name":"Sketch1",
-             "action": "isLightBulbOn", "value": "true"
-             },
-
-            {"component_name": "comp1",
-             "object_type":"this",
-             "object_name":"this",
-             "action": "isBodiesFolderLightBulbOn", "value": False
-             },
-
-            {"component_name": "GPTEST2 v1",
-             "object_type":"occurrences",
-             "object_name":"comp1:1",
-             "action": "isLightBulbOn", "value": "true"
-             },
-
-    ] ) -> str:
-        """
-        {
-            "name": "set_object_values",
-            "description": "Sets object properties for core object visible in the browser tree, such as occurrences, bodies, sketches, joints, jointOrigins, etc.. When setting visibility (isLightBulbOn) the value should be a bool",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "object_array": {
-                        "type": "array",
-                        "description": "Array of objects to set value or perfom action",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "component_name": {
-                                    "type": "string",
-                                    "description": "name of the parent component containing the object"
-                                },
-                                "object_type": {
-                                    "type": "string",
-                                    "description": "type of object to delete",
-                                    "enum": [
-                                        "sketches",
-                                        "bRepBodies",
-                                        "meshBodies",
-                                        "joints",
-                                        "jointOrigins",
-                                        "occurrences",
-                                        "rigidGroups" ]
-                                },
-                                "object_name": {
-                                    "type": "string",
-                                    "description": "The name of the object to delete"
-                                },
-
-                                "action": {
-                                    "type": "string",
-                                    "description": "action to perform",
-
-                                    "enum": [
-                                        "isLightBulbOn",
-                                        "opacity",
-                                        "material",
-                                        "appearance",
-                                        "isGrounded",
-                                        "isGroundToParent"
-                                        ]
-                                },
-                                "value": {
-                                    "type": "string",
-                                    "description": "action to perform"
-                                }
-
-                            },
-
-                            "required": ["component_name", "object_type", "object_name", "action", "value"]
-                        }
-
-                    }
-                },
-                "required": ["object_array"],
-                "returns": {
-                    "type": "string",
-                    "description": "A message indicating success or failure of the options"
-                }
-            }
-        }
-
-        """
-
-        try:
-            # Access the active design.
-            app = adsk.core.Application.get()
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            rootComp = design.rootComponent
-
-            # check arg type
-            if not isinstance(object_array, list):
-                return "Error: object_array must be an array/ list"
-
-            object_enums = [
-                "sketches",
-                "bRepBodies",
-                "meshBodies",
-                "joints",
-                "jointOrigins",
-                "occurrences",
-                "rigidGroups",
-                "this",
-            ]
-
-            # add object to delete to dict, faster this way
-            action_dict = {}
-
-            results = []
-            # jonied as string and returned
-            # items in array, each representing a delete task
-            for object_dict in object_array:
-                component_name = object_dict.get("component_name")
-                object_type = object_dict.get("object_type")
-                object_name = object_dict.get("object_name")
-                action = object_dict.get("action")
-                value = object_dict.get("value")
-
-                # all objects have a parent/target component
-                targetComponent, errors = self._find_component_by_name(component_name)
-                #print(dir(targetComponent))
-
-                if not targetComponent:
-                    # if results, add error to return list
-                    results.append(errors)
-                    continue
-
-                # comp.sketches, comp.bodies, comp.joints etc
-                object_class = getattr(targetComponent, object_type, None)
-
-                # check if delete object class list exists
-                if object_class == None:
-                    results.append(f"Error: Component {component_name} has not attribute '{object_type}'.")
-                    continue
-
-
-
-                if object_type != "this":
-                    # check that attr has 'itemByName' method before calling it
-                    if hasattr(object_class, "itemByName") == False:
-                        errors = f"Error: Component {component_name}.{object_type} has no method 'itemByName'."
-                        results.append(errors)
-                        continue
-                    # select object by name, sketch, body, joint, etc
-                    target_object = object_class.itemByName(object_name)
-                else:
-                    target_object = object_class
-
-
-                # check if item by name is None
-                if target_object == None:
-                    errors = f"Error: Component {component_name}: {object_type} has no item {object_name}."
-                    available_objects = [o.name for o in object_class]
-                    errors += f" Available objects in {component_name}.{object_type}: {available_objects}"
-                    results.append(errors)
-                    continue
-
-
-                # check if item has the associated action attribute
-                if hasattr(target_object, action) == False:
-                    errors = f"Error: Component {component_name}.{object_type} object {object_name} has no attribute {action}."
-                    results.append(errors)
-                    continue
-
-                object_action_dict = {
-                    "target_object": target_object,
-                    "action": action,
-                    "value": value
-                }
-
-                action_dict[f"{component_name}:{object_type}:{target_object.name}:{action}"] = object_action_dict 
-
-
-
-            #if len(list(delete_dict.keys())) == 0:
-            if len(action_dict) == 0:
-                results.append(f"No objects found")
-
-            for k, v in action_dict.items():
-
-                target_object = v["target_object"]
-                action = v["action"]
-                value = v["value"]
-
-                if value.lower() == "true":
-                    value = True
-                elif value.lower() == "false":
-                    value = False
-
-                print(action)
-                set_result = setattr(target_object, action, value)
-                results.append(f"Set {target_object} {action} to {value}: {set_result}")
-
-
-            results.append(f"Success")
-
-            return "\n".join(results).strip()
-
-        except:
-            return f'Error: Failed to modify objects:\n{traceback.format_exc()}'
-
-
-
-
-
-    def set_component_attributes(self, object_array:list=[
-
-            {
-             "component_name": "comp1",
-             "action":"isBodiesFolderLightBulbOn",
-             "value": True
-             },
-
-            {"component_name": "comp1",
-             "action":"isSketchFolderLightBulbOn",
-             "value": True
-
-             },
-
-    ] ) -> str:
-
-        """
-        {
-            "name": "set_component_attributes",
-            "description": "Sets properties/attributes for the component object",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "object_array": {
-                        "type": "array",
-                        "description": "Array of objects to set value or perfom action",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "component_name": {
-                                    "type": "string",
-                                    "description": "name of the target component"
-                                },
-                                "action": {
-                                    "type": "string",
-                                    "description": "action to perform",
-                                    "enum": [
-                                        "isBodiesFolderLightBulbOn",
-                                        "isConstructionFolderLightBulbOn",
-                                        "isCanvasFolderLightBulbOn",
-                                        "isDecalFolderLightBulbOn",
-                                        "isJointsFolderLightBulbOn",
-                                        "isOriginFolderLightBulbOn",
-                                        "isSketchFolderLightBulbOn",
-                                        "isLightBulbOn"
-                                    ]
-                                },
-                                "value": {
-                                    "type": "string",
-                                    "description": "action to perform"
-                                }
-                            },
-                            "required": ["component_name", "action", "value"]
-                        }
-                    }
-                },
-                "required": ["object_array"],
-                "returns": {
-                    "type": "string",
-                    "description": "A message indicating success or failure of the options"
-                }
-            }
-        }
-        """
-
-        try:
-            # Access the active design.
-            app = adsk.core.Application.get()
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            rootComp = design.rootComponent
-
-            # check arg type
-            if not isinstance(object_array, list):
-                return "Error: object_array must be an array/ list"
-
-            object_enums = [
-
-                "isBodiesFolderLightBulbOn",
-                "isConstructionFolderLightBulbOn",
-                "isCanvasFolderLightBulbOn",
-                "isDecalFolderLightBulbOn",
-                "isJointsFolderLightBulbOn",
-                "isOriginFolderLightBulbOn",
-                "isSketchFolderLightBulbOn"
-
-            ]
-
-            # add object to delete to dict, faster this way
-            action_dict = {}
-
-            results = []
-            # jonied as string and returned
-            # items in array, each representing a delete task
-            for object_dict in object_array:
-                component_name = object_dict.get("component_name")
-                action = object_dict.get("action")
-                value = object_dict.get("value")
-
-                # all objects have a parent/target component
-                targetComponent, errors = self._find_component_by_name(component_name)
-
-                if not targetComponent:
-                    # if results, add error to return list
-                    results.append(errors)
-                    continue
-
-                # check if item has the associated action attribute
-                if hasattr(targetComponent, action) == False:
-                    errors = f"Error: Component {component_name} has no attribute {action}."
-                    results.append(errors)
-                    continue
-
-                object_action_dict = {
-                    "target_object": targetComponent,
-                    "action": action,
-                    "value": value
-                }
-
-                action_dict[f"{component_name}:{action}"] = object_action_dict 
-
-                #results.append(f'Added {component_name}.{object_type} "{target_object.name}" to delete list.')
-
-
-            #if len(list(delete_dict.keys())) == 0:
-            if len(action_dict) == 0:
-                results.append(f"No objects to delete.")
-
-            for k, v in action_dict.items():
-                target_object = v["target_object"]
-                action = v["action"]
-                value = v["value"]
-
-                if isinstance(value, str):
-                    if value.lower() == "true":
-                        value = True
-                    elif value.lower() == "false":
-                        value = False
-
-                print(action)
-                set_result = setattr(target_object, action, value)
-                results.append(f"Set {target_object} {action} to {value}: {set_result}")
-
-
-            results.append(f"Success")
-
-            return "\n".join(results).strip()
-
-        except:
-            return f'Error: Failed to modify components:\n{traceback.format_exc()}'
-
-
 
 
 
@@ -2112,42 +2086,6 @@ class NonCad(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    def rename_component(self, component_name: str, new_name: str) -> str:
-        """
-            {
-              "name": "rename_component",
-              "parameters": {
-                "type": "object",
-                "properties": {
-                  "component_name": {
-                    "type": "string",
-                    "description": "The name of the Fusion 360 component to be renamed."
-                  },
-                  "new_name": {
-                    "type": "string",
-                    "description": "The new name to assign to the component."
-                  }
-                },
-                "required": [
-                  "component",
-                  "new_name"
-                ]
-              },
-              "description": "Renames a specified component in Fusion 360 to a new name."
-            }
-        """
-
-        try:
-            targetComponent, errors = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return errors
-
-            # Set the new name for the component
-            targetComponent.name = new_name
-            return new_name
-
-        except Exception as e:
-            return 'Error: Failed to rename the component:\n{}'.format(new_name)
 
 
     def _set_appearance_on_occurrences(
@@ -2859,9 +2797,6 @@ class ModifyObjects(FusionSubmodule):
         except Exception as e:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-
-
-
     def mirror_body_in_component(
         self,
         component_name: str = "comp1",
@@ -2997,7 +2932,6 @@ class ModifyObjects(FusionSubmodule):
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
 
 
 class ImportExport(FusionSubmodule):
@@ -3217,7 +3151,6 @@ class ImportExport(FusionSubmodule):
 
 
 class DeleteObjects(FusionSubmodule):
-
 
     def delete_component_sub_object(self, delete_object_array :list=[
             {"component_name": "comp1", "object_type":"jointOrigins", "object_name":"Joint Origin1"},
@@ -3573,7 +3506,7 @@ class Joints(FusionSubmodule):
             #references_list.pop("edges")
             references_list.pop("sketch_points")
             references_list.pop("faces")
-            return json.dumps(references_list, indent=4)
+            return json.dumps(references_list)
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()

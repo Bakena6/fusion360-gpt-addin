@@ -19,6 +19,9 @@ import functools
 from ...lib import fusion360utils as futil
 
 
+def print(string):
+    """redefine print for fusion env"""
+    futil.log(str(string))
 
 
 
@@ -28,7 +31,9 @@ class FusionSubmodule:
     """
 
     def __init__(self):
+        print(f"FUSON SHARED RELOAD")
         self.methods = self._get_methods()
+        self.ent_dict = {}
 
     def _get_methods(self):
         """
