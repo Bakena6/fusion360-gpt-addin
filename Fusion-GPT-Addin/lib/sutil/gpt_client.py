@@ -7,16 +7,11 @@ import math
 import os
 import json
 import inspect
-
 import importlib
-
 from multiprocessing.connection import Client
 from array import array
 import time
-
-
 import functools
-
 from ... import config
 from ...lib import fusion360utils as futil
 
@@ -29,6 +24,7 @@ def print(string):
     """redefine print for fusion env"""
     futil.log(str(string))
 
+print(f"RELOADED: {__name__.split("%2F")[-1]}")
 
 
 class GptClient:
@@ -48,7 +44,7 @@ class GptClient:
         self.palette = self.ui.palettes.itemById(self.PALETTE_ID)
 
         print(f"palette: {self.palette}:")
-        print(f"PALETTE_ID: {self.PALETTE_ID}:")
+        #print(f"PALETTE_ID: {self.PALETTE_ID}:")
 
         # Fusion360 interface, methodods availible to OpenAI Assistant
         self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
@@ -103,7 +99,12 @@ class GptClient:
         return audio_text
 
 
+    def reload_modules(self):
 
+        importlib.reload(fusion_interface)
+        self.fusion_itf._reload_modules()
+        self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
+        print("Modules reloded")
 
 
     def reload_interface(self):
@@ -122,9 +123,10 @@ class GptClient:
         """
         address = ('localhost', 6000)
         self.conn = Client(address, authkey=b'fusion260')
-        #print(dir(self.conn))
-
         self.connected = True;
+        print(self.conn)
+
+
 
 
     def sendToBrowser(self, function_name, data):
@@ -138,7 +140,6 @@ class GptClient:
         """
         upload tools to assistant
         """
-
         tools = self.fusion_itf.get_docstr()
 
         message = {
@@ -147,13 +148,11 @@ class GptClient:
         }
         message = json.dumps(message)
 
-
         if self.connected == False:
             self.connect()
 
         print(f"conn closed: {self.conn.closed}")
         message_confirmation = self.conn.send(message)
-
         print(f"  message sent,  waiting for result...")
 
 

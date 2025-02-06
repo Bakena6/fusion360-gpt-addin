@@ -18,16 +18,18 @@ import functools
 
 from ... import config
 from ...lib import fusion360utils as futil
-
-from .shared import FusionSubmodule
+from .shared import ToolCollection
 
 from . import shared
 from . import document_data
-importlib.reload(document_data)
 
-for mod in sys.modules:
-    if "shared" in mod:
-        print(mod)
+
+
+def print(string):
+    """redefine print for fusion env"""
+    futil.log(str(string))
+
+print(f"RELOADED: {__name__.split("%2F")[-1]}")
 
 
 
@@ -36,10 +38,6 @@ PALETTE_ID = config.palette_id
 app = adsk.core.Application.get()
 ui = app.userInterface
 palette = ui.palettes.itemById(PALETTE_ID)
-
-def print(string):
-    """redefine print for fusion env"""
-    futil.log(str(string))
 
 
 class FusionInterface:
@@ -75,6 +73,11 @@ class FusionInterface:
                 setattr(self, method_name, method)
 
 
+    # TODO do this without hard coading modules name
+    def _reload_modules(self):
+        importlib.reload(shared)
+        importlib.reload(document_data)
+
     def get_tools(self):
         """
         creates list fusion interface functions
@@ -89,23 +92,16 @@ class FusionInterface:
             methods[class_name] = {}
 
             for attr_name in dir(mod):
-                # ignore functions that don't directly interface with fusion workspace
-                if attr_name in ["__init__", "get_tools", "fusion_call"]:
-                    continue
 
-                if attr_name[0] == "_":
-                    continue
-
-                #attr = getattr(self, attr_name)
                 attr = getattr(mod, attr_name)
-
-                if callable(attr) == False:
+                wrapper = getattr(attr, "__wrapper__", None )
+                if wrapper != "tool_call":
                     continue
 
                 if str(attr.__class__) == "<class 'method'>":
-
                     # method signature
                     sig = inspect.signature(attr)
+
                     attr = inspect.unwrap(attr)
 
                     default_vals = inspect.getfullargspec(attr).defaults
@@ -143,41 +139,30 @@ class FusionInterface:
         creates list fusion interface functions
         """
         method_list = []
-        index = 0
         for attr_name in dir(self):
-
-            # ignore functions that don't directly interface with fusion workspace
-            if attr_name in ["__init__", "get_tools", "fusion_call", "get_docstr", "save_assistant_functions" ]:
-                continue
-
-            if attr_name[0] == "_":
-                continue
 
             attr = getattr(self, attr_name)
 
             if callable(attr) == False:
                 continue
 
-            print(attr_name)
-
             if str(attr.__class__) == "<class 'method'>":
                 sig = inspect.signature(attr)
-                attr = inspect.unwrap(attr)
-                #print(f"{index}: {attr_name}")
-                index += 1
+
+                wrapper = getattr(attr, "__wrapper__", None )
+
+                if wrapper != "tool_call":
+                    continue
 
                 docstring = attr.__doc__
-
                 json_method = json.loads(docstring)
-
                 method_list.append(json_method)
 
+
         method_list = json.dumps(method_list)
-
         self.tools_json = method_list
-
-        #print(method_list)
         return method_list
+
 
     # TODO function calls should be wrapped
     def fusion_call(func):
@@ -203,9 +188,10 @@ class FusionInterface:
 
 
 
-class Sketches(FusionSubmodule):
+class Sketches(ToolCollection):
 
     ###### ====== cad design ====== ######
+    @ToolCollection.tool_call
     def get_sketch_profiles(self, component_name: str = "comp1", sketch_name: str = "Sketch1"):
         """
         {
@@ -278,6 +264,7 @@ class Sketches(FusionSubmodule):
         except Exception as e:
             return f"Error: {e}"
 
+    @ToolCollection.tool_call
     def get_edges_in_body(self, component_name: str="comp1", body_name: str="Body1") -> str:
         """
         {
@@ -421,6 +408,7 @@ class Sketches(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    @ToolCollection.tool_call
     def get_faces_in_body(self, component_name: str="comp1", body_name: str = "Body1") -> str:
         """
         {
@@ -548,6 +536,7 @@ class Sketches(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    @ToolCollection.tool_call
     def create_sketch(self, component_name: str="comp1", sketch_name: str ="Sketch1", sketch_plane: str ="xy"):
         """
             {
@@ -610,6 +599,7 @@ class Sketches(FusionSubmodule):
             return f'Error: Failed to create sketch: {e}'
 
 
+    @ToolCollection.tool_call
     def create_circles_in_sketch(self, component_name:str="comp1", sketch_name:str="Sketch1", point_list:str=[[1,1,0]], circle_diameter_list:list=[10]):
         """
         {
@@ -699,6 +689,7 @@ class Sketches(FusionSubmodule):
         except Exception as e:
             return f'Error: Failed to create circles in sketch: {e}'
 
+    @ToolCollection.tool_call
     def create_polygon_in_sketch(self,
                                  component_name: str = "comp1",
                                  sketch_name: str = "Sketch1",
@@ -859,6 +850,7 @@ class Sketches(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    @ToolCollection.tool_call
     def create_spline_in_sketch(self, component_name: str = "comp1", sketch_name: str = "Sketch1", point_list: list = [[0, 0, 0], [1, 1, 0], [2, 0, 0]]):
         """
         {
@@ -936,6 +928,7 @@ class Sketches(FusionSubmodule):
             return f"Error: Failed to create spline in sketch: {e}"
 
 
+    @ToolCollection.tool_call
     def create_rectangles_in_sketch(self, component_name: str="comp1", sketch_name: str="Sketch1", center_point_list: list=[[1,1,0]], rectangle_size_list:list=[[2,4]]):
         """
         {
@@ -1244,6 +1237,7 @@ class Sketches(FusionSubmodule):
             return f'Error: Failed to create rectangles in sketch: {e}'
 
 
+    @ToolCollection.tool_call
     def create_irregular_polygon_in_sketch(self, parent_component_name:str="comp1", sketch_name:str="Sketch1", point_list:list=[[0,0,0], [0,1,0], [1,2,0]]):
         """
         {
@@ -1312,6 +1306,7 @@ class Sketches(FusionSubmodule):
             return f'Error: Failed to create polygon in sketch: {e}'
 
 
+    @ToolCollection.tool_call
     def create_arcs_and_lines_in_sketch(
         self,
         component_name: str = "comp1",
@@ -1455,8 +1450,9 @@ class Sketches(FusionSubmodule):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
-class CreateObjects(FusionSubmodule):
+class CreateObjects(ToolCollection):
 
+    @ToolCollection.tool_call
     def extrude_profiles_in_sketch(
         self,
         component_name: str = "comp1",
@@ -1616,6 +1612,7 @@ class CreateObjects(FusionSubmodule):
         except Exception as e:
             return f"Error: An unexpected exception occurred: {e}"
 
+    @ToolCollection.tool_call
     def revolve_profile_in_sketch(
         self,
         component_name: str = "comp1",
@@ -1764,6 +1761,7 @@ class CreateObjects(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    @ToolCollection.tool_call
     def create_new_component(self, parent_component_name: str="comp1", component_name: str="comp2") -> str:
         """
             {
@@ -1810,6 +1808,7 @@ class CreateObjects(FusionSubmodule):
         except Exception as e:
             return 'Error: Failed to create new component:\n{}'.format(parent_component_name)
 
+    @ToolCollection.tool_call
     def set_parameter_values(self, parameter_updates: list = [["d1", 1.1], ["d2", 1.9]]) -> str:
         """
         {
@@ -1890,6 +1889,7 @@ class CreateObjects(FusionSubmodule):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
+    @ToolCollection.tool_call
     def copy_component_as_new(self, source_component_name: str="comp1", target_parent_component_name: str="comp_container", new_component_name: str="new_comp_1") -> str:
         """
             {
@@ -1950,7 +1950,7 @@ class CreateObjects(FusionSubmodule):
 
 
 
-class NonCad(FusionSubmodule):
+class NonCad(ToolCollection):
 
 
 
@@ -2010,6 +2010,7 @@ class NonCad(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    @ToolCollection.tool_call
     def rename_model_parameters(self, old_new_names: list) -> str:
         """
             {
@@ -2124,7 +2125,7 @@ class NonCad(FusionSubmodule):
             }
         """
 
-        print("abc")
+    
         try:
             if not appearance_updates or not isinstance(appearance_updates, list):
                 return "Error: Must provide an array of updates in the form [{'occurrence_name': '...', 'appearance_name': '...'}, ...]."
@@ -2459,9 +2460,10 @@ class NonCad(FusionSubmodule):
 
 
 
-class ModifyObjects(FusionSubmodule):
+class ModifyObjects(ToolCollection):
 
 
+    @ToolCollection.tool_call
     def copy_component(self, source_component_name: str, target_parent_component_name: str) -> str:
         """
             {
@@ -2517,6 +2519,7 @@ class ModifyObjects(FusionSubmodule):
         except Exception as e:
             return f'Error: Failed to copy "{source_component_name}" into "{target_parent_component_name}":\n{e}'
 
+    @ToolCollection.tool_call
     def fillet_or_chamfer_edges(self,
                                component_name: str = "comp1",
                                body_name: str = "Body1",
@@ -2638,6 +2641,7 @@ class ModifyObjects(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    @ToolCollection.tool_call
     def move_occurrence(self,
                        occurrence_name: str = "comp1:1",
                        move_position: list = [1.0, 1.0, 0.0]) -> str:
@@ -2715,6 +2719,7 @@ class ModifyObjects(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    @ToolCollection.tool_call
     def reorient_occurrence(self, occurrence_name: str = "comp1:1", axis: list = [0, 0, 1], target_vector: list = [1, 0, 0]) -> str:
         """
         {
@@ -2797,6 +2802,7 @@ class ModifyObjects(FusionSubmodule):
         except Exception as e:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    @ToolCollection.tool_call
     def mirror_body_in_component(
         self,
         component_name: str = "comp1",
@@ -2934,8 +2940,9 @@ class ModifyObjects(FusionSubmodule):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
-class ImportExport(FusionSubmodule):
+class ImportExport(ToolCollection):
 
+    @ToolCollection.tool_call
     def list_step_files_in_directory(self) -> str:
         """
         {
@@ -2981,6 +2988,7 @@ class ImportExport(FusionSubmodule):
         except Exception as e:
             return f"Error: Failed to scan local directory: {e}"
 
+    @ToolCollection.tool_call
     def import_step_file_to_component(self, target_component: str="comp1", file_path: str="paath"):
         """
         {
@@ -3039,6 +3047,7 @@ class ImportExport(FusionSubmodule):
         except Exception as e:
             return f"Error: Failed to import STEP file: {e}"
 
+    @ToolCollection.tool_call
     def import_dxf_to_component(self, target_component : str, dxf_file_path: str):
         """
             {
@@ -3099,6 +3108,7 @@ class ImportExport(FusionSubmodule):
 
         return newSketch
 
+    @ToolCollection.tool_call
     def import_fusion_component(self, parent_component_name: str, file_path: str) -> str:
         """
             {
@@ -3150,8 +3160,9 @@ class ImportExport(FusionSubmodule):
 
 
 
-class DeleteObjects(FusionSubmodule):
+class DeleteObjects(ToolCollection):
 
+    @ToolCollection.tool_call
     def delete_component_sub_object(self, delete_object_array :list=[
             {"component_name": "comp1", "object_type":"jointOrigins", "object_name":"Joint Origin1"},
             {"component_name": "comp1", "object_type":"jointOrigins", "object_name":"Joint Origin1"},
@@ -3310,6 +3321,7 @@ class DeleteObjects(FusionSubmodule):
             return f'Error: Failed to delete objects:\n{traceback.format_exc()}'
 
 
+    @ToolCollection.tool_call
     def delete_occurrence(self, occurrence_name: str="comp1:1") -> str:
         """
         {
@@ -3345,8 +3357,9 @@ class DeleteObjects(FusionSubmodule):
             return f'Error: Failed to delete occurrence "{occurrence_name}":\n{e}'
 
 
-class Joints(FusionSubmodule):
+class Joints(ToolCollection):
 
+    @ToolCollection.tool_call
     def list_joint_origin_references(self, component_name: str = "comp1") -> str:
         """
         {
@@ -3511,6 +3524,7 @@ class Joints(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    @ToolCollection.tool_call
     def create_joint_origin(self,
                             component_name: str = "comp1",
                             reference_id: str = "face|body0|face1",
@@ -3709,6 +3723,7 @@ class Joints(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    @ToolCollection.tool_call
     def create_joints_between_origins(self, joint_requests: list = [
             { "occurrence_1_name": "comp1:1",
              "joint_origin_1":"jointOrigin1",
@@ -3855,6 +3870,7 @@ class Joints(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    @ToolCollection.tool_call
     def modify_joint_origin(self,
                             joint_origin_name: str = None,
                             new_geometry: dict = None,
@@ -3991,8 +4007,9 @@ class Joints(FusionSubmodule):
 
 
 
-class Timeline(FusionSubmodule):
+class Timeline(ToolCollection):
 
+    @ToolCollection.tool_call
     def list_timeline_info(self) -> str:
         """
             {
@@ -4070,6 +4087,7 @@ class Timeline(FusionSubmodule):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
+    @ToolCollection.tool_call
     def delete_timeline_items(self, indexes_to_delete: list = []) -> str:
         """
         {
@@ -4132,6 +4150,7 @@ class Timeline(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    @ToolCollection.tool_call
     def roll_back_to_timeline(self, index_to_rollback: int = 0) -> str:
         """
         {
@@ -4178,6 +4197,7 @@ class Timeline(FusionSubmodule):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
+    @ToolCollection.tool_call
     def delete_timeline_groups(self, group_names: list) -> str:
         """
         {
@@ -4285,6 +4305,7 @@ class Timeline(FusionSubmodule):
         except Exception as e:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    @ToolCollection.tool_call
     def set_timeline_groups_state(self, group_names: list, expand: bool = True) -> str:
         """
         {

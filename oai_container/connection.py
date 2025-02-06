@@ -35,8 +35,7 @@ ASSISTANT_ID = default_config["ASSISTANT_ID"]
 client = OpenAI()
 
 
-
-
+print(f"RELOADED: {__name__.split('%2F')[-1]}")
 
 
 class Assistant:
@@ -484,8 +483,6 @@ class Assistant:
 
                                 conn.send(json.dumps(fusion_call))
 
-
-
     def add_message(self, message_text: str):
         """
         create new message and add it to thread
@@ -499,9 +496,7 @@ class Assistant:
         self.message_id = message.id
         print(f'  MESSAGE ADDED: {message.id}')
 
-
     def parse_stream(self, stream):
-
         for event in stream:
 
             event_type = event.event
@@ -523,8 +518,6 @@ class Assistant:
                 print("THREAD.RUN.COMPLETED")
                 #print(event.data)
 
-
-
     def create_run(self):
         """create initial run"""
 
@@ -535,7 +528,6 @@ class Assistant:
         )
         return stream
 
-
     def run_status(self):
         """get run status"""
         # get run status
@@ -545,8 +537,6 @@ class Assistant:
         )
 
         return run
-
-
 
     def submit_tool_call(self, response_list: list):
         """
@@ -563,8 +553,6 @@ class Assistant:
         )
 
         return stream
-
-
 
     def send_func_response(self, response_list: list):
         """

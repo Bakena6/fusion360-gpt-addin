@@ -1,7 +1,5 @@
 
 
-
-
 <html lang="en">
 
     <head>
@@ -63,16 +61,29 @@
                     <button type="button" onclick="reconnect()">Reconnect</button>
                     -->
 
-                    <button type="button" onclick="loadTools()">Reload</button>
-                    <button type="button" onclick="toggleTools()">Show/ Hide Tools</button>
-                    <button type="button" class="control-button" onclick="uploadTools()">Upload Tools</button>
+                    <button type="button" onclick="control.toggleTools()">Show/ Hide Tools</button>
+                    <button type="button" onclick="control.reloadModules()">Reload Modules</button>
+                    <button type="button" onclick="control.reconnect()">Reconnect</button>
+
+                    <button type="button" class="control-button" onclick="control.uploadTools()">Upload Tools</button>
 
                     <span>  </span>
                     <button id=recordButton type="button" onclick="record()">Start Record</button>
                     <button id="submitButton" type="button" class="control-button" onclick="thread.submitPrompt()">Submit</button>
 
+
                 </div>
                 <!-- end button row-->
+
+                <div class="button-row">
+
+                  <input type="checkbox" id="scales" name="debug" checked />
+                  <label for="debug">Debug</label>
+                  <input type="checkbox" id="scales" name="reload" checked />
+                  <label for="reload">Reload</label>
+
+
+                </div>
 
 
                 <!--input container-->

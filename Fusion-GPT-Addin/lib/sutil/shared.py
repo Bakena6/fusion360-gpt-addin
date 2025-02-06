@@ -23,17 +23,49 @@ def print(string):
     """redefine print for fusion env"""
     futil.log(str(string))
 
+print(f"RELOADED: {__name__.split("%2F")[-1]}")
 
 
-class FusionSubmodule:
+class ToolCollection:
     """
     methods colletion
     """
 
+    #DEBUG = True
+    #static
+    def tool_call(func):
+        """
+        Wraps fusion interface calls
+        """
+        # TODO probably a better way to select functions wrapped in this 
+        func.__wrapper__ = "tool_call"
+
+        # for retrieving wrapped function kwarg names
+        @functools.wraps(func)
+        def wrapper(self, *args, **kwds):
+            self.app = adsk.core.Application.get()
+            print("func start")
+
+            result = func(self, *args, **kwds)
+
+            #if result
+
+            print(result)
+            print("func end")
+            return result
+
+        return wrapper
+
+
+
+
+
     def __init__(self):
-        print(f"FUSON SHARED RELOAD")
         self.methods = self._get_methods()
         self.ent_dict = {}
+
+
+
 
     def _get_methods(self):
         """
@@ -176,4 +208,12 @@ class FusionSubmodule:
 
 
         return body, errors
+
+
+
+
+
+
+
+
 

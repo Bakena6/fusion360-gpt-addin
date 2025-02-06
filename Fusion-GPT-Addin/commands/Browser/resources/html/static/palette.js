@@ -259,27 +259,19 @@ let thread = new Thread();
 
 
 
-function uploadTools() {
-    const args = { };
-    // Send the data to Fusion as a JSON string. The return value is a Promise.
-    adsk.fusionSendData("upload_tools", JSON.stringify(args))
-        .then((result) =>{ }); // end then
-} // end uploadTools
-
 
 
 function executeToolCall(function_name) {
     // text area
     const functionArgInputs = document.querySelectorAll(`.${function_name}__input`);
-    console.log("finput", functionArgInputs);
 
     let function_args = {};
     for (let i=0; i < functionArgInputs.length; i++) {
-            const name = functionArgInputs[i].name;
-            const val = functionArgInputs[i].value;
-            //console.log(val);
-            function_args[name] = JSON.parse(val);
-        };
+        const name = functionArgInputs[i].name;
+        const val = functionArgInputs[i].value;
+        //console.log(val);
+        function_args[name] = JSON.parse(val);
+    };
 
     const args = {"function_name": function_name, "function_args": function_args };
 
@@ -288,225 +280,6 @@ function executeToolCall(function_name) {
         .then((result) =>{ }); // end then
 
 } // end executeToolCall
-
-
-
-function showHideElement(elementId){
-    console.log(elementId);
-    let element = document.getElementById(elementId);
-
-    if (element.style.display === "none") {
-        element.style.display = "block"; 
-    } else {
-        element.style.display = "none"; 
-    }
-
-
-};
-
-
-
-
-function loadTools() {
-
-    const args = {  };
-    // Send the data to Fusion as a JSON string. The return value is a Promise.
-    adsk.fusionSendData("get_tools", JSON.stringify(args))
-        .then((result) =>{ 
-            let toolTestContainer = document.getElementById('toolTestContainer');
-            toolTestContainer.innerHTML = "";
-            let response = JSON.parse(result);
-
-            // class name, methods
-            for (const [c_name, methods] of Object.entries(response)) {
-                
-                // methods
-                // top class container
-                const toolClassContainer = document.createElement("div");
-                toolClassContainer.className = "toolClassContainer";
-
-                //const classSectionTitle = document.createElement("span");
-                const classSectionTitle = document.createElement("button");
-                classSectionTitle.innerHTML = c_name;
-                classSectionTitle.type = "button";
-                classSectionTitle.className = "toolCallClassTitle";
-
-
-                // all methods in a class
-                const methodsContainer = document.createElement("div");
-                const methodsContainerId = `${c_name}_method_container`;
-                methodsContainer.id = methodsContainerId;
-                methodsContainer.className = "methodsContainer";
-                methodsContainer.style.display = "none";
-
-                classSectionTitle.onclick = function() {
-
-                    showHideElement(methodsContainerId);
-                };
-
-                toolClassContainer.appendChild(classSectionTitle);
-
-                let borderColor="pink";
-
-                if (c_name == "CreateObjects"){
-                    borderColor = "green";
-
-                } else if (c_name == "ModifyObjects") {
-                    borderColor = "orange";
-
-                } else if (c_name == "Sketches") {
-                    borderColor = "green";
-
-                } else if (c_name == "DeleteObjects") {
-                    borderColor = "red";
-                };
-
-
-                toolClassContainer.style.borderColor = borderColor;
-
-                for (const [m_name, params] of Object.entries(methods)) {
-
-                    const toolRow = document.createElement("div");
-                    toolRow.className = 'tool-row';
-
-                    const functionButton = document.createElement("button");
-                    functionButton.innerHTML = m_name;
-                    functionButton.type = "button";
-                    functionButton.id = m_name;
-                    functionButton.setAttribute("onClick", `javascript: executeToolCall("${m_name}");`);
-                    functionButton.className = "toolCallButton";
-
-                    const inputContainer = document.createElement("span");
-                    inputContainer.className = "functionInputContainer";
-
-                    // params
-                    for (const [param_name, param_info] of Object.entries(params)) {
-                        //const paramInput = document.createElement("input");
-                        const paramInput = document.createElement("textarea");
-
-                        const paramDefault = param_info.default_val;
-                        paramInput.id = `${m_name}__${param_name}`;
-                        paramInput.name = `${param_name}`;
-                        paramInput.rows = 1;
-                        paramInput.wrap = "hard";
-                        paramInput.type = "text";
-                        paramInput.className = `${m_name}__input param_input`;
-                        paramInput.placeholder = `${param_name}`;
-
-                        paramInput.value = JSON.stringify(paramDefault);
-
-                        resizeInput(paramInput);
-
-                        function autoResizeTextarea(textarea) {
-                            textarea.style.height = "auto"; // Reset the height
-                            textarea.style.height = textarea.scrollHeight+4 + "px"; // Set height to scroll height
-                        }
-
-                        paramInput.addEventListener("click", () => autoResizeTextarea(paramInput));
-
-                        inputContainer.appendChild(paramInput);
-
-                    };
-
-                    //responseDiv.className = 'message-response'; // Add class for styling
-                    toolRow.appendChild(functionButton);
-                    toolRow.appendChild(inputContainer);
-
-                    methodsContainer.appendChild(toolRow);
-
-                }// end for params
-
-                toolClassContainer.appendChild(methodsContainer);
-
-                toolTestContainer.appendChild(toolClassContainer);
-
-
-
-
-            }// end for
-
-
-        }); // end then
-
-    
-    let toolTestContainer = document.getElementById('toolTestContainer');
-    toolTestContainer.style.height = '50%';
-    setWindowHeight();
-
-} // end getTools
-
-//function
-
-
-
-function record(){
-
-
-
-    let recordButton = document.getElementById('recordButton');
-    recordButton.style.backgroundColor = "gray";
-
-    if ( recordButton.textContent == "Start Record"){
-
-        const args = {  };
-        adsk.fusionSendData("start_record", JSON.stringify(args)).then((result) =>{ 
-
-            recordButton.style.backgroundColor = "red";
-            recordButton.textContent = "Recording";
-
-        });
-
-
-        
-    } else {
-
-        recordButton.textContent = "Transcribing...";
-        const args = {  };
-        // Send the data to Fusion as a JSON string. The return value is a Promise.
-        adsk.fusionSendData("stop_record", JSON.stringify(args))
-            .then((result) =>{ 
-
-                recordButton.style.backgroundColor = "green";
-                recordButton.textContent = "Start Record";
-
-                let response = JSON.parse(result);
-                let audio_text = response["content"];
-                console.log(audio_text)
-
-                var promptTextInput = document.getElementById('promptTextInput');
-                promptTextInput.value = promptTextInput.value + " " + audio_text;
-
-            });
-
-
-    }; // end else
-
-
-
-
-
-
-
-}; // end start record
-
-function resizeInput(input) {
-    input.style.width = (input.value.length + 1) * 9 + "px"; // Adjust multiplier for better spacing
-
-
-  }
-
-
-
-
-
-function toggleTools() {
-
-    showHideElement("toolTestContainer");
-
-    setWindowHeight();
-
-} // end hide tools
-
 
 
 function setWindowHeight() {
@@ -524,27 +297,324 @@ function setWindowHeight() {
     //console.log("Current inputContainer height:", inputHeight);
 
     let newOutputHeight = window.innerHeight - (inputHeight + toolTestHeight +5) ;
-
-
     outputContainer.style.height = `${newOutputHeight}px`;
 
 
-}
-
-// Listen for the window resize event
-window.addEventListener('resize', function() {
-    setWindowHeight();
-    // You can call other functions or update the DOM here
-    // e.g., update a span with the height, etc.
-});
+} // end setWindowHeight
 
 
-window.addEventListener('load', (event) => {
-  // Your code to execute after the page loads
-    setWindowHeight();
-});
 
 
+
+class Control{
+
+    constructor(){
+
+        this.textArea = document.getElementById('promptTextInput');
+
+
+        // Listen for the window resize event
+        window.addEventListener('resize', function() {
+            setWindowHeight();
+            // You can call other functions or update the DOM here
+            // e.g., update a span with the height, etc.
+        });
+
+
+        this.display_tools = false;
+        window.addEventListener('load', (event) => {
+          // Your code to execute after the page loads
+            setWindowHeight();
+
+        });
+
+        //this.createToolElements();
+        this.tools = [];
+
+
+    //this.toolsContainer();
+    }; // end constructor
+
+
+
+    //async loadTools(){ };
+
+     async toggleTools() {
+
+         if (this.tools.length == 0){
+            this.tools = await this.getTools();
+            this.createToolElements();
+        } else{
+
+            this.showHideElement("toolTestContainer");
+        };
+
+        setWindowHeight();
+
+    } // end hide tools
+
+
+    showHideElement(elementId){
+
+        let element = document.getElementById(elementId);
+        if (element.style.display === "none") {
+            element.style.display = "block"; 
+        } else {
+            element.style.display = "none"; 
+        }
+
+    }; // end showHideElement
+
+
+
+
+
+
+
+
+
+
+     uploadTools() {
+        const args = { };
+        // Send the data to Fusion as a JSON string. The return value is a Promise.
+        adsk.fusionSendData("upload_tools", JSON.stringify(args))
+            .then((result) =>{ }); // end then
+    } // end uploadTools
+
+
+
+
+    /*
+    * get availible tool call from Python class
+    */
+     async getTools() {
+
+        const args = {  };
+
+         var result = await adsk.fusionSendData("get_tools", JSON.stringify(args));
+
+         var resultJson = await JSON.parse(result);
+
+        return resultJson;
+
+
+    } // end reload
+
+
+    reloadModules(){
+        const args = { };
+        // Send the data to Fusion as a JSON string. The return value is a Promise.
+        adsk.fusionSendData("reload_modules", JSON.stringify(args))
+            .then((result) =>{ }); // end then
+    };
+
+    reconnect(){
+        const args = { };
+        // Send the data to Fusion as a JSON string. The return value is a Promise.
+        adsk.fusionSendData("reconnect", JSON.stringify(args))
+            .then((result) =>{ }); // end then
+    };
+
+
+
+    disptool(){
+
+
+    };
+
+    createToolElements() {
+
+        let toolTestContainer = document.getElementById('toolTestContainer');
+        toolTestContainer.innerHTML = "";
+        //let response = 
+        // class name, methods
+
+        for (const [c_name, methods] of Object.entries(this.tools)) {
+
+
+            // methods
+            // top class container
+            const toolClassContainer = document.createElement("div");
+            toolClassContainer.className = "toolClassContainer";
+
+            //const classSectionTitle = document.createElement("span");
+            const classSectionTitle = document.createElement("button");
+            classSectionTitle.innerHTML = c_name;
+            classSectionTitle.type = "button";
+            classSectionTitle.className = "toolCallClassTitle";
+
+
+            // all methods in a class
+            const methodsContainer = document.createElement("div");
+            const methodsContainerId = `${c_name}_method_container`;
+            methodsContainer.id = methodsContainerId;
+            methodsContainer.className = "methodsContainer";
+            methodsContainer.style.display = "none";
+
+            classSectionTitle.onclick = function() {
+                //showHideElement(methodsContainerId);
+                let element = document.getElementById(methodsContainerId);
+                if (element.style.display === "none") {
+                    element.style.display = "block"; 
+                } else {
+                    element.style.display = "none"; 
+                }
+
+
+
+            };
+
+            toolClassContainer.appendChild(classSectionTitle);
+
+            let borderColor="pink";
+
+            if (c_name == "CreateObjects"){
+                borderColor = "green";
+
+            } else if (c_name == "ModifyObjects") {
+                borderColor = "orange";
+
+            } else if (c_name == "Sketches") {
+                borderColor = "green";
+
+            } else if (c_name == "DeleteObjects") {
+                borderColor = "red";
+            };
+
+
+            toolClassContainer.style.borderColor = borderColor;
+
+            for (const [m_name, params] of Object.entries(methods)) {
+
+                const toolRow = document.createElement("div");
+                toolRow.className = 'tool-row';
+
+                const functionButton = document.createElement("button");
+                functionButton.innerHTML = m_name;
+                functionButton.type = "button";
+                functionButton.id = m_name;
+                functionButton.setAttribute("onClick", `javascript: executeToolCall("${m_name}");`);
+                functionButton.className = "toolCallButton";
+
+                const inputContainer = document.createElement("span");
+                inputContainer.className = "functionInputContainer";
+
+                // params
+                for (const [param_name, param_info] of Object.entries(params)) {
+                    //const paramInput = document.createElement("input");
+                    const paramInput = document.createElement("textarea");
+
+                    const paramDefault = param_info.default_val;
+                    paramInput.id = `${m_name}__${param_name}`;
+                    paramInput.name = `${param_name}`;
+                    paramInput.rows = 1;
+                    paramInput.wrap = "hard";
+                    //paramInput.type = "text";
+                    paramInput.className = `${m_name}__input param_input`;
+                    paramInput.placeholder = `${param_name}`;
+
+                    paramInput.value = JSON.stringify(paramDefault);
+
+                    this.resizeInput(paramInput);
+
+                    function autoResizeTextarea(textarea) {
+                        textarea.style.height = "auto"; // Reset the height
+                        textarea.style.height = textarea.scrollHeight + "px"; // Set height to scroll height
+                    }
+
+                    paramInput.addEventListener("click", () => autoResizeTextarea(paramInput));
+
+                    inputContainer.appendChild(paramInput);
+
+                };
+
+                //responseDiv.className = 'message-response'; // Add class for styling
+                toolRow.appendChild(functionButton);
+                toolRow.appendChild(inputContainer);
+                methodsContainer.appendChild(toolRow);
+
+            }// end for params
+
+            toolClassContainer.appendChild(methodsContainer);
+
+            toolTestContainer.appendChild(toolClassContainer);
+
+
+        }// end for
+
+
+        toolTestContainer.style.height = '50%';
+
+        setWindowHeight();
+
+    } // end getTools
+
+    //function
+
+
+
+    record(){
+
+
+        let recordButton = document.getElementById('recordButton');
+        recordButton.style.backgroundColor = "gray";
+
+        if ( recordButton.textContent == "Start Record"){
+
+            const args = {  };
+            adsk.fusionSendData("start_record", JSON.stringify(args)).then((result) =>{ 
+
+                recordButton.style.backgroundColor = "red";
+                recordButton.textContent = "Recording";
+
+            });
+
+
+
+        } else {
+
+            recordButton.textContent = "Transcribing...";
+            const args = {  };
+            // Send the data to Fusion as a JSON string. The return value is a Promise.
+            adsk.fusionSendData("stop_record", JSON.stringify(args))
+                .then((result) =>{ 
+
+                    recordButton.style.backgroundColor = "green";
+                    recordButton.textContent = "Start Record";
+
+                    let response = JSON.parse(result);
+                    let audio_text = response["content"];
+                    console.log(audio_text)
+
+                    var promptTextInput = document.getElementById('promptTextInput');
+                    promptTextInput.value = promptTextInput.value + " " + audio_text;
+
+                });
+
+
+        }; // end else
+
+
+    }; // end start record
+
+
+
+    resizeInput(input) {
+        input.style.width = (5 +input.value.length) + "ch"; // Adjust multiplier for better spacing
+
+
+    } // end resize
+
+
+
+
+
+
+} // end control container
+
+
+
+let control = new Control();
 
 
 
@@ -581,7 +651,6 @@ window.fusionJavaScriptHandler = {
             }
 
         } catch (e) {
-            console.log("error")
             adsk.fusionSendData("error", JSON.stringify(e))
             console.log(e);
             console.log(`Exception caught with command: ${action}, data: ${data}`);

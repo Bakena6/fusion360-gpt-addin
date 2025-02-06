@@ -1,6 +1,4 @@
 # document data
-#
-#
 
 import adsk.core
 import adsk.fusion
@@ -15,9 +13,7 @@ import re
 #from multiprocessing.connection import Client
 from array import array
 import time
-
 import functools
-
 import hashlib
 import base64
 import re
@@ -26,19 +22,19 @@ from ... import config
 from ...lib import fusion360utils as futil
 
 # send info to html palette
-from .shared import FusionSubmodule
+from .shared import ToolCollection 
 
 def print(string):
     """redefine print for fusion env"""
     futil.log(str(string))
+print(f"RELOADED: {__name__.split("%2F")[-1]}")
 
 
 
-class GetStateData(FusionSubmodule):
+class GetStateData(ToolCollection):
     """
     methods used by Realtime API to retrive state of Fusion document
     """
-
 
     def __init__(self):
         super().__init__()  # Call the base class constructor
@@ -75,25 +71,24 @@ class GetStateData(FusionSubmodule):
 
         return hash_str
 
-
-
     def _set_obj_hash(self, entityToken, entity, length=5):
 
         hash_val = self._hash_string_to_fixed_length(entityToken, length)
 
-        hash_val = f"{entity.objectType.split(":")[-1]}__{hash_val}"
+        #hash_val = f"{entity.objectType.split(":")[-1]}__{hash_val}"
+        hash_val = f"{hash_val}"
 
         self.ent_dict[hash_val] = entity
 
         return hash_val
 
 
-    def _get_obj_hash(self, hash_val):
-        return self.ent_dict[hash_val]
+    def get_obj_hash(self, hash_val):
+
+        return self.ent_dict.get(hash_val)
 
 
-
-
+    @ToolCollection.tool_call
     def get_root_component_name(self):
         """
         {
@@ -105,6 +100,7 @@ class GetStateData(FusionSubmodule):
         try:
             app = adsk.core.Application.get()
             design = adsk.fusion.Design.cast(app.activeProduct)
+            print("func_run")
 
             # Access the active design
             if design:
@@ -163,13 +159,15 @@ class GetStateData(FusionSubmodule):
 
                 attr_list = [
                     "isBodiesFolderLightBulbOn",
-                    "isCanvasFolderLightBulbOn",
+                    #"isCanvasFolderLightBulbOn",
                     "isConstructionFolderLightBulbOn",
-                    "isDecalFolderLightBulbOn",
+                    #"isDecalFolderLightBulbOn",
                     "isJointsFolderLightBulbOn",
                     "isSketchFolderLightBulbOn",
                     "description",
-                    "entityToken"
+                    "opacity",
+                    "entityToken",
+                    "transform"
 
                 ]
 
@@ -226,30 +224,48 @@ class GetStateData(FusionSubmodule):
         get entity info
         """
 
+
         ent_info = { }
         for attr in attr_list:
+            try:
+                if "." in attr:
 
-            if "." in attr:
+                    attr0, attr1 = attr.split(".")
 
-                attr0, attr1 = attr.split(".")
+                    try:
+                        sub_ent = getattr(entity, attr0, None)
+                    except Exception as e:
+                        print(e)
+                        continue
 
-                sub_ent = getattr(entity, attr0, None)
-                if sub_ent is None:
-                    continue
-                attr_val = getattr(sub_ent, attr1)
-                ent_info[attr] = attr_val
+                    if sub_ent is None:
+                        continue
 
-            elif hasattr(entity, attr) == True:
+                    try:
+                        attr_val = getattr(sub_ent, attr1)
+                    except Exception as e:
+                        print(e)
+                        continue
 
-                attr_val = getattr(entity, attr)
 
-                if attr == "entityToken":
-                    attr_val = self._set_obj_hash(attr_val, entity)
+                    ent_info[attr] = attr_val
 
-                ent_info[attr] = attr_val
+
+                elif hasattr(entity, attr) == True:
+
+                    attr_val = getattr(entity, attr)
+
+                    if attr == "entityToken":
+                        attr_val = self._set_obj_hash(attr_val, entity)
+
+                    ent_info[attr] = attr_val
+            except Exception as e:
+                print(e)
 
         return ent_info
 
+
+    @ToolCollection.tool_call
     def get_design_as_json(self, attributes_list=[]) -> str:
         """
             {
@@ -286,6 +302,8 @@ class GetStateData(FusionSubmodule):
 
             object_types = [
                 "bRepBodies",
+                "joints"
+
             ]
 
             # entities in component
@@ -303,7 +321,11 @@ class GetStateData(FusionSubmodule):
                 "isVisible",
                 "isGrounded",
                 "isReferencedComponent",
-                "opacity"
+                "opacity",
+                "visibleOpacity",
+                "isSuppressed",
+                "isIsolated",
+                "timelineObject.name"
             ]
 
             #occurrence_data = self._get_ent_attrs(occ, global_attrs)
@@ -319,8 +341,18 @@ class GetStateData(FusionSubmodule):
                 # try theese attrbutes on multiple objects
                 for object_name in object_types:
 
-                    # body, joint, sketch etc
-                    objectArray = getattr(occ, object_name)
+                    try:
+                        # body, joint, sketch etc
+                        objectArray = getattr(occ, object_name)
+                    except Exception as e:
+                        print(f"Error 1: {object_name} {e}")
+                        try:
+                            root_comp = design.rootComponent
+                            objectArray = getattr(root_comp, object_name)
+                            print(f"{object_name} found in root comp!")
+                        except Exception as e:
+                            print(f"Error 2: {object_name} {e}")
+                            continue
 
 
                     for obj in objectArray:
@@ -339,11 +371,14 @@ class GetStateData(FusionSubmodule):
 
             for index, occ in ent_list:
                 sub_comp = occ.component
+
                 if sub_comp:
                     occ_data = get_component_data(occ, sub_comp)
                     object_type = "occurrences"
+
                     if occ_dict.get(object_type) == None:
                         occ_dict["occurrences"] = []
+
                     occ_dict["occurrences"].append(occ_data)
 
 
@@ -364,44 +399,50 @@ class GetStateData(FusionSubmodule):
         return json.dumps(design_data)
 
 
-
-    def set_entity_values(self, updates_list: list = [
-        { "entityToken": " ", "attributeName": "isLightBulbOn", "attributeValue": True }
-    ]) -> str:
+    @ToolCollection.tool_call
+    def set_entity_values(self,
+                         entity_token_list: list = None,
+                         attribute_name: str = "isLightBulbOn",
+                         attribute_value=True) -> str:
         """
         {
           "name": "set_entity_values",
-          "description": "Sets a single property on each referenced entity by token. Each update item has { 'entityToken': <string>, 'attributeName': <string>, 'attributeValue': <any> }. The function sets entity.<attributeName> = <attributeValue> if it is writable.",
+          "description": "Sets a single property on each referenced entity by token. The function sets entity.<attribute_name> = attribute_value for all tokens in entity_token_list, if it is writable.",
           "parameters": {
             "type": "object",
+
             "properties": {
-              "updates_list": {
+              "entity_token_list": {
                 "type": "array",
-                "description": "An array of update instructions. Each item: { 'entityToken': <string>, 'attributeName': <string>, 'attributeValue': <any> }.",
+                "description": "A list of strings, each referencing an entity token to update.",
                 "items": {
-                  "type": "object",
-                  "properties": {
-                    "entityToken": { "type": "string" },
-                    "attributeName": { "type": "string" },
-                    "attributeValue": { "type": ["string","boolean","number"] }
-                  },
-                  "required": ["entityToken", "attributeName", "attributeValue"]
+                  "type": "string"
                 }
+              },
+              "attribute_name": {
+                "type": "string",
+                "description": "The name of the attribute/property to set on each entity."
+              },
+              "attribute_value": {
+                "type": ["boolean","number","string","null"],
+                "description": "The new value to assign to the specified attribute on each entity."
               }
             },
-            "required": ["updates_list"],
+            "required": ["entity_token_list", "attribute_name"],
             "returns": {
               "type": "string",
-              "description": "A JSON object mapping each entityToken to the final property value or null if an error occurred."
+              "description": "A JSON object mapping each entity token to the final property value, or null if an error occurred."
             }
           }
         }
         """
 
-        #print(self.ent_dict.keys())
+
         try:
-            if not updates_list or not isinstance(updates_list, list):
-                return "Error: updates_list must be a non-empty list."
+            if not entity_token_list or not isinstance(entity_token_list, list):
+                return "Error: entity_token_list must be a non-empty list of strings."
+            if not attribute_name:
+                return "Error: attribute_name is required."
 
             app = adsk.core.Application.get()
             if not app:
@@ -413,45 +454,168 @@ class GetStateData(FusionSubmodule):
 
             design = adsk.fusion.Design.cast(product)
 
+            # This method presumably retrieves an object from a local hash or directly from design
+            # If you have a custom function, e.g. self.get_obj_hash(token), use that. 
+            # Otherwise, we'll rely on design.findEntityByToken(token) for demonstration.
+
+            def get_entity_by_token(token: str):
+                # By default, design.findEntityByToken returns a list of matches.
+                entities = design.findEntityByToken(token)
+                if len(entities) == 0:
+                    return None
+                return entities[0]
+
             # Final results mapped: token -> final value or None
             results = {}
 
-            for update_item in updates_list:
-                entity_token = update_item.get("entityToken")
-                attr_name = update_item.get("attributeName")
-                attr_value = update_item.get("attributeValue")
+            for token in entity_token_list:
 
-                if not entity_token or not attr_name:
-                    # If invalid data, skip
+                if not token:
                     continue
 
-                # findEntityByToken returns a list of matching entities
-
-                entity = self._get_obj_hash(entity_token)
-                #Eif entity == None:
-
-                print(f"{entity_token}: {entity.objectType} {entity.name} => {attr_value}")
-
-                # Attempt to set the property
                 final_val = None
+                entity = self.get_obj_hash(token)
+                if not entity:
+                    results[token] = f"Error: entity_token: {token} not found"
+                    continue
 
                 try:
-                    setattr(entity, attr_name, attr_value)
-                    # If we can read it back
-                    final_val = getattr(entity, attr_name, None)
-
-
+                    setattr(entity, attribute_name, attribute_value)
+                    # Read back the property
+                    final_val = getattr(entity, attribute_name, None)
+                    #final_val = f""
 
                 except Exception:
                     # If attribute is read-only or invalid
-                    final_val = None
+                    final_val = "Error: entity not found for token: {token}"
 
-                results[entity_token] = final_val
+                results[token] = final_val
 
+            print(json.dumps(results, indent=4))
             return json.dumps(results)
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
+    @ToolCollection.tool_call
+    def set_appearance_on_entities(
+        self,
+        entity_token_list: list = [],
+        appearance_name: str = "Paint - Enamel Glossy (Green)"
+    ) -> str:
+        """
+        {
+          "name": "set_appearance_on_entities",
+          "description": "Sets the given appearance on each entity referenced by token. Typically, these entities are occurrences. The function searches design and libraries to find/copy the appearance.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "entity_token_list": {
+                "type": "array",
+                "description": "A list of entity tokens referencing the occurrences or other valid objects in Fusion 360.",
+                "items": { "type": "string" }
+              },
+              "appearance_name": {
+                "type": "string",
+                "description": "The name of the appearance to apply."
+              }
+            },
+            "required": ["entity_token_list", "appearance_name"],
+            "returns": {
+              "type": "string",
+              "description": "A summary of the updates or any errors encountered."
+            }
+          }
+        }
+        """
+
+        try:
+            if not entity_token_list or not isinstance(entity_token_list, list):
+                return "Error: entity_token_list must be a non-empty list of strings."
+            if not appearance_name:
+                return "Error: appearance_name is required."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # Helper function to locate or copy an appearance by its name
+
+            def find_appearance_by_name(appearance_name: str):
+                #print(appearance_name)
+
+                # 1) Check the design's local appearances
+                local_appearance = design.appearances.itemByName(appearance_name)
+                if local_appearance:
+                    return local_appearance
+
+                # 2) Optionally, check libraries if not found in local. Comment this out if not needed.
+                appearance_libraries = app.materialLibraries
+                for a_lib  in appearance_libraries:
+                    if a_lib.name not in ["Fusion Appearance Library"]:
+                        continue
+
+                    lib_app = a_lib.appearances.itemByName(appearance_name)
+
+                    if lib_app:
+                        # You typically need to copy the library appearance into the design before applying
+                        return design.appearances.addByCopy(lib_app, appearance_name)
+
+
+
+            # Attempt to find the appearance
+            appearance = find_appearance_by_name(appearance_name)
+            if not appearance:
+                return f"Error: Appearance '{appearance_name}' not found in design or libraries."
+
+            # We'll store messages for each token processed
+            results = []
+
+            # A simple helper to find the first entity matching a token
+            def get_entity_by_token(entity_token: str):
+                entity = self.get_obj_hash(entity_token)
+                return entity
+
+            # Process each entity token
+            for token in entity_token_list:
+                if not token:
+                    results.append("Error: Empty token encountered.")
+                    continue
+
+                entity = get_entity_by_token(token)
+                if not entity:
+                    results.append(f"Error: No entity found for token '{token}'.")
+                    continue
+
+                # Typically, only Occurrences have an .appearance property.
+                # Some other entities (e.g., bodies) do as well, but many do not.
+                if hasattr(entity, "appearance"):
+                    try:
+                        entity.appearance = appearance
+                        results.append(f"Set appearance '{appearance_name}' on entity (token={token}).")
+                    except Exception as e:
+                        results.append(f"Error setting appearance on token={token}: {str(e)}")
+                else:
+                    results.append(f"Error: Entity (token={token}) does not support .appearance.")
+
+            return "\n".join(results)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
+
+
+
 
 
     def _parse_function_call(self, func_call):
@@ -473,6 +637,8 @@ class GetStateData(FusionSubmodule):
 
             return function_name, parsed_args
 
+
+    @ToolCollection.tool_call
     def get_object_data(self, object_path :list= ["comp1"], attributes_list:list=[""]) -> str:
         """
             {
@@ -562,6 +728,7 @@ class GetStateData(FusionSubmodule):
         except:
             return f'Error: Failed to get/set component info:\n{traceback.format_exc()}'
 
+    @ToolCollection.tool_call
     def get_model_parameters_by_component_as_json(self) -> str:
         """
         {
@@ -635,6 +802,7 @@ class GetStateData(FusionSubmodule):
         return json.dumps(design_data)
 
 
+    @ToolCollection.tool_call
     def list_available_appearances(self) -> str:
         """
         {
@@ -707,6 +875,7 @@ class GetStateData(FusionSubmodule):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    @ToolCollection.tool_call
     def list_available_materials(self) -> str:
         """
             {
@@ -837,42 +1006,45 @@ class GetStateData(FusionSubmodule):
         # Convert to a JSON string
         return json.dumps(data)
 
-    def _get_entity_attributes(self,
-                              entity_token_list: list = None,
-                              attributes_list: list = ["name", "isLightBulbOn"]) -> str:
+
+
+    def _set_entity_values(self, updates_list: list = [
+        { "entityToken": " ", "attributeName": "isLightBulbOn", "attributeValue": True }
+    ]) -> str:
         """
         {
-          "name": "get_entity_attributes",
-          "description": "Retrieves the specified attributes from each entity referenced by the provided token list.",
+          "name": "set_entity_values",
+          "description": "Sets a single property on each referenced entity by token. Each update item has { 'entityToken': <string>, 'attributeName': <string>, 'attributeValue': <any> }. The function sets entity.<attributeName> = <attributeValue> if it is writable.",
           "parameters": {
             "type": "object",
             "properties": {
-              "entity_token_list": {
+              "updates_list": {
                 "type": "array",
-                "description": "A list of entity tokens referencing Fusion 360 objects.",
-                "items": { "type": "string" }
-              },
-              "attributes_list": {
-                "type": "array",
-                "description": "A list of attribute names to retrieve from each entity object.",
-                "items": { "type": "string" }
+                "description": "An array of update instructions. Each item: { 'entityToken': <string>, 'attributeName': <string>, 'attributeValue': <any> }.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "entityToken": { "type": "string" },
+                    "attributeName": { "type": "string" },
+                    "attributeValue": { "type": ["string","boolean","number"] }
+                  },
+                  "required": ["entityToken", "attributeName", "attributeValue"]
+                }
               }
             },
-            "required": ["entity_token_list", "attributes_list"],
+            "required": ["updates_list"],
             "returns": {
               "type": "string",
-              "description": "A JSON string where each key is an entity token, and each value is a dict of { 'attributeName': value, ... }."
+              "description": "A JSON object mapping each entityToken to the final property value or null if an error occurred."
             }
           }
         }
         """
 
+        #print(self.ent_dict.keys())
         try:
-            if not entity_token_list or not isinstance(entity_token_list, list):
-                return "Error: entity_token_list must be a non-empty list of strings."
-
-            if not attributes_list or not isinstance(attributes_list, list):
-                return "Error: attributes_list must be a non-empty list of attribute names."
+            if not updates_list or not isinstance(updates_list, list):
+                return "Error: updates_list must be a non-empty list."
 
             app = adsk.core.Application.get()
             if not app:
@@ -884,40 +1056,44 @@ class GetStateData(FusionSubmodule):
 
             design = adsk.fusion.Design.cast(product)
 
-            results_dict = {}
+            # Final results mapped: token -> final value or None
+            results = {}
 
-            for token in entity_token_list:
+            for update_item in updates_list:
+                entity_token = update_item.get("entityToken")
+                attr_name = update_item.get("attributeName")
+                attr_value = update_item.get("attributeValue")
 
-                # Attempt to locate the entity from its token
+                if not entity_token or not attr_name:
+                    # If invalid data, skip
+                    continue
+
+                # findEntityByToken returns a list of matching entities
+
+                entity = self.get_obj_hash(entity_token)
+                if not entity:
+                    result["entity_token"] = f"Error: entity_token {entity_token} not found"
+
+                #Eif entity == None:
+
+                print(f"{entity_token}: {entity.objectType} {entity.name} => {attr_value}")
+
+                # Attempt to set the property
+                final_val = None
+
                 try:
-                    # findEntityByToken returns a sinlge element list
-                    entities = design.findEntityByToken(token)
-                    if len(entities) ==0:
-                        continue
+                    setattr(entity, attr_name, attr_value)
+                    # If we can read it back
+                    final_val = getattr(entity, attr_name, None)
 
-                    entity = entities[0]
 
-                    if not entity:
-                        # Could not find an object with that token
-                        results_dict[token] = {
-                            attr_name: None for attr_name in attributes_list
-                        }
-                        continue
-                    attr_values = {}
+                except Exception:
+                    # If attribute is read-only or invalid
+                    final_val = None
 
-                    for attr_name in attributes_list:
-                        attr_val = getattr(entity, attr_name, None)
-                        attr_values[attr_name] = attr_val
-                    results_dict[token] = attr_values
+                results[entity_token] = final_val
 
-                except Exception as e:
-                    # If an error occurs processing this token, store None for all
-                    results_dict[token] = {
-                        attr_name: None for attr_name in attributes_list
-                    }
-
-            # Convert the results to JSON
-            return json.dumps(results_dict)
+            return json.dumps(results)
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
@@ -929,8 +1105,7 @@ class GetStateData(FusionSubmodule):
 
 
 
-
-class SetStateData(FusionSubmodule):
+class SetStateData(ToolCollection):
 
     def _parse_function_call(self, func_call):
         """used by get_object_data """
@@ -1332,293 +1507,10 @@ class SetStateData(FusionSubmodule):
 
 
 
-    def _set_component_attributes(self, object_array:list=[
-
-            { "component_name": "comp1",
-             "action":"isBodiesFolderLightBulbOn",
-             "value": True
-             },
-
-            {"component_name": "comp1",
-             "action":"isSketchFolderLightBulbOn",
-             "value": True
-
-             },
-
-    ] ) -> str:
-
-        """
-        {
-            "name": "set_component_attributes",
-            "description": "Sets properties/attributes for a specificeomponent object",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "object_array": {
-                        "type": "array",
-                        "description": "Array of objects to set value or perfom action",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "component_name": {
-                                    "type": "string",
-                                    "description": "name of the target component"
-                                },
-                                "action": {
-                                    "type": "string",
-                                    "description": "action to perform",
-                                    "enum": [
-                                        "isBodiesFolderLightBulbOn",
-                                        "isConstructionFolderLightBulbOn",
-                                        "isCanvasFolderLightBulbOn",
-                                        "isDecalFolderLightBulbOn",
-                                        "isJointsFolderLightBulbOn",
-                                        "isOriginFolderLightBulbOn",
-                                        "isSketchFolderLightBulbOn",
-                                        "isLightBulbOn"
-                                    ]
-                                },
-                                "value": {
-                                    "type": "string",
-                                    "description": "action to perform"
-                                }
-                            },
-                            "required": ["component_name", "action", "value"]
-                        }
-                    }
-                },
-                "required": ["object_array"],
-                "returns": {
-                    "type": "string",
-                    "description": "A message indicating success or failure of the options"
-                }
-            }
-        }
-        """
-
-        try:
-            # Access the active design.
-            app = adsk.core.Application.get()
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            rootComp = design.rootComponent
-
-            # check arg type
-            if not isinstance(object_array, list):
-                return "Error: object_array must be an array/ list"
-
-            object_enums = [
-                "isBodiesFolderLightBulbOn",
-                "isConstructionFolderLightBulbOn",
-                "isCanvasFolderLightBulbOn",
-                "isDecalFolderLightBulbOn",
-                "isJointsFolderLightBulbOn",
-                "isOriginFolderLightBulbOn",
-                "isSketchFolderLightBulbOn"
-            ]
-
-            # add object to delete to dict, faster this way
-            action_dict = {}
-
-            results = []
-            # jonied as string and returned
-            # items in array, each representing a delete task
-            for object_dict in object_array:
-                component_name = object_dict.get("component_name")
-                action = object_dict.get("action")
-                value = object_dict.get("value")
-
-                # all objects have a parent/target component
-                targetComponent, errors = self._find_component_by_name(component_name)
-
-                if not targetComponent:
-                    # if results, add error to return list
-                    results.append(errors)
-                    continue
-
-                # check if item has the associated action attribute
-                if hasattr(targetComponent, action) == False:
-                    errors = f"Error: Component {component_name} has no attribute {action}."
-                    results.append(errors)
-                    continue
-
-                object_action_dict = {
-                    "target_object": targetComponent,
-                    "action": action,
-                    "value": value
-                }
-
-                action_dict[f"{component_name}:{action}"] = object_action_dict 
-
-                #results.append(f'Added {component_name}.{object_type} "{target_object.name}" to delete list.')
-
-
-            #if len(list(delete_dict.keys())) == 0:
-            if len(action_dict) == 0:
-                results.append(f"No objects to delete.")
-
-            for k, v in action_dict.items():
-                target_object = v["target_object"]
-                action = v["action"]
-                value = v["value"]
-
-                if isinstance(value, str):
-                    if value.lower() == "true":
-                        value = True
-                    elif value.lower() == "false":
-                        value = False
-
-                print(action)
-                set_result = setattr(target_object, action, value)
-                results.append(f"Set {target_object} {action} to {value}: {set_result}")
-
-
-            results.append(f"Success")
-
-            return "\n".join(results).strip()
-
-        except:
-            return f'Error: Failed to modify components:\n{traceback.format_exc()}'
 
 
 
-
-
-
-
-
-
-    def set_appearance_on_components(
-            self, appearance_updates: list = [{"component_name": "comp1","appearance_name":"Paint - Enamel Glossy (Green)"}]) -> str:
-
-            """
-                {
-                  "name": "set_appearance_on_components",
-                  "description": "Sets the appearance on a list of components. Each item in appearance_updates is {'component_name': <COMPONENT_NAME>, 'appearance_name': <APPEARANCE_NAME>}.",
-                  "parameters": {
-                    "type": "object",
-                    "properties": {
-                      "appearance_updates": {
-                        "type": "array",
-                        "description": "An array of objects with the form {'component_name': <COMPONENT_NAME>, 'appearance_name': <APPEARANCE_NAME>}.",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "component_name": {
-                              "type": "string"
-                            },
-                            "appearance_name": {
-                              "type": "string"
-                            }
-                          },
-                          "required": ["component_name", "appearance_name"]
-                        }
-                      }
-                    },
-                    "required": ["appearance_updates"],
-                    "returns": {
-                      "type": "string",
-                      "description": "A summary message about which components were updated or any errors encountered."
-                    }
-                  }
-                }
-            """
-            try:
-                if not appearance_updates or not isinstance(appearance_updates, list):
-                    return "Error: Must provide an array of updates in the form [{'component_name': '...', 'appearance_name': '...'}, ...]."
-
-                app = adsk.core.Application.get()
-                if not app:
-                    return "Error: Fusion 360 is not running."
-
-                product = app.activeProduct
-                if not product or not isinstance(product, adsk.fusion.Design):
-                    return "Error: No active Fusion 360 design found."
-
-                design = adsk.fusion.Design.cast(product)
-                root_comp = design.rootComponent
-
-                # A helper function to find an appearance by name in the design
-                # (Optionally search the appearance libraries if not found in design).
-                def find_appearance_by_name(appearance_name: str):
-                    #print(appearance_name)
-
-                    # 1) Check the design's local appearances
-                    local_appearance = design.appearances.itemByName(appearance_name)
-                    if local_appearance:
-                        return local_appearance
-
-                    # 2) Optionally, check libraries if not found in local. Comment this out if not needed.
-                    appearance_libraries = app.materialLibraries
-                    for a_lib  in appearance_libraries:
-                        if a_lib.name not in ["Fusion Appearance Library"]:
-                            continue
-
-                        lib_app = a_lib.appearances.itemByName(appearance_name)
-
-                        if lib_app:
-                            # You typically need to copy the library appearance into the design before applying
-                            return design.appearances.addByCopy(lib_app, appearance_name)
-
-                    return None
-
-                results = []
-
-                # Process each update item
-                for update in appearance_updates:
-                    # Validate each item in the array
-                    if not isinstance(update, dict):
-                        results.append("Error: Appearance update must be a dictionary.")
-                        continue
-
-                    comp_name = update.get("component_name")
-                    app_name = update.get("appearance_name")
-                    if not comp_name or not app_name:
-                        results.append(f"Error: Missing component_name or appearance_name in {update}.")
-                        continue
-
-                    # Find the appearance by name
-                    appearance = find_appearance_by_name(app_name)
-                    if not appearance:
-                        results.append(f"Error: Appearance '{app_name}' not found in design or libraries.")
-                        continue
-
-                    # Find all occurrences that reference this component name
-                    #self._find_component_by_name(component_name)
-
-                    found_occurrences = []
-                    for occ in root_comp.allOccurrences:
-                        if occ.component.name == comp_name:
-                            found_occurrences.append(occ)
-
-                    #  in case occurrences was passed in
-                    if not found_occurrences:
-                        found_occurrences.append(self._find_occurrence_by_name(comp_name))
-
-
-                    if not found_occurrences:
-                        results.append(f"Error: No occurrences found for component '{comp_name}'.")
-                        continue
-
-                    # Apply the appearance override to each matching occurrence
-                    for occ in found_occurrences:
-                        try:
-                            # Setting the appearance property on an occurrence
-                            occ.appearance = appearance
-                            # If needed, you can enforce override with:
-                            # occ.appearance.isOverride = True
-                        except Exception as e:
-                            results.append(f"Error: error setting appearance on occurrence {occ.name}: {str(e)}")
-                            continue
-
-                    results.append(f"Set appearance '{app_name}' on component '{comp_name}' ({len(found_occurrences)} occurrence(s)).")
-
-                print("\n".join(results))
-                return "\n".join(results)
-
-            except:
-                return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-
+    @ToolCollection.tool_call
     def rename_component(self, component_name: str, new_name: str) -> str:
         """
             {

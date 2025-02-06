@@ -73,12 +73,10 @@ ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resource
 local_handlers = []
 
 
-# Fusion360 interface, methodods availible to OpenAI Assistant
-#fusion_itf = fusion_interface.FusionInterface(app, ui)
-
-
 def print(string):
+    """redefine print for fusion env"""
     futil.log(str(string))
+
 
 # Executed when add-in is run.
 def start():
@@ -216,10 +214,6 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
     if message_action == "error":
         print(message_data)
 
-    elif message_action == "connect":
-        server_itf.connect()
-        #connect to server
-        print("SERVER CONNECTED")
 
     # upload function/ prompt to assistant
     elif message_action == "upload_tools":
@@ -228,7 +222,7 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
 
     elif message_action == "start_record":
         server_itf.start_record()
-        html_args.returnData = ''
+        html_args.returnData = ""
 
     elif message_action == "stop_record":
         audio_text = server_itf.stop_record()
@@ -236,22 +230,32 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
         #audio_text = {"audio_text": audio_text["content"]}
         html_args.returnData = json.dumps(audio_text)
 
+
+    elif message_action == "reload_modules":
+
+        #server_itf.reload_interface()
+        server_itf.reload_modules()
+        html_args.returnData = ""
+
+
     elif message_action == "get_tools":
         """
         get available tools, display in window
         """
-        server_itf.reload_interface()
         methods = server_itf.fusion_itf.get_tools()
+
         html_args.returnData = json.dumps(methods)
+
+    elif message_action == "reconnect":
+        server_itf.connect()
+        html_args.returnData = ""
 
 
     elif message_action == "execute_tool_call":
 
         #server_itf.reload_interface()
-
         function_name = message_data["function_name"]
         function_args = message_data["function_args"]
-
 
         # convert to dict if passed as str when manually testing
         if isinstance(function_args, str):
