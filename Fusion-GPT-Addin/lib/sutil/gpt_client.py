@@ -132,8 +132,8 @@ class GptClient:
     def sendToBrowser(self, function_name, data):
         json_data = json.dumps(data)
         # create run output section in html
-
         self.palette.sendInfoToHTML(function_name, json_data)
+
 
 
     def upload_tools(self):

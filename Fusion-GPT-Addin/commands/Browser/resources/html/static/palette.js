@@ -326,6 +326,7 @@ class Control{
           // Your code to execute after the page loads
             setWindowHeight();
 
+
         });
 
         //this.createToolElements();
@@ -416,11 +417,6 @@ class Control{
     };
 
 
-
-    disptool(){
-
-
-    };
 
     createToolElements() {
 
@@ -555,12 +551,9 @@ class Control{
 
     record(){
 
-
         let recordButton = document.getElementById('recordButton');
         recordButton.style.backgroundColor = "gray";
-
         if ( recordButton.textContent == "Start Record"){
-
             const args = {  };
             adsk.fusionSendData("start_record", JSON.stringify(args)).then((result) =>{ 
 
@@ -606,11 +599,41 @@ class Control{
     } // end resize
 
 
-
-
-
-
 } // end control container
+
+
+
+function send_cp_val(cb_event){
+
+    const args = {
+        "setting_name": cb_event.target.id,
+        "setting_val": cb_event.target.checked
+    };
+
+    adsk.fusionSendData("cb_change", JSON.stringify(args))
+        .then((result) =>{ });
+};
+
+
+
+// settings check boces
+window.addEventListener('load', (event) => {
+
+    //debugCb = document.getElementById('debugCb');
+
+    const settingCbs = document.querySelectorAll('.settingCb');
+
+    settingCbs.forEach(cb => {
+
+        cb.addEventListener("change", (cb_event) => send_cp_val(cb_event));
+
+    }); // end for each
+
+
+
+
+
+});
 
 
 

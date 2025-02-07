@@ -107,7 +107,7 @@ class Assistant:
                 message_raw = conn.recv()
                 message = json.loads(message_raw)
                 print(f"conn.poll: {message}")
-                #message_type = message["message_type"]
+
                 break
 
 
@@ -210,7 +210,6 @@ class Assistant:
 
 
 
-    #def process_audio
     def start_server(self):
         # run on local host, Fusion client must connect to this address
         address = ('localhost', 6000) # family is deduced to be 'AF_INET'
@@ -482,6 +481,9 @@ class Assistant:
                                 }
 
                                 conn.send(json.dumps(fusion_call))
+
+
+
 
     def add_message(self, message_text: str):
         """

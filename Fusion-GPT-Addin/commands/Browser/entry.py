@@ -216,6 +216,11 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
 
 
     # upload function/ prompt to assistant
+    elif message_action == "cb_change":
+        server_itf.fusion_itf.set_class_attr(message_data)
+
+
+    # upload function/ prompt to assistant
     elif message_action == "upload_tools":
         server_itf.upload_tools()
 
@@ -232,7 +237,6 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
 
 
     elif message_action == "reload_modules":
-
         #server_itf.reload_interface()
         server_itf.reload_modules()
         html_args.returnData = ""
@@ -265,9 +269,8 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
 
         if callable(method):
             result = method(**function_args)
-            print(result)
 
-        html_args.returnData = ''
+        html_args.returnData = ""
 
 
     elif message_action == "submit_prompt":

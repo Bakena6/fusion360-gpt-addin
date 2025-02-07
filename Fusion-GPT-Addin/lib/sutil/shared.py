@@ -12,7 +12,9 @@ import re
 #from multiprocessing.connection import Client
 from array import array
 import time
+import hashlib
 
+import base64
 import functools
 
 #from ... import config
@@ -33,6 +35,14 @@ class ToolCollection:
 
     #DEBUG = True
     #static
+
+    #debug_print = True
+
+    # store references to fusion object based on id
+    ent_dict = {}
+    log_results = True
+    log_errors = True
+
     def tool_call(func):
         """
         Wraps fusion interface calls
@@ -40,31 +50,58 @@ class ToolCollection:
         # TODO probably a better way to select functions wrapped in this 
         func.__wrapper__ = "tool_call"
 
+
+
         # for retrieving wrapped function kwarg names
         @functools.wraps(func)
         def wrapper(self, *args, **kwds):
             self.app = adsk.core.Application.get()
-            print("func start")
 
-            result = func(self, *args, **kwds)
+            #print(f"Call: {func.__name__}")
 
-            #if result
+            results = func(self, *args, **kwds)
 
-            print(result)
-            print("func end")
-            return result
+            if getattr(ToolCollection, "log_results") == True:
+                self.print_results(results)
+
+            #print("func end")
+            return results
 
         return wrapper
 
+    def log_print(self, output):
+        print(output)
+
+    @classmethod
+    def set_class_attr(cls, settings_dict):
+
+        setting_name = settings_dict.get("setting_name")
+        setting_val = settings_dict.get("setting_val")
+
+        current_val = getattr(cls, setting_name, None)
+
+        setattr(ToolCollection, setting_name, setting_val)
+        print(f"{setting_name} set from {current_val} => {setting_val}")
 
 
 
+
+    def print_results(self, results):
+
+        if isinstance(results, str):
+
+            try:
+                formatted_results = json.dumps(json.loads(results), indent=4)
+            except:
+                formatted_results = results
+        else:
+            formatted_results = results
+
+        print(formatted_results)
 
     def __init__(self):
         self.methods = self._get_methods()
-        self.ent_dict = {}
-
-
+        #self.ent_dict = {}
 
 
     def _get_methods(self):
@@ -209,6 +246,63 @@ class ToolCollection:
 
         return body, errors
 
+
+    def _hash_string_to_fixed_length(self, input_string: str, length: int = 10) -> str:
+        """
+        Returns a stable, unique, alphanumeric hash string of the specified length
+        for the given input_string. Uses SHA-256, then Base64, removing non-alphanumeric
+        characters and truncating/padding as needed.
+
+        :param input_string: The input string to hash.
+        :param length: The desired length of the resulting hash (default=10).
+        :return: A hash string of the given length (alphanumeric only).
+        """
+        # 1) Compute SHA-256 hash
+        sha_hash = hashlib.sha256(input_string.encode('utf-8')).digest()
+
+        # 2) Encode as Base64 (returns a bytes object)
+        b64_encoded = base64.b64encode(sha_hash)  # e.g. b'abcd1234=='
+
+        # Convert to ASCII string
+        hash_str = b64_encoded.decode('ascii')  # e.g. "abcd1234=="
+
+        # 3) Remove non-alphanumeric characters (like '=', '+', '/')
+        hash_str = re.sub(r'[^A-Za-z0-9]', '', hash_str)
+
+        # 4) Truncate or pad to desired length
+        # If it's shorter than 'length' after removing symbols (rare), we can pad with '0'.
+        if len(hash_str) < length:
+            hash_str += '0' * (length - len(hash_str))
+        else:
+            hash_str = hash_str[:length]
+
+        return hash_str
+
+
+
+    def set_obj_hash(self, entityToken, entity, length=5):
+        """
+        adds a fusion360 to the hash:object dict
+        """
+
+        hash_val = self._hash_string_to_fixed_length(entityToken, length)
+
+        hash_val = f"{entity.objectType.split(":")[-1]}__{hash_val}"
+
+        #hash_val = f"{entity.name}__{hash_val}"
+        #hash_val = f"{hash_val}"
+
+        self.ent_dict[hash_val] = entity
+
+        return hash_val
+
+
+    def get_hash_obj(self, hash_val):
+        """
+        adds a fusion360 to the hash:object dict
+        """
+
+        return self.ent_dict.get(hash_val)
 
 
 
