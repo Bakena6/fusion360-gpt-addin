@@ -41,48 +41,53 @@ class GetStateData(ToolCollection):
 
     #def retrieve_objects_by_token(token_list: list=[]) -> list:
 
+    # TODO probably rename
     def _get_ent_attrs(self, entity, attr_list):
         """
         get entity info, return as dict 
         """
+
         ent_info = { }
         for attr in attr_list:
+            target_entity = entity
+            target_attr = attr
+
             try:
+                attr_val = None
 
+                # non direct attribute passed
                 if "." in attr:
-
-                    attr0, attr1 = attr.split(".")
-
-                    try:
-                        sub_ent = getattr(entity, attr0, None)
-                    except Exception as e:
-                        print(e)
-                        continue
-
-                    if sub_ent is None:
-                        continue
+                    attr0, attr = attr.split(".")
 
                     try:
-                        attr_val = getattr(sub_ent, attr1)
+                        target_entity = getattr(entity, attr0, None)
                     except Exception as e:
-                        print(e)
+                        print(f"Error: {attr0} target_entity {e}")
+                        continue
+                    if target_entity is None:
+                        #print(f"target_entity, {attr0}, {attr} is None")
                         continue
 
-                    if attr1 == "entityToken":
-                        attr_val = self.set_obj_hash(attr_val, sub_ent)
 
-                    ent_info[attr] = attr_val
+                attr_val = getattr(target_entity, attr, None)
+                if attr_val == None:
+                    continue
 
+                if attr == "entityToken":
+                    attr_val = self.set_obj_hash(attr_val, target_entity)
+                elif attr == "objectType":
+                    attr_val = target_entity.__class__.__name__
+                elif hasattr(attr_val, "asArray") == True:
+                    attr_val = attr_val.asArray()
 
-                elif hasattr(entity, attr) == True:
-                    attr_val = getattr(entity, attr)
-                    if attr == "entityToken":
-                        attr_val = self.set_obj_hash(attr_val, entity)
+                if not any([isinstance(attr_val, attrType) for attrType in [str, int, float, bool, tuple, list, dict]] ):
+                    attr_val = str(attr_val)
 
-                    ent_info[attr] = attr_val
+                ent_info[target_attr] = attr_val
 
             except Exception as e:
-                print(e)
+                print(f"Error: _get_ent_attr An unexpected exception occurred: {e} \n" + traceback.format_exc())
+
 
         return ent_info
 
@@ -110,6 +115,7 @@ class GetStateData(ToolCollection):
 
         except Exception as e:
             return None
+
 
     # called get_by design_as_json
     def _get_all_components(self) -> str:
@@ -158,6 +164,8 @@ class GetStateData(ToolCollection):
                 }
 
                 attr_list = [
+                    "entityToken",
+                    "isDeletable",
                     "isBodiesFolderLightBulbOn",
                     "isCanvasFolderLightBulbOn",
                     "isConstructionFolderLightBulbOn",
@@ -167,8 +175,6 @@ class GetStateData(ToolCollection):
                     "isSketchFolderLightBulbOn",
                     "description",
                     "opacity",
-                    "entityToken",
-                    "transform"
                 ]
 
                 # iterable attr attributes
@@ -228,6 +234,184 @@ class GetStateData(ToolCollection):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+    @ToolCollection.tool_call
+    def get_entity_entities(self, entity_token_list: str=[]) -> str:
+        """
+            {
+              "name": "get_entity_entities",
+              "description": "Returns information about any Fusion 360 entity and its sub endities. Including components, bodies, sketches, joints, profiles, etc... Returns a JSON-encoded string describing the entire structure. This function should be called when more detailed information is needed about an entity/object or it's children",
+              "parameters": {
+                "type": "object",
+
+                "properties": {
+                  "entity_token_list": {
+                    "type": "array",
+                    "description": "A list of strings representing the entity names sub entities will be returned for",
+                    "items": { "type": "string" }
+                  }
+                },
+
+                "required": ["entity_token_list"],
+                "returns": {
+                  "type": "string",
+                  "description": "A JSON-encoded string representing the structure of the current design, including name, bodies, sketches, joints, and nested occurrences for each component."
+                }
+              }
+            }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # return value
+            results = {}
+
+            for token in entity_token_list:
+
+                # retrieve entity from local dict
+                entity = self.get_hash_obj(token)
+                if entity is None:
+                    results[token] = f"Error: No entity found for entityToken {token}"
+                    continue
+
+                entity_type = entity.__class__.__name__
+                entity_name = getattr(entity, "name", None)
+
+                entityToken = None
+                try:
+                    if hasattr(entity, "entityToken"):
+                        attr_val =  getattr(entity, "entityToken")
+                        entityToken = self.set_obj_hash(attr_val, entity)
+                except Exception as e:
+                    print(f"Error: Failed to check entityToken attr on {entity}")
+
+                results[token] = {
+                    "name": entity_name,
+                    "entityToken": entityToken,
+                    "objectType": entity_type,
+                    "methods":[],
+                    "attributes": {},
+                    "entities": {},
+                }
+
+                exclude_list = ["this", "thisown", "attributes", "documentReference", "nativeObject"]
+
+                ent_attr_names = [
+                    "name",
+                    "entityToken",
+                    "objectType",
+                    "isDeletable",
+                    "isConstruction",
+                    "isLinked",
+                    "isReference",
+                    "isFixed",
+                    "opacity",
+                    "length",
+                    "geometry",
+                    "area",
+                    "radius",
+                    "origin",
+                    "centroid",
+                    "center",
+                    "startPoint",
+                    "endPoint",
+                    "startVertex.geometry",
+                    "endVertex.geometry",
+                    "startSketchPoint.geometry",
+                    "endSketchPoint.geometry",
+                    "physicalProperties.centerOfMass",
+
+
+                ]
+
+                entity_results = {}
+                # attributes in entity
+                for attr_name in dir(entity):
+
+                    # skip internal methods
+                    if attr_name[0] == "_":
+                        continue
+                    if attr_name in exclude_list:
+                        continue
+
+                    # somtimes getattr/hasattr  
+                    try:
+                        attr_exists = hasattr(entity, attr_name)
+                    except Exception as e:
+                        print(f"Error: checking hasattr {attr_name} on {entity}:\n" + traceback.format_exc())
+                        continue
+
+                    if attr_exists == False:
+                        error = f"Error: {entity_type} '{entity_name}' ({token}) has not attribute {attr_name}"
+                        results[token][attr_name] = error
+                        continue
+
+                    attr_dict = {}
+                    try:
+
+                        # get attribute value on the top level entity
+                        attr = getattr(entity, attr_name)
+
+                        # add only value for primitive data types
+                        if any([ isinstance(attr, attrType) for attrType in [str, int, float, bool]] ):
+                            attr_dict["value"] = attr
+                            if attr_name == "entityToken":
+                                attr = self.set_obj_hash(attr, entity)
+                            results[token]["attributes"][attr_name] = attr
+                            #is_iterable = False
+                            continue
+
+                        elif callable(attr) == True:
+                            if attr_name in ["cast", "classType"]:
+                                continue
+                            results[token]["methods"].append(attr_name)
+                            continue
+
+                        is_iterable = True
+                        # check if iterable object array
+                        if hasattr(attr, "count") == False:
+                            is_iterable = False
+                        if isinstance(attr, str):
+                            is_iterable = False
+
+                        if is_iterable == True:
+                            attr_dict["children"] =  []
+                            # iterate over entity of iterable
+                            for sub_entity in attr:
+                                sub_ent_attrs_dict = self._get_ent_attrs(sub_entity, ent_attr_names)
+                                attr_dict["children"].append(sub_ent_attrs_dict)
+                        else:
+                            ent_attrs_dict = self._get_ent_attrs(attr, ent_attr_names)
+                            attr_dict.update(ent_attrs_dict)
+
+                        if len(attr_dict) != 0:
+                            print(f"{attr_name}: {len(attr_dict)}")
+
+                            results[token]["entities"][attr_name] = attr_dict
+
+
+                    except Exception as e:
+                        return "Error: An unexpected exception occurred: {e}\n" + traceback.format_exc()
+
+
+            #print(results)
+            return json.dumps(results)
+
+
+        except Exception as e:
+            return "Error: Failed to retrieve entity information. Exception:\n" + traceback.format_exc()
+
+
+
+
 
 
     @ToolCollection.tool_call
@@ -282,17 +466,18 @@ class GetStateData(ToolCollection):
                 "name",
                 "entityToken",
                 "objectType",
-                "isLightBulbOn",
                 "appearance.name",
+                "isLightBulbOn",
                 "isVisible",
+                "isSuppressed",
+                "isLocked",
+                "isIsolated",
                 "isGrounded",
                 "isReferencedComponent",
                 "opacity",
                 "visibleOpacity",
-                "isSuppressed",
-                "isIsolated",
-                #"isFlipped",
-                "isLocked"
+                "transform2",
+                "transform2.translation",
             ]
 
             #occurrence_data = self._get_ent_attrs(occ, global_attrs)
@@ -516,9 +701,10 @@ class GetStateData(ToolCollection):
                 "healthState",
                 "parentGroup",
                 "isGroup",
+                "isCollapsed",
                 "objectType",
                 "entity.name",
-                "entity.entityToken",
+                "entity.entityToken"
 
             ]
 
@@ -529,31 +715,15 @@ class GetStateData(ToolCollection):
                 if not t_item:
                     continue
 
-
                 item_data = self._get_ent_attrs(t_item, timeline_attr_names)
 
+                if t_item.isGroup ==True:
+                    item_data["entityToken"] = self.set_obj_hash(t_item.name, t_item)
                 # Parent group reference
-                if t_item.parentGroup:
-                    item_data["parentGroupIndex"] = t_item.parentGroup.index
-                    item_data["parentGroupName"] = t_item.parentGroup.name
+                #if t_item.parentGroup:
+                #    item_data["parentGroupIndex"] = t_item.parentGroup.index
+                #    item_data["parentGroupName"] = t_item.parentGroup.name
 
-                # Entity info
-                entity = t_item.entity
-                if entity:
-                    # We'll store a few general properties if available
-                    entity_type = entity.objectType  # e.g. 'adsk::fusion::ExtrudeFeature'
-                    item_data["entityType"] = entity_type
-
-                    # Many entities have a "name" property, but not all. We'll try/catch.
-                    entity_name = getattr(entity, "name", None)
-                    if entity_name:
-                        item_data["entityName"] = entity_name
-
-                    # Optionally gather more info if you like:
-                    # e.g. if entity_type indicates a feature, you could store
-                    # entity.isSuppressed or others. Just be sure to check for availability.
-                else:
-                    item_data["entityType"] = None  # E.g., might be a group or unknown.
 
                 timeline_info.append(item_data)
 
@@ -561,6 +731,9 @@ class GetStateData(ToolCollection):
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
     @ToolCollection.tool_call
     def get_model_parameters_by_component(self) -> str:
         """
@@ -818,6 +991,8 @@ class SetStateData(ToolCollection):
                     "isGrounded",
                     "isIsolated",
                     "isLocked",
+                    "isCollapsed",
+                    "isSuppressed",
                     "isBodiesFolderLightBulbOn",
                     "isCanvasFolderLightBulbOn",
                     "isConstructionFolderLightBulbOn",
@@ -825,7 +1000,10 @@ class SetStateData(ToolCollection):
                     "isJointsFolderLightBulbOn",
                     "isOriginFolderLightBulbOn",
                     "isSketchFolderLightBulbOn",
-                    "description"
+                    "description",
+                    "areProfilesShown",
+                    "arePointsShown",
+                    "isConstruction"
                 ]
               },
               "attribute_value": {
@@ -873,7 +1051,9 @@ class SetStateData(ToolCollection):
                     results[token] = f"Error: no object found for entity_token: {token}"
                     continue
 
-                object_type = entity.objectType.split(":")[-1]
+                #object_type = entity.objectType.split(":")[-1]
+                object_type = entity.__class__.__name__
+
                 object_name = entity.name
 
                 attr_exists = hasattr(entity, attribute_name)
@@ -1068,14 +1248,17 @@ class SetStateData(ToolCollection):
                     continue
 
                 final_val = None
-
                 entity = self.get_hash_obj(token)
                 if not entity:
                     results[token] = f"Error: no object found for entity_token: {token}"
                     continue
 
-                object_type = entity.objectType.split(":")[-1]
-                object_name = entity.name
+                #object_type = entity.objectType.split(":")[-1]
+                object_type = entity.__class__.__name__
+
+                object_name = getattr(entity, "name", None)
+                if object_name is None:
+                    object_name = f"nameless_{object_type}_{token}"
 
                 attribute_name = "deleteMe"
                 attr_exists = hasattr(entity, attribute_name)

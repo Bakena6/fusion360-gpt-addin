@@ -350,6 +350,121 @@
 
 
 
+    def set_all_timeline_groups_state(self, collapse: bool = True) -> str:
+        """
+        {
+          "name": "set_all_timeline_groups_state",
+          "description": "Expands or collapses all timeline groups in the active Fusion 360 design. The 'collapse' parameter determines whether to expand (False) or collapse (True) all timeline groups in the timeline. The function iterates through all timeline items and, for those that support the 'isExpanded' property (indicating they are groups), sets their expansion state accordingly.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "collapse": {
+                "type": "boolean",
+                "description": "A boolean flag where True collapses all timeline groups and False expands them."
+              }
+            },
+            "required": ["expand"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating which timeline groups were modified, or an error message if the operation failed."
+            }
+          }
+        }
+        """
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            timelineGroups = design.timeline.timelineGroups
+
+            modified_groups = []
+            # Iterate over all timeline items.
+            for tlGroup in timelineGroups:
+
+                if hasattr(tlGroup, 'isCollapsed'):
+                    tlGroup.isCollapsed = collapse
+                    modified_groups.append(tlGroup.name)
+
+            if not modified_groups:
+                return "No timeline groups found or none could be modified."
+
+            state = "collapsed" if collapse else "expanded"
+            return f"All timeline groups were set to {state}. Modified groups: {modified_groups}"
+        except Exception as e:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+    #@ToolCollection.tool_call
+    def set_timeline_groups_state(self, group_names: list, expand: bool = True) -> str:
+        """
+        {
+          "name": "set_timeline_groups_state",
+          "description": "Expands or collapses timeline groups in the active Fusion 360 design based on the provided group names. The 'expand' parameter determines whether to expand (True) or collapse (False) the matching timeline groups. This function iterates over timeline items, identifies groups by matching their names against the provided list, and then sets their expansion state using a property or method (if available) on the timeline group objects.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "group_names": {
+                "type": "array",
+                "description": "A list of strings representing the names of timeline groups to modify.",
+                "items": { "type": "string" }
+              },
+              "expand": {
+                "type": "boolean",
+                "description": "A boolean flag where True expands the timeline groups and False collapses them."
+              }
+            },
+            "required": ["group_names", "expand"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating which timeline groups were expanded or collapsed, or an error message if the operation failed."
+            }
+          }
+        }
+        """
+        try:
+            # Get the Fusion 360 application and active design.
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            timeline = design.timeline
+
+            modified_groups = []
+            # Iterate through timeline items.
+            for i in range(timeline.count):
+                timelineItem = timeline.item(i)
+                # Check if the timeline item name is one of the target group names.
+                if timelineItem.name in group_names:
+                    try:
+                        # Attempt to set the expansion state.
+                        # Note: This assumes that timeline group items expose an 'isExpanded' property.
+                        # If the API differs, adjust this section accordingly.
+                        timelineItem.isExpanded = expand
+                        modified_groups.append(timelineItem.name)
+                    except Exception as innerEx:
+                        # If an individual group cannot be modified, log and continue.
+                        pass
+
+            if not modified_groups:
+                return "No matching timeline groups found or none could be modified."
+
+            state = "expanded" if expand else "collapsed"
+            return f"Timeline groups {modified_groups} were set to {state}."
+        except Exception as e:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
 
 
 

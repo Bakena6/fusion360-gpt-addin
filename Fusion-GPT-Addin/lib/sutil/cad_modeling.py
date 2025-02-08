@@ -35,7 +35,7 @@ print(f"RELOADED: {__name__.split("%2F")[-1]}")
 class Sketches(ToolCollection):
 
     ###### ====== cad design ====== ######
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def get_sketch_profiles(self, component_name: str = "comp1", sketch_name: str = "Sketch1"):
         """
         {
@@ -107,6 +107,7 @@ class Sketches(ToolCollection):
 
         except Exception as e:
             return f"Error: {e}"
+
 
     @ToolCollection.tool_call
     def get_edges_in_body(self, component_name: str="comp1", body_name: str="Body1") -> str:

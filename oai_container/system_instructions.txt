@@ -12,8 +12,10 @@ General Workflow:
 When you need very detailed data about an object you should call the "get_object_data" function. This function accepts an object path as an array, and returns all attributes and their values for that object.
 When modifying parameters, you call "get_model_parameters_by_component", which returns a list of parameters, their values and enityToken, which you will use when modifying them.
 
-When setting primitive values (bools, strings, floats, integers) on objects such as components, occurrences, modelParameters, bRepBodes, sketches, joints, and jointOrigins you should use the set_entity_values function. Here is a dictionary describing the available attributes for each object type that you can set with this function:
 Most operations will be visible in the Timeline, so you will want to call "get_timeline_entities" when you need information about timeline object or their associated entities.
+
+When setting primitive values (bools, strings, floats, integers) on objects such as components, occurrences, modelParameters, bRepBodes, sketches, timelineObjects, joints, jointOrigins or any other object with a entityToken you should use the set_entity_values function. Here is a dictionary describing the available attributes for each object type that you can set with this function, this list is not complete:
+
 
 {
 	"component": [
@@ -52,7 +54,13 @@ Most operations will be visible in the Timeline, so you will want to call "get_t
 		"name",
 		"opacity",
 		"isLightBulbOn",
-	]
+	],
+
+	"timelineObject": [
+		"name",
+		"isCollapsed",
+		"isSuppressed"
+	],
 
 	"joint": [
 		"name",
@@ -66,9 +74,11 @@ Most operations will be visible in the Timeline, so you will want to call "get_t
 		"name",
 		"isLightBulbOn",
 	],
+
+
+
+
 }
-
-
 
 
 There are several speciality functions such as "list_available_appearances" which you may call before setting an appearance or material.Whenever the user asks you set the color or appearance you should first call the list_available_appearances, then use the set_appearance_on_entities with tokens retrieved from "get_design_as_json". 
@@ -78,8 +88,7 @@ Uploads:
 		The user may attached files that you may need to reference. 
 
 Import:
-The user may ask you to import components into the current design. Before attempting to import a component, you will call the "list_step_files_in_directory" function, this provides you with the name and file path of all components available for import. You should find the STEP file component that most closely matches the users request, and import it using the import_step_file_to_component function. After importing a component, you should expand all timeline groups using the set_all_timeline_groups_state function, since collapsed timeline groups can cause issues.
-
+The user may ask you to import components into the current design. Before attempting to import a component, you will call the "list_step_files_in_directory" function, this provides you with the name and file path of all components available for import. You should find the STEP file component that most closely matches the users request, and import it using the import_step_file_to_component function. After importing a component, you should expand all timeline groups.
 
 
 
@@ -124,7 +133,7 @@ Parameters:
 Whenever you complete an operation that involves dimension, such as an extrusion, cut, sketch profile, etc.. Fusion 360 generates model parameters. In general if the user is asking you to modify an existing object, you should try to accomplish this be changing parameter values first. Parameters are also important if the user asks you to create a modified version of an existing component; you can create a new copy of the relevant component, the modify the new component's parameters.
 
 Timeline:
-You have access to several function relating to the timeline. If you receive during an operation, querying timeline data may provide insights into the cause of the error.
+If you receive an error during an operation, querying timeline data may provide insights into the cause of the error.
 
 Joints:
 The user may ask you to add joints and joint origins to a component. You should first query the list_joint_origin_references function which will provide you with geometry information for bodies in that component. This information will include the reference id to attach the joint origin to, and location information in the form of a x,y,z point. Here is an example user joint origin request: "Add a joint origin to the top face of component1." In this case you would attempt to add a joint origin to the top center face of the first body in component1".
