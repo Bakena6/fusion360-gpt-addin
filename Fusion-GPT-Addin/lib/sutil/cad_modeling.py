@@ -109,7 +109,7 @@ class Sketches(ToolCollection):
             return f"Error: {e}"
 
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def get_edges_in_body(self, component_name: str="comp1", body_name: str="Body1") -> str:
         """
         {
@@ -253,7 +253,7 @@ class Sketches(ToolCollection):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def get_faces_in_body(self, component_name: str="comp1", body_name: str = "Body1") -> str:
         """
         {
@@ -381,7 +381,7 @@ class Sketches(ToolCollection):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def create_sketch(self, component_name: str="comp1", sketch_name: str ="Sketch1", sketch_plane: str ="xy"):
         """
             {
@@ -444,7 +444,7 @@ class Sketches(ToolCollection):
             return f'Error: Failed to create sketch: {e}'
 
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def create_circles_in_sketch(self, component_name:str="comp1", sketch_name:str="Sketch1", point_list:str=[[1,1,0]], circle_diameter_list:list=[10]):
         """
         {
@@ -534,7 +534,7 @@ class Sketches(ToolCollection):
         except Exception as e:
             return f'Error: Failed to create circles in sketch: {e}'
 
-    @ToolCollection.tool_call
+   # @ToolCollection.tool_call
     def create_polygon_in_sketch(self,
                                  component_name: str = "comp1",
                                  sketch_name: str = "Sketch1",
@@ -695,7 +695,7 @@ class Sketches(ToolCollection):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def create_spline_in_sketch(self, component_name: str = "comp1", sketch_name: str = "Sketch1", point_list: list = [[0, 0, 0], [1, 1, 0], [2, 0, 0]]):
         """
         {
@@ -773,7 +773,7 @@ class Sketches(ToolCollection):
             return f"Error: Failed to create spline in sketch: {e}"
 
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def create_rectangles_in_sketch(self, component_name: str="comp1", sketch_name: str="Sketch1", center_point_list: list=[[1,1,0]], rectangle_size_list:list=[[2,4]]):
         """
         {
@@ -1082,7 +1082,7 @@ class Sketches(ToolCollection):
             return f'Error: Failed to create rectangles in sketch: {e}'
 
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def create_irregular_polygon_in_sketch(self, parent_component_name:str="comp1", sketch_name:str="Sketch1", point_list:list=[[0,0,0], [0,1,0], [1,2,0]]):
         """
         {
@@ -1151,7 +1151,7 @@ class Sketches(ToolCollection):
             return f'Error: Failed to create polygon in sketch: {e}'
 
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def create_arcs_and_lines_in_sketch(
         self,
         component_name: str = "comp1",
@@ -1457,7 +1457,7 @@ class CreateObjects(ToolCollection):
         except Exception as e:
             return f"Error: An unexpected exception occurred: {e}"
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def revolve_profile_in_sketch(
         self,
         component_name: str = "comp1",
@@ -1607,7 +1607,7 @@ class CreateObjects(ToolCollection):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
     @ToolCollection.tool_call
-    def create_new_component(self, parent_component_name: str="comp1", component_name: str="comp2") -> str:
+    #def create_new_component(self, parent_component_name: str="comp1", component_name: str="comp2") -> str:
         """
             {
                 "name": "create_new_component",
@@ -1715,90 +1715,6 @@ class CreateObjects(ToolCollection):
 
 
     ### OLD
-
-    #@ToolCollection.tool_call
-    def set_parameter_values(self, parameter_updates: list = [["d1", 1.1], ["d2", 1.9]]) -> str:
-        """
-        {
-          "name": "set_parameter_values",
-          "description": "Sets the value of multiple parameters in the active Fusion 360 design. Each item in parameter_updates is [parameterName, newValue].",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "parameter_updates": {
-                "type": "array",
-                "description": "A list where each element is [parameterName, newValue]. parameterName is a string and newValue is a number.",
-                "items": {
-                  "type": "array",
-                  "minItems": 2,
-                  "maxItems": 2,
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              }
-            },
-            "required": ["parameter_updates"],
-            "returns": {
-              "type": "string",
-              "description": "Messages indicating the result of each parameter update."
-            }
-          }
-        }
-        """
-
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-            results = []
-
-            # Loop through each [parameterName, newValue] pair
-            for update in parameter_updates:
-                # Basic validation of each pair
-                if not isinstance(update, list) or len(update) != 2:
-                    results.append(f"Error: Invalid update format (expected [parameterName, newValue]): {update}")
-                    continue
-
-                parameter_name, new_value = update[0], update[1]
-
-                # Attempt to find the parameter by name
-                param = design.allParameters.itemByName(parameter_name)
-                if not param:
-                    results.append(f"Error: Parameter '{parameter_name}' not found.")
-                    continue
-
-                # Attempt to set the new value
-                try:
-                    param.value = float(new_value)
-                    results.append(f"Parameter '{parameter_name}' successfully updated to {new_value}.")
-                except:
-                    # If direct assignment fails (e.g., read-only, locked, or expression-based),
-                    # try setting the parameter expression instead
-                    try:
-                        if param.unit:
-                            param.expression = f"{new_value} {param.unit}"
-                        else:
-                            param.expression = str(new_value)
-                        results.append(f"Parameter '{parameter_name}' successfully updated to {new_value}.")
-                    except:
-                        results.append(f"Error: Failed to update parameter '{parameter_name}' to {new_value}.")
-
-            # Combine and return all messages
-            return "\n".join(results)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-
-
-
 
 
 

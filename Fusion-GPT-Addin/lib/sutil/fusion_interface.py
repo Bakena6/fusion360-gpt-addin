@@ -29,8 +29,9 @@ def print(string):
     """redefine print for fusion env"""
     futil.log(str(string))
 
-print(f"RELOADED: {__name__.split("%2F")[-1]}")
 
+
+print(f"RELOADED: {__name__.split("%2F")[-1]}")
 
 
 # send info to html palette
@@ -62,8 +63,8 @@ class FusionInterface:
             #DeleteObjects(),
             ImportExport(),
             Joints(),
-            Timeline(),
-    #        NonCad(),
+            #Timeline(),
+            #NonCad(),
         ]
 
 
@@ -83,8 +84,6 @@ class FusionInterface:
 
     def update_settings(self, settings_dict ):
         ToolCollection.update(settings_dict)
-
-
 
     def get_tools(self):
         """
@@ -196,126 +195,6 @@ class FusionInterface:
 
 
 class NonCad(ToolCollection):
-
-
-    def _set_appearance_on_occurrences(
-        self, appearance_updates: list = [{"occurrence_name": "comp1:1","appearance_name":"Paint - Enamel Glossy (Green)"}]) -> str:
-
-        """
-            {
-              "name": "set_appearance_on_occurrences",
-              "description": "Sets the appearance on a list of occurrence. Each item in appearance_updates is {'occurrence_name': <occurrence_name>, 'appearance_name': <appearance_name>}.",
-              "parameters": {
-                "type": "object",
-                "properties": {
-                  "appearance_updates": {
-                    "type": "array",
-                    "description": "An array of objects with the form {'occurrence_name': <occurrence_name>, 'appearance_name': <appearance_name>}.",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "component_name": {
-                          "type": "string"
-                        },
-                        "appearance_name": {
-                          "type": "string"
-                        }
-                      },
-                      "required": ["occurrence_name", "appearance_name"]
-                    }
-                  }
-                },
-                "required": ["appearance_updates"],
-                "returns": {
-                  "type": "string",
-                  "description": "A summary message about which occurrence were updated or any errors encountered."
-                }
-              }
-            }
-        """
-
-    
-        try:
-            if not appearance_updates or not isinstance(appearance_updates, list):
-                return "Error: Must provide an array of updates in the form [{'occurrence_name': '...', 'appearance_name': '...'}, ...]."
-
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-            root_comp = design.rootComponent
-
-            # A helper function to find an appearance by name in the design
-            # (Optionally search the appearance libraries if not found in design).
-            def find_appearance_by_name(appearance_name: str):
-                # 1) Check the design's local appearances
-                local_appearance = design.appearances.itemByName(appearance_name)
-                if local_appearance:
-                    return local_appearance
-
-                # 2) Optionally, check libraries if not found in local. Comment this out if not needed.
-                appearance_libraries = app.materialLibraries
-                for i in range(appearance_libraries.count):
-
-                    a_lib = appearance_libraries.item(i)
-                    if a_lib.name not in ["Fusion Appearance Library"]:
-                        continue
-
-                    lib_app = a_lib.appearances.itemByName(appearance_name)
-
-                    if lib_app:
-                        # You typically need to copy the library appearance into the design before applying
-                        return design.appearances.addByCopy(lib_app, appearance_name)
-
-                return None
-
-            results = []
-            # Process each update item
-            for update in appearance_updates:
-                # Validate each item in the array
-                if not isinstance(update, dict):
-                    results.append("Error: Appearance update must be a dictionary.")
-                    continue
-
-                occ_name = update.get("occurrence_name")
-                app_name = update.get("appearance_name")
-
-                if not occ_name or not app_name:
-                    results.append(f"Error: Missing occurrence_name or appearance_name in {update}.")
-                    print("contine")
-                    continue
-
-                # Find the appearance by name
-                appearance = find_appearance_by_name(app_name)
-
-                if not appearance:
-                    results.append(f"Error: Appearance '{app_name}' not found in design or libraries.")
-                    continue
-
-                #  in case occurrences was passed in
-                targetOcc, errors = self._find_occurrence_by_name(occ_name)
-                print(f"targetOcc: {targetOcc}")
-                if not targetOcc:
-                    results.append(f"Error: Appearance '{app_name}' not found in design or libraries.")
-                    continue
-
-                # Setting the appearance property on an occurrence
-                targetOcc.appearance = appearance
-                # If needed, you can enforce override with:
-                #targetOcc.appearance.isOverride = True
-                results.append(f"Appearance set on occurrence: {occ_name}")
-
-
-            return "\n".join(results)
-
-        except:
-            print("ERROR")
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
 
@@ -639,168 +518,6 @@ class ModifyObjects(ToolCollection):
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-    @ToolCollection.tool_call
-    def move_occurrence(self,
-                       occurrence_name: str = "comp1:1",
-                       move_position: list = [1.0, 1.0, 0.0]) -> str:
-        """
-        {
-          "name": "move_occurrence",
-          "description": "Moves the specified occurrence so that its local origin is placed at the given [x, y, z] point in centimeters.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "occurrence_name": {
-                "type": "string",
-                "description": "Name of the Fusion 360 occurrence to move."
-              },
-              "move_position": {
-                "type": "array",
-                "description": "The [x, y, z] coordinates (in centimeters) to place the component's local origin in the global coordinate system.",
-                "items": { "type": "number" }
-              }
-            },
-            "required": ["occurrence_name", "move_position"],
-            "returns": {
-              "type": "string",
-              "description": "A message indicating the result of the move operation."
-            }
-          }
-        }
-        """
-
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-            root_comp = design.rootComponent
-            features = root_comp.features
-
-            # Validate the move_position format: expecting [x, y, z].
-            if (not isinstance(move_position, list)) or (len(move_position) < 3):
-                return "Error: move_position must be an array of [x, y, z]."
-
-            # Extract the coordinates (in centimeters)
-            x_val, y_val, z_val = move_position
-
-            targetOccurrence, errors = self._find_occurrence_by_name(occurrence_name)
-            if not targetOccurrence:
-                return errors
-
-            # Create a transform with the translation [x_val, y_val, z_val].
-            transform = adsk.core.Matrix3D.create()
-            translation = adsk.core.Vector3D.create(x_val, y_val, z_val)
-            transform.translation = translation
-
-            try:
-                targetOccurrence.timelineObject.rollTo(False)
-                targetOccurrence.initialTransform = transform
-                #occ.transform = transform
-
-            except Exception as e:
-                return f"Error: Could not transform occurrence '{occurrence_name}'. Reason: {e}"
-
-            timeline = design.timeline
-            timeline.moveToEnd()
-
-
-            return (f"Moved occurrence '{occurrence_name}' to "
-                    # TODO
-                    f"[{x_val}, {y_val}, {z_val}] cm")
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-    @ToolCollection.tool_call
-    def reorient_occurrence(self, occurrence_name: str = "comp1:1", axis: list = [0, 0, 1], target_vector: list = [1, 0, 0]) -> str:
-        """
-        {
-          "name": "reorient_occurrence",
-          "description": "Reorients the specified occurrence by rotating its local orientation so that a given axis is aligned with a specified target vector. Both the axis and target vector should be provided as arrays of three numbers representing 3D directions. The function uses Matrix3D.setToRotateTo to compute the necessary rotation transform.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "occurrence_name": {
-                "type": "string",
-                "description": "Name of the Fusion 360 occurrence to reorient."
-              },
-              "axis": {
-                "type": "array",
-                "description": "A list of three numbers representing the current orientation axis (direction vector) of the occurrence that will be rotated.",
-                "items": { "type": "number" },
-                "minItems": 3,
-                "maxItems": 3
-              },
-              "target_vector": {
-                "type": "array",
-                "description": "A list of three numbers representing the target direction for the specified axis.",
-                "items": { "type": "number" },
-                "minItems": 3,
-                "maxItems": 3
-              }
-            },
-            "required": ["occurrence_name", "axis", "target_vector"],
-            "returns": {
-              "type": "string",
-              "description": "A message indicating the result of the reorientation operation."
-            }
-          }
-        }
-        """
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-            root_comp = design.rootComponent
-
-            # Validate the axis and target_vector parameters: expecting lists of 3 numbers each.
-            if not (isinstance(axis, list) and len(axis) == 3):
-                return "Error: 'axis' must be a list of 3 numbers."
-            if not (isinstance(target_vector, list) and len(target_vector) == 3):
-                return "Error: 'target_vector' must be a list of 3 numbers."
-
-            # Create Vector3D objects from the provided lists.
-            fromVector = adsk.core.Vector3D.create(axis[0], axis[1], axis[2])
-            toVector = adsk.core.Vector3D.create(target_vector[0], target_vector[1], target_vector[2])
-
-            # Create a transformation matrix and set it to rotate from the 'fromVector' to the 'toVector'
-            transform = adsk.core.Matrix3D.create()
-            success = transform.setToRotateTo(fromVector, toVector)
-            if not success:
-                return "Error: Could not compute rotation transform using setToRotateTo."
-
-            # Find the target occurrence using a helper method.
-            targetOccurrence, errors = self._find_occurrence_by_name(occurrence_name)
-            if not targetOccurrence:
-                return f"Error: No occurrence found for '{occurrence_name}'."
-
-            try:
-                targetOccurrence.timelineObject.rollTo(False)
-                targetOccurrence.initialTransform = transform
-            except Exception as e:
-                return f"Error: Could not reorient occurrence '{occurrence_name}'. Reason: {e}"
-
-            timeline = design.timeline
-            timeline.moveToEnd()
-
-            return (f"Reoriented occurrence '{occurrence_name}' such that the axis {axis} is rotated "
-                    f"to align with {target_vector}.")
-        except Exception as e:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
 
     @ToolCollection.tool_call
     def mirror_body_in_component(
@@ -1155,203 +872,6 @@ class ImportExport(ToolCollection):
 
         except Exception as e:
             return f'Failed to import FusionArchive file: {e}'
-
-
-class DeleteObjects(ToolCollection):
-
-    #@ToolCollection.tool_call
-    def delete_component_sub_object(self, delete_object_array :list=[
-            {"component_name": "comp1", "object_type":"jointOrigins", "object_name":"Joint Origin1"},
-            {"component_name": "comp1", "object_type":"jointOrigins", "object_name":"Joint Origin1"},
-            {"component_name": "comp1", "object_type":"jointOrigins", "object_name":"Joint Origin1"},
-    ]) -> str:
-
-        """
-        {
-            "name": "delete_component_sub_object",
-            "description": "Deletes any valid object inside of component",
-            "parameters": {
-                "type": "object",
-                "properties": {
-
-                    "delete_object_array": {
-                        "type": "array",
-                        "description": "Array of objects to delete",
-
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "component_name": {
-                                    "type": "string",
-                                    "description": "name of the component containing the object to delete"
-                                },
-                                "object_type": {
-                                    "type": "string",
-                                    "description": "type of object to delete",
-                                    "enum": [ "sketches",
-                                            "bRepBodies",
-                                            "meshBodies",
-                                            "joints",
-                                            "jointOrigins",
-                                            "occurrences",
-                                            "rigidGroups"]
-                                },
-                                "object_name": {
-                                    "type": "string",
-                                    "description": "The name of the object to delete"
-                                }
-                            },
-                            "required": ["component_name", "object_type", "object_name"]
-                        }
-
-                    }
-                },
-
-                "required": ["delete_object_array"],
-                "returns": {
-                    "type": "string",
-                    "description": "A message indicating success or failure of the deletions."
-                }
-            }
-        }
-        """
-        try:
-            # Access the active design.
-            app = adsk.core.Application.get()
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            rootComp = design.rootComponent
-
-            # check arg type
-            if not isinstance(delete_object_array, list):
-                return "Error: delete_object_array must be an array/ list"
-
-            delete_enums = [
-                "sketches",
-                "bRepBodies",
-                "meshBodies",
-                "joints",
-                "jointOrigins",
-                "occurrences",
-                "rigidGroups",
-            ]
-
-            # add object to delete to dict, faster this way
-            delete_dict = {}
-
-            results = []
-            # jonied as string and returned
-            # items in array, each representing a delete task
-            for delete_object in delete_object_array:
-                component_name = delete_object.get("component_name")
-
-                object_type = delete_object.get("object_type")
-                object_name = delete_object.get("object_name")
-
-                targetComponent, errors = self._find_component_by_name(component_name)
-
-                if not targetComponent:
-                    # if results, add error to return list
-                    results.append(errors)
-                    continue
-
-                # comp.sketches, comp.bodies, comp.joints etc
-                object_class = getattr(targetComponent, object_type, None)
-
-                # check if delete object class list exists
-                if object_class == None:
-                    results.append(f"Error: Component {component_name} has not attribute '{object_type}'.")
-                    continue
-
-                # check that attr has 'itemByName' method before calling it
-                if hasattr(object_class, "itemByName") == False:
-                    errors = f"Error: Component {component_name}.{object_type} has no method 'itemByName'."
-                    results.append(errors)
-                    continue
-
-                # select object to delete by name, sketch, body, joint, etc
-                target_object = object_class.itemByName(object_name)
-
-                # check if item by name is None
-                if target_object == None:
-                    errors = f"Error: Component {component_name}: {object_type} has no item {object_name}."
-                    available_objects = [o.name for o in object_class]
-                    errors += f" Available objects in {component_name}.{object_type}: {available_objects}"
-                    results.append(errors)
-                    continue
-
-                # check if item can be delete
-                if hasattr(target_object,"deleteMe") == False:
-                    errors = f"Error: Component {component_name}.{object_type} object {object_name} has no attribute deleteMe."
-                    results.append(errors)
-                    continue
-
-
-                delete_dict[f"{component_name}.{object_type}.{target_object.name}"] = target_object
-                #results.append(f'Added {component_name}.{object_type} "{target_object.name}" to delete list.')
-
-
-            if len(list(delete_dict.keys())) == 0:
-                results.append(f"No objects to delete.")
-
-            for k, v in delete_dict.items():
-                delete_result = v.deleteMe()
-
-                if delete_result == True:
-                    results.append(f"Deleted {k}.")
-                else:
-                    results.append(f"Error deleting {k}.")
-
-
-            #delete_name_list = []
-            #deleteCollection = adsk.core.ObjectCollection.create()
-            #for deleteObject in delete_list:
-            #    deleteCollection.add(deleteObject)
-
-            #design.deleteEntities(deleteCollection)
-            #print(deleteCollection)
-
-            #results.append("All object deleted")
-
-            return "\n".join(results).strip()
-
-        except:
-            return f'Error: Failed to delete objects:\n{traceback.format_exc()}'
-
-
-    #@ToolCollection.tool_call
-    def delete_occurrence(self, occurrence_name: str="comp1:1") -> str:
-        """
-        {
-            "name": "delete_occurrence",
-            "description": "Deletes a occurrence from the current Fusion 360 design based on the given occurrence name.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "occurrence_name": {
-                        "type": "string",
-                        "description": "The name of the Fusion 360 occurrence object to be deleted."
-                    }
-                },
-                "required": ["occurrence_name"]
-            }
-        }
-        """
-        try:
-
-            app = adsk.core.Application.get()
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            rootComp = design.rootComponent
-
-            targetOccurrence, errors, = self._find_occurrence_by_name(occurrence_name)
-            if not targetOccurrence:
-                return errors
-
-            targetOccurrence.deleteMe()
-
-            return f'deleted {occurrence_name}'
-
-        except Exception as e:
-            return f'Error: Failed to delete occurrence "{occurrence_name}":\n{e}'
 
 
 class Joints(ToolCollection):
@@ -1867,7 +1387,7 @@ class Joints(ToolCollection):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def modify_joint_origin(self,
                             joint_origin_name: str = None,
                             new_geometry: dict = None,
@@ -2004,131 +1524,131 @@ class Joints(ToolCollection):
 
 
 
-class Timeline(ToolCollection):
+#class Timeline(ToolCollection):
+#    pass
 
     #@ToolCollection.tool_call
-    def list_timeline_info(self) -> str:
-        """
-            {
-              "name": "list_timeline_info",
-              "description": "Returns a JSON array describing all items in the Fusion 360 timeline, including entity info, errors/warnings, healthState, etc.",
-              "parameters": {
-                "type": "object",
-                "properties": {
-                },
-                "required": [],
-                "returns": {
-                  "type": "string",
-                  "description": "A JSON array; each entry includes timeline item data such as index, name, entityType, healthState, errorOrWarningMessage, etc."
-                }
-              }
-            }
-        """
-
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-            timeline = design.timeline
-
-            timeline_info = []
-
-            for i in range(timeline.count):
-                t_item = timeline.item(i)
-                if not t_item:
-                    continue
-
-                # Collect basic info
-                item_data = {
-                    "index": t_item.index,
-                    "name": t_item.name,
-                    "isSuppressed": t_item.isSuppressed,
-                    "healthState": str(t_item.healthState),          # e.g. 'HealthStateError', 'HealthStateOk'
-                    "errorOrWarningMessage": t_item.errorOrWarningMessage,
-                }
-
-                # Parent group reference
-                if t_item.parentGroup:
-                    item_data["parentGroupIndex"] = t_item.parentGroup.index
-                    item_data["parentGroupName"] = t_item.parentGroup.name
-
-                # Entity info
-                entity = t_item.entity
-                if entity:
-                    # We'll store a few general properties if available
-                    entity_type = entity.objectType  # e.g. 'adsk::fusion::ExtrudeFeature'
-                    item_data["entityType"] = entity_type
-
-                    # Many entities have a "name" property, but not all. We'll try/catch.
-                    entity_name = getattr(entity, "name", None)
-                    if entity_name:
-                        item_data["entityName"] = entity_name
-
-                    # Optionally gather more info if you like:
-                    # e.g. if entity_type indicates a feature, you could store
-                    # entity.isSuppressed or others. Just be sure to check for availability.
-                else:
-                    item_data["entityType"] = None  # E.g., might be a group or unknown.
-
-                timeline_info.append(item_data)
-
-            return json.dumps(timeline_info)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-
-
-    @ToolCollection.tool_call
-    def roll_back_to_timeline(self, index_to_rollback: int = 0) -> str:
-        """
-        {
-          "name": "roll_back_to_timeline",
-          "description": "Rolls the design's timeline marker back (or forward) to the specified index, effectively suppressing all features after that index.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "index_to_rollback": {
-                "type": "number",
-                "description": "The timeline index to move the marker to. Items after this index will be suppressed in the UI."
-              }
-            },
-            "required": ["index_to_rollback"],
-            "returns": {
-              "type": "string",
-              "description": "A message indicating success or any error encountered."
-            }
-          }
-        }
-        """
-
-        try:
-
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-            timeline = design.timeline
-
-            if index_to_rollback < 0 or index_to_rollback >= timeline.count:
-                return f"Error: index_to_rollback {index_to_rollback} out of range (0..{timeline.count - 1})."
-
-            # Move the marker position
-            timeline.markerPosition = index_to_rollback
-            return f"Timeline marker moved to index {index_to_rollback}."
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-
+#    def list_timeline_info(self) -> str:
+#        """
+#            {
+#              "name": "list_timeline_info",
+#              "description": "Returns a JSON array describing all items in the Fusion 360 timeline, including entity info, errors/warnings, healthState, etc.",
+#              "parameters": {
+#                "type": "object",
+#                "properties": {
+#                },
+#                "required": [],
+#                "returns": {
+#                  "type": "string",
+#                  "description": "A JSON array; each entry includes timeline item data such as index, name, entityType, healthState, errorOrWarningMessage, etc."
+#                }
+#              }
+#            }
+#        """
+#        try:
+#            app = adsk.core.Application.get()
+#            if not app:
+#                return "Error: Fusion 360 is not running."
+#
+#            product = app.activeProduct
+#            if not product or not isinstance(product, adsk.fusion.Design):
+#                return "Error: No active Fusion 360 design found."
+#
+#            design = adsk.fusion.Design.cast(product)
+#            timeline = design.timeline
+#
+#            timeline_info = []
+#
+#            for i in range(timeline.count):
+#                t_item = timeline.item(i)
+#                if not t_item:
+#                    continue
+#
+#                # Collect basic info
+#                item_data = {
+#                    "index": t_item.index,
+#                    "name": t_item.name,
+#                    "isSuppressed": t_item.isSuppressed,
+#                    "healthState": str(t_item.healthState),          # e.g. 'HealthStateError', 'HealthStateOk'
+#                    "errorOrWarningMessage": t_item.errorOrWarningMessage,
+#                }
+#
+#                # Parent group reference
+#                if t_item.parentGroup:
+#                    item_data["parentGroupIndex"] = t_item.parentGroup.index
+#                    item_data["parentGroupName"] = t_item.parentGroup.name
+#
+#                # Entity info
+#                entity = t_item.entity
+#                if entity:
+#                    # We'll store a few general properties if available
+#                    entity_type = entity.objectType  # e.g. 'adsk::fusion::ExtrudeFeature'
+#                    item_data["entityType"] = entity_type
+#
+#                    # Many entities have a "name" property, but not all. We'll try/catch.
+#                    entity_name = getattr(entity, "name", None)
+#                    if entity_name:
+#                        item_data["entityName"] = entity_name
+#
+#                    # Optionally gather more info if you like:
+#                    # e.g. if entity_type indicates a feature, you could store
+#                    # entity.isSuppressed or others. Just be sure to check for availability.
+#                else:
+#                    item_data["entityType"] = None  # E.g., might be a group or unknown.
+#
+#                timeline_info.append(item_data)
+#
+#            return json.dumps(timeline_info)
+#
+#        except:
+#            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+#
+#
+#
+    #@ToolCollection.tool_call
+#Jj    def roll_back_to_timeline(self, index_to_rollback: int = 0) -> str:
+#Jj        """
+#Jj        {
+#Jj          "name": "roll_back_to_timeline",
+#Jj          "description": "Rolls the design's timeline marker back (or forward) to the specified index, effectively suppressing all features after that index.",
+#Jj          "parameters": {
+#Jj            "type": "object",
+#Jj            "properties": {
+#Jj              "index_to_rollback": {
+#Jj                "type": "number",
+#Jj                "description": "The timeline index to move the marker to. Items after this index will be suppressed in the UI."
+#Jj              }
+#Jj            },
+#Jj            "required": ["index_to_rollback"],
+#Jj            "returns": {
+#Jj              "type": "string",
+#Jj              "description": "A message indicating success or any error encountered."
+#Jj            }
+#Jj          }
+#Jj        }
+#Jj        """
+#Jj
+#Jj        try:
+#Jj
+#Jj            app = adsk.core.Application.get()
+#Jj            if not app:
+#Jj                return "Error: Fusion 360 is not running."
+#Jj
+#Jj            product = app.activeProduct
+#Jj            if not product or not isinstance(product, adsk.fusion.Design):
+#Jj                return "Error: No active Fusion 360 design found."
+#Jj
+#Jj            design = adsk.fusion.Design.cast(product)
+#Jj            timeline = design.timeline
+#Jj
+#Jj            if index_to_rollback < 0 or index_to_rollback >= timeline.count:
+#Jj                return f"Error: index_to_rollback {index_to_rollback} out of range (0..{timeline.count - 1})."
+#Jj
+#Jj            # Move the marker position
+#Jj            timeline.markerPosition = index_to_rollback
+#Jj            return f"Timeline marker moved to index {index_to_rollback}."
+#Jj
+#Jj        except:
+#Jj            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+#Jj
+#Jj

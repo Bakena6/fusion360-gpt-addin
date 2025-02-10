@@ -1,4 +1,201 @@
 
+class DeleteObjects(ToolCollection):
+
+    #@ToolCollection.tool_call
+    def delete_component_sub_object(self, delete_object_array :list=[
+            {"component_name": "comp1", "object_type":"jointOrigins", "object_name":"Joint Origin1"},
+            {"component_name": "comp1", "object_type":"jointOrigins", "object_name":"Joint Origin1"},
+            {"component_name": "comp1", "object_type":"jointOrigins", "object_name":"Joint Origin1"},
+    ]) -> str:
+
+        """
+        {
+            "name": "delete_component_sub_object",
+            "description": "Deletes any valid object inside of component",
+            "parameters": {
+                "type": "object",
+                "properties": {
+
+                    "delete_object_array": {
+                        "type": "array",
+                        "description": "Array of objects to delete",
+
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "component_name": {
+                                    "type": "string",
+                                    "description": "name of the component containing the object to delete"
+                                },
+                                "object_type": {
+                                    "type": "string",
+                                    "description": "type of object to delete",
+                                    "enum": [ "sketches",
+                                            "bRepBodies",
+                                            "meshBodies",
+                                            "joints",
+                                            "jointOrigins",
+                                            "occurrences",
+                                            "rigidGroups"]
+                                },
+                                "object_name": {
+                                    "type": "string",
+                                    "description": "The name of the object to delete"
+                                }
+                            },
+                            "required": ["component_name", "object_type", "object_name"]
+                        }
+
+                    }
+                },
+
+                "required": ["delete_object_array"],
+                "returns": {
+                    "type": "string",
+                    "description": "A message indicating success or failure of the deletions."
+                }
+            }
+        }
+        """
+        try:
+            # Access the active design.
+            app = adsk.core.Application.get()
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            rootComp = design.rootComponent
+
+            # check arg type
+            if not isinstance(delete_object_array, list):
+                return "Error: delete_object_array must be an array/ list"
+
+            delete_enums = [
+                "sketches",
+                "bRepBodies",
+                "meshBodies",
+                "joints",
+                "jointOrigins",
+                "occurrences",
+                "rigidGroups",
+            ]
+
+            # add object to delete to dict, faster this way
+            delete_dict = {}
+
+            results = []
+            # jonied as string and returned
+            # items in array, each representing a delete task
+            for delete_object in delete_object_array:
+                component_name = delete_object.get("component_name")
+
+                object_type = delete_object.get("object_type")
+                object_name = delete_object.get("object_name")
+
+                targetComponent, errors = self._find_component_by_name(component_name)
+
+                if not targetComponent:
+                    # if results, add error to return list
+                    results.append(errors)
+                    continue
+
+                # comp.sketches, comp.bodies, comp.joints etc
+                object_class = getattr(targetComponent, object_type, None)
+
+                # check if delete object class list exists
+                if object_class == None:
+                    results.append(f"Error: Component {component_name} has not attribute '{object_type}'.")
+                    continue
+
+                # check that attr has 'itemByName' method before calling it
+                if hasattr(object_class, "itemByName") == False:
+                    errors = f"Error: Component {component_name}.{object_type} has no method 'itemByName'."
+                    results.append(errors)
+                    continue
+
+                # select object to delete by name, sketch, body, joint, etc
+                target_object = object_class.itemByName(object_name)
+
+                # check if item by name is None
+                if target_object == None:
+                    errors = f"Error: Component {component_name}: {object_type} has no item {object_name}."
+                    available_objects = [o.name for o in object_class]
+                    errors += f" Available objects in {component_name}.{object_type}: {available_objects}"
+                    results.append(errors)
+                    continue
+
+                # check if item can be delete
+                if hasattr(target_object,"deleteMe") == False:
+                    errors = f"Error: Component {component_name}.{object_type} object {object_name} has no attribute deleteMe."
+                    results.append(errors)
+                    continue
+
+
+                delete_dict[f"{component_name}.{object_type}.{target_object.name}"] = target_object
+                #results.append(f'Added {component_name}.{object_type} "{target_object.name}" to delete list.')
+
+
+            if len(list(delete_dict.keys())) == 0:
+                results.append(f"No objects to delete.")
+
+            for k, v in delete_dict.items():
+                delete_result = v.deleteMe()
+
+                if delete_result == True:
+                    results.append(f"Deleted {k}.")
+                else:
+                    results.append(f"Error deleting {k}.")
+
+
+            #delete_name_list = []
+            #deleteCollection = adsk.core.ObjectCollection.create()
+            #for deleteObject in delete_list:
+            #    deleteCollection.add(deleteObject)
+
+            #design.deleteEntities(deleteCollection)
+            #print(deleteCollection)
+
+            #results.append("All object deleted")
+
+            return "\n".join(results).strip()
+
+        except:
+            return f'Error: Failed to delete objects:\n{traceback.format_exc()}'
+
+
+    #@ToolCollection.tool_call
+    def delete_occurrence(self, occurrence_name: str="comp1:1") -> str:
+        """
+        {
+            "name": "delete_occurrence",
+            "description": "Deletes a occurrence from the current Fusion 360 design based on the given occurrence name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "occurrence_name": {
+                        "type": "string",
+                        "description": "The name of the Fusion 360 occurrence object to be deleted."
+                    }
+                },
+                "required": ["occurrence_name"]
+            }
+        }
+        """
+        try:
+
+            app = adsk.core.Application.get()
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            rootComp = design.rootComponent
+
+            targetOccurrence, errors, = self._find_occurrence_by_name(occurrence_name)
+            if not targetOccurrence:
+                return errors
+
+            targetOccurrence.deleteMe()
+
+            return f'deleted {occurrence_name}'
+
+        except Exception as e:
+            return f'Error: Failed to delete occurrence "{occurrence_name}":\n{e}'
+
+
 
 
 
@@ -464,6 +661,183 @@
         except Exception as e:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+
+
+    #@ToolCollection.tool_call
+    def set_parameter_values(self, parameter_updates: list = [["d1", 1.1], ["d2", 1.9]]) -> str:
+        """
+        {
+          "name": "set_parameter_values",
+          "description": "Sets the value of multiple parameters in the active Fusion 360 design. Each item in parameter_updates is [parameterName, newValue].",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "parameter_updates": {
+                "type": "array",
+                "description": "A list where each element is [parameterName, newValue]. parameterName is a string and newValue is a number.",
+                "items": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "required": ["parameter_updates"],
+            "returns": {
+              "type": "string",
+              "description": "Messages indicating the result of each parameter update."
+            }
+          }
+        }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            results = []
+
+            # Loop through each [parameterName, newValue] pair
+            for update in parameter_updates:
+                # Basic validation of each pair
+                if not isinstance(update, list) or len(update) != 2:
+                    results.append(f"Error: Invalid update format (expected [parameterName, newValue]): {update}")
+                    continue
+
+                parameter_name, new_value = update[0], update[1]
+
+                # Attempt to find the parameter by name
+                param = design.allParameters.itemByName(parameter_name)
+                if not param:
+                    results.append(f"Error: Parameter '{parameter_name}' not found.")
+                    continue
+
+                # Attempt to set the new value
+                try:
+                    param.value = float(new_value)
+                    results.append(f"Parameter '{parameter_name}' successfully updated to {new_value}.")
+                except:
+                    # If direct assignment fails (e.g., read-only, locked, or expression-based),
+                    # try setting the parameter expression instead
+                    try:
+                        if param.unit:
+                            param.expression = f"{new_value} {param.unit}"
+                        else:
+                            param.expression = str(new_value)
+                        results.append(f"Parameter '{parameter_name}' successfully updated to {new_value}.")
+                    except:
+                        results.append(f"Error: Failed to update parameter '{parameter_name}' to {new_value}.")
+
+            # Combine and return all messages
+            return "\n".join(results)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
+
+
+
+    #@ToolCollection.tool_call
+    def delete_entities(self, entity_token_list: list = []) -> str:
+        """
+        {
+          "name": "delete_entities",
+          "description": "Deletes all entities in in the entity_token_list by calling the deleteMe() method. This should be used when ever an object/entity needs to be deleted.",
+          "parameters": {
+            "type": "object",
+
+            "properties": {
+              "entity_token_list": {
+                "type": "array",
+                "description": "A list of strings, each referencing an entity token to update.",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["entity_token_list"],
+            "returns": {
+              "type": "string",
+              "description": "A JSON object mapping each entity token to the deletion status message."
+            }
+          }
+        }
+        """
+
+
+        try:
+            if not entity_token_list or not isinstance(entity_token_list, list):
+                return "Error: entity_token_list must be a non-empty list of strings."
+            #if not attribute_name:
+            #    return "Error: attribute_name is required."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # Final results mapped: token -> final value or None
+            results = {}
+
+            for token in entity_token_list:
+                if not token:
+                    continue
+
+                final_val = None
+                entity = self.get_hash_obj(token)
+                if not entity:
+                    results[token] = f"Error: no object found for entity_token: {token}"
+                    continue
+
+                #object_type = entity.objectType.split(":")[-1]
+                object_type = entity.__class__.__name__
+
+                object_name = getattr(entity, "name", None)
+                if object_name is None:
+                    object_name = f"nameless_{object_type}_{token}"
+
+                attribute_name = "deleteMe"
+                attr_exists = hasattr(entity, attribute_name)
+                if attr_exists == False:
+                    results[token] = f"Error: {object_type} '{object_name}' ({token}) has no attribute '{attribute_name}'"
+                    continue
+
+                try:
+                    attr_obj = getattr(entity, attribute_name)
+                    # call deleteMe
+                    deletion_val = attr_obj()
+
+                    if deletion_val == True:
+                        final_val = f"Success: Deleted {object_type} '{object_name}' ({token})."
+                    else:
+                        final_val = f"Error: Could not delete {object_type} '{object_name}' ({token})."
+
+                except Exception as e:
+                    # If attribute is read-only or invalid
+                    final_val = f"Error: Failed to delete {object_type} '{object_name}' ({token}): {e}."
+
+                results[token] = final_val
+
+            return json.dumps(results)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
 
