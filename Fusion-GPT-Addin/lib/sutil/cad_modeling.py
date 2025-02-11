@@ -108,7 +108,6 @@ class Sketches(ToolCollection):
         except Exception as e:
             return f"Error: {e}"
 
-
     #@ToolCollection.tool_call
     def get_edges_in_body(self, component_name: str="comp1", body_name: str="Body1") -> str:
         """
@@ -381,319 +380,6 @@ class Sketches(ToolCollection):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    #@ToolCollection.tool_call
-    def create_sketch(self, component_name: str="comp1", sketch_name: str ="Sketch1", sketch_plane: str ="xy"):
-        """
-            {
-              "name": "create_sketch",
-              "description": "Creates a sketch within a specified component on a specified plane in Fusion 360. The plane can be xy, xz, or yz.",
-              "parameters": {
-                "type": "object",
-                "properties": {
-                  "component_name": {
-                    "type": "string",
-                    "description": "The name of the component where the sketch will be created."
-                  },
-                  "sketch_name": {
-                    "type": "string",
-                    "description": "The name for the new sketch to be created."
-                  },
-                  "sketch_plane": {
-                    "type": "string",
-                    "enum": ["xy", "xz", "yz"],
-                    "description": "The plane on which the sketch will be created. Possible values are 'xy', 'xz', 'yz'. Default is 'xy'."
-                  }
-                },
-                "required": ["component_name", "sketch_name"],
-                "returns": {
-                  "type": "string",
-                  "description": "A message indicating the success or failure of the sketch creation."
-                }
-              }
-            }
-        """
-
-        try:
-            # Access the active design
-            app = adsk.core.Application.get()
-            ui = app.userInterface
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            rootComp = design.rootComponent
-
-
-            targetComponent, errors = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return errors
-
-
-            # Determine the sketch plane
-            if sketch_plane.lower() == "xz":
-                plane = targetComponent.xZConstructionPlane
-            elif sketch_plane.lower() == "yz":
-                plane = targetComponent.yZConstructionPlane
-            else:  # Default to XY plane
-                plane = targetComponent.xYConstructionPlane
-
-            # Create the sketch
-            newSketch = targetComponent.sketches.add(plane)
-            newSketch.name = sketch_name
-
-            return f'Sketch "{sketch_name}" created successfully'
-
-        except Exception as e:
-            return f'Error: Failed to create sketch: {e}'
-
-
-    #@ToolCollection.tool_call
-    def create_circles_in_sketch(self, component_name:str="comp1", sketch_name:str="Sketch1", point_list:str=[[1,1,0]], circle_diameter_list:list=[10]):
-        """
-        {
-          "name": "create_circles_in_sketch",
-          "description": "Creates circles in a specified sketch within a specified component in Fusion 360. Each circle is created at a point provided in the point_list, with its diameter specified by the corresponding element in circle_diameter_list. The units for point_list and circleDiameter is centimeters.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "component_name": {
-                "type": "string",
-                "description": "The name of the component in the current design."
-              },
-              "sketch_name": {
-                "type": "string",
-                "description": "The name of the sketch inside the specified component."
-              },
-              "point_list": {
-                "type": "array",
-                "items": {
-                  "type": "array",
-                  "items": {
-                    "type": "number"
-                  },
-                  "minItems": 3,
-                  "maxItems": 3,
-                  "description": "A list representing an XYZ point."
-                },
-                "description": "A list of lists, each representing an XYZ point (x, y, z) where a circle will be created."
-              },
-              "circle_diameter_list": {
-                "type": "array",
-                "items": {
-                  "type": "number"
-                },
-                "description": "A list of diameters for the circles, corresponding to each point in point_list."
-              }
-            },
-            "required": ["component_name", "sketch_name", "point_list", "circle_diameter_list"],
-            "returns": {
-              "type": "string",
-              "description": "A message indicating the success or failure of the circle creation."
-            }
-          }
-        }
-        """
-        try:
-            # Validate the lengths of point_list and circle_diameter_list
-            if len(point_list) != len(circle_diameter_list):
-                return "Error: The lengths of point_list and circle_diameter_list must be equal."
-
-            # Access the active design
-            app = adsk.core.Application.get()
-            #ui = app.userInterface
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            rootComp = design.rootComponent
-
-            # use base class method
-            targetComponent, errors = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return errors
-
-
-            # Find the target sketch
-            targetSketch = None
-            for sketch in targetComponent.sketches:
-                if sketch.name == sketch_name:
-                    targetSketch = sketch
-                    break
-
-            if not targetSketch:
-                return f'Sketch "{sketch_name}" not found in component "{component_name}"'
-
-            # Create circles in the sketch
-            for point, diameter in zip(point_list, circle_diameter_list):
-
-                centerPoint = adsk.core.Point3D.create(point[0], point[1], point[2])
-
-                # circle entity
-                entity = targetSketch.sketchCurves.sketchCircles.addByCenterRadius(centerPoint, diameter / 2)
-                # offset the text label
-                textPoint = adsk.core.Point3D.create(point[0]+1, point[1]+1, point[2])
-                dimensions = targetSketch.sketchDimensions
-                circleDimension = dimensions.addDiameterDimension(entity, textPoint)
-
-            return f'Circles created in sketch "{sketch_name}"'
-
-        except Exception as e:
-            return f'Error: Failed to create circles in sketch: {e}'
-
-   # @ToolCollection.tool_call
-    def create_polygon_in_sketch(self,
-                                 component_name: str = "comp1",
-                                 sketch_name: str = "Sketch1",
-                                 center_point: list = [0.0, 0.0, 0.0],
-                                 radius: float = 1.0,
-                                 number_of_sides: int = 6,
-                                 orientation_angle_degrees: float = 0.0,
-                                 is_inscribed: bool = False) -> str:
-        """
-        {
-            "name": "create_polygon_in_sketch",
-            "description": "Creates a regular polygon in the specified sketch using the addScribedPolygon method. The polygon is defined by its center, radius, number of sides, orientation angle, and whether it is inscribed.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "component_name": {
-                        "type": "string",
-                        "description": "The name of the component in the current design containing the sketch."
-                    },
-                    "sketch_name": {
-                        "type": "string",
-                        "description": "The name of the sketch within the specified component."
-                    },
-                    "center_point": {
-                        "type": "array",
-                        "description": "The [x, y, z] coordinates for the polygon center on the sketch plane.",
-                        "items": { "type": "number" }
-                    },
-                    "radius": {
-                        "type": "number",
-                        "description": "Radius of the polygon (distance from center to a vertex if inscribed=true, or to a midpoint of a side if inscribed=false)."
-                    },
-                    "number_of_sides": {
-                        "type": "number",
-                        "description": "Number of sides of the regular polygon."
-                    },
-                    "orientation_angle_degrees": {
-                        "type": "number",
-                        "description": "Rotation of the polygon about its center, in degrees."
-                    },
-                    "is_inscribed": {
-                        "type": "boolean",
-                        "description": "If true, polygon is inscribed (radius from center to vertex). If false, circumscribed (radius from center to midpoint of side)."
-                    }
-                },
-                "required": [
-                    "component_name",
-                    "sketch_name",
-                    "center_point",
-                    "radius",
-                    "number_of_sides",
-                    "orientation_angle_degrees",
-                    "is_inscribed"
-                ],
-                "returns": {
-                    "type": "string",
-                    "description": "A message indicating success or details about any errors encountered."
-                }
-            }
-        }
-        """
-
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            targetComponent, errors = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return errors
-
-            targetSketch, errors = self._find_sketch_by_name(targetComponent, sketch_name)
-            if not targetSketch:
-                return errors
-
-
-            # Validate parameters.
-            if number_of_sides < 3:
-                return "Error: A polygon must have at least 3 sides."
-            if radius <= 0:
-                return "Error: Radius must be positive."
-
-            # Convert center_point to a 3D point (Z=0 in sketch plane).
-            centerPnt = adsk.core.Point3D.create(center_point[0],
-                                                 center_point[1],
-                                                 center_point[2],
-                                                 )
-
-            # Convert the orientation angle to radians.
-            orientation_angle_radians = math.radians(orientation_angle_degrees)
-
-            # Access the SketchLines object from the sketch.
-            sketchLines_var = targetSketch.sketchCurves.sketchLines
-
-            # Create the polygon using the old 'addScribedPolygon' method.
-            #   addScribedPolygon(centerPoint, edgeCount, angle, radius, isInscribed)
-            # - centerPoint: adsk.core.Point3D
-            # - edgeCount: int (number of sides)
-            # - angle: float in RADIANS (orientation of polygon)
-            # - radius: float (distance from center to vertex if isInscribed = True, else to side midpoint)
-            # - isInscribed: bool
-
-            scribed_polygon = sketchLines_var.addScribedPolygon(
-                centerPnt,
-                number_of_sides,
-                orientation_angle_radians,
-                radius,
-                is_inscribed
-            )
-
-
-            n_sketch_points = targetSketch.sketchPoints.count
-            centerSketchPoint = targetSketch.sketchPoints.item(n_sketch_points-1)
-
-            # fix initial location so it does not move during repositioning
-            centerSketchPoint.isFixed = True
-
-            # Find the first edge, point is added and mid point contrained
-            firstEdge = scribed_polygon[0]  # First polygon edge
-
-            midpoint = adsk.core.Point3D.create(0, 0, 0)
-            midpointSketchPoint = targetSketch.sketchPoints.add(midpoint)
-
-            # Apply a Midpoint Constraint (ensures the point is always attached to the line)
-            targetSketch.geometricConstraints.addMidPoint(midpointSketchPoint, firstEdge)
-
-            dimensions = targetSketch.sketchDimensions
-
-             # Get the center sketch point (first point created)
-            dim = dimensions.addDistanceDimension(
-                centerSketchPoint,  # Center of polygon
-                midpointSketchPoint,  # Midpoint of an edge
-
-                adsk.fusion.DimensionOrientations.AlignedDimensionOrientation,
-                #adsk.fusion.DimensionOrientations.HorizontalDimensionOrientation,
-                adsk.core.Point3D.create(center_point[0] * 1.5, center_point[1]*1.1, center_point[2]),
-                True
-            )  # Position for the dimension text
-
-
-            #dim.parameter.comments = radius  # Set the radius dimension
-
-            # scribed_polygon returns a SketchLineList object that you can inspect if needed.
-
-            poly_type = "inscribed" if is_inscribed else "circumscribed"
-            return (
-                f"Successfully created a {number_of_sides}-sided polygon "
-                f"({poly_type}, radius={radius}) in sketch '{sketch_name}' "
-                f"with orientation {orientation_angle_degrees} degrees."
-            )
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
     #@ToolCollection.tool_call
     def create_spline_in_sketch(self, component_name: str = "comp1", sketch_name: str = "Sketch1", point_list: list = [[0, 0, 0], [1, 1, 0], [2, 0, 0]]):
@@ -1295,14 +981,220 @@ class Sketches(ToolCollection):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
+
+class ModifyObjects(ToolCollection):
+
+    @ToolCollection.tool_call
+    def fillet_or_chamfer_edges(self,
+                               component_entity_token: str ="",
+                               edge_tokens_list: list = [""],
+                               operation_value: float = 0.2,
+                               operation_type: str = "fillet") -> str:
+        """
+        {
+          "name": "fillet_or_chamfer_edges",
+          "description": "Applies either a fillet or chamfer to the specified edges of a body.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+
+              "component_entity_token": {
+                "type": "string",
+                "description": "The enting token of the associated component"
+              },
+              "edge_tokens_list": {
+                "type": "array",
+                "description": "An array of entityTokens, each represting a bRepEdge",
+                "items": { "type": "string" }
+              },
+              "operation_value": {
+                "type": "number",
+                "description": "The distance (radius or chamfer distance) to apply, in centimeters."
+              },
+              "operation_type": {
+                "type": "string",
+                "description": "Either 'fillet' or 'chamfer'."
+              }
+            },
+            "required": ["component_entity_token", "edge_tokens_list", "operation_value", "operation_type"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating success or details about any errors encountered."
+            }
+          }
+        }
+        """
+
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # find the target component by name (assuming you have a local helper method).
+            targetComponent = self.get_hash_obj(component_entity_token)
+            if not targetComponent:
+                return f"Error: No component found for for enityToken: '{component_entity_token}'."
+
+            edge_collection = adsk.core.ObjectCollection.create()
+            invalid_tokens = []
+            for edge_token in edge_tokens_list:
+                edge = self.get_hash_obj(edge_token)
+                if edge == None:
+                    invalid_tokens.append(edge_token)
+                    continue
+
+                edge_collection.add(edge)
+
+            # Create either a fillet or a chamfer
+            if operation_type == "fillet":
+                try:
+                    fillet_feats = targetComponent.features.filletFeatures
+                    fillet_input = fillet_feats.createInput()
+                    # Construct the radius ValueInput
+                    radius_val = adsk.core.ValueInput.createByReal(float(operation_value))
+                    # Add all edges to a single radius set
+                    fillet_input.addConstantRadiusEdgeSet(edge_collection, radius_val, True)
+                    fillet_feats.add(fillet_input)
+                    msg = f"Success: Fillet applied with radius {operation_value} to {len(edge_tokens_list)} edges."
+                except Exception as e:
+                    return f"Error: Error creating fillet: {e}"
+            else:  # chamfer
+                try:
+                    chamfer_feats = targetComponent.features.chamferFeatures
+                    # For a simple equal-distance chamfer, we set 'distance'
+                    distance_val = adsk.core.ValueInput.createByReal(float(operation_value))
+                    # The createInput function signature is chamferFeatures.createInput(ObjectCollection, isTangentChain)
+                    chamfer_input = chamfer_feats.createInput(edge_collection, True)
+                    chamfer_input.setToEqualDistance(distance_val)
+                    chamfer_feats.add(chamfer_input)
+                    msg = f"Success: Chamfer applied with radius {operation_value} to {len(edge_tokens_list)} edges."
+                except Exception as e:
+                    return f"Error: Error creating chamfer: {e}"
+
+            # Include any invalid edge indexes in the output message for clarity
+            if invalid_tokens:
+                msg += f" Some invalid edges were ignored: {invalid_tokens}"
+            return msg
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    @ToolCollection.tool_call
+    def mirror_body_in_component(
+        self,
+        component_entity_token: str = "",
+        body_entity_token: str = "",
+        mirror_plane_entity_token: str = "",
+        operation_type: str = "JoinFeatureOperation",
+    ) -> str:
+        """
+        {
+          "name": "mirror_body_in_component",
+          "description": "Mirrors a specified body in a component along one of the component's planes (XY, XZ, YZ) or a planar face in the body by face index. It creates a MirrorFeature in the timeline.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "component_entity_token": {
+                "type": "string",
+                "description": "The entityToken for the component containing the target body."
+              },
+              "body_entity_token": {
+                "type": "string",
+                "description": "The entityToken for the BRepBody to mirror."
+              },
+
+              "mirror_plane_entity_token": {
+                "type": "string",
+                "description": "The entityToken of the plane to mirror about."
+              },
+              "operation_type": {
+                "type": "string",
+                "description": "Either 'JoinFeatureOperation' or 'NewBodyFeatureOperation'.",
+                "enum": [
+                  "JoinFeatureOperation",
+                  "NewBodyFeatureOperation"
+                ]
+              }
+            },
+            "required": ["component_entity_token", "body_entity_token", "mirror_plane_entity_token", "operation_type"],
+            "returns": {
+              "type": "string",
+              "description": "A message indicating success or any error encountered."
+            }
+          }
+        }
+        """
+
+        try:
+            # Validate operation_type
+            valid_ops = ["JoinFeatureOperation", "NewBodyFeatureOperation"]
+            if operation_type not in valid_ops:
+                return (f"Error: operation_type '{operation_type}' must be one of: {valid_ops}.")
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # Find the target component by name (assuming you have a helper method).
+            targetComponent = self.get_hash_obj(component_entity_token)
+            if not targetComponent:
+                return f"Error: No component found for entityToken: '{component_entity_token}'"
+
+            body_to_mirror = self.get_hash_obj(body_entity_token)
+            if not body_to_mirror:
+                return f"Error: No body found for entityToken: '{body_entity_token}'"
+
+            mirror_plane_obj = self.get_hash_obj(mirror_plane_entity_token)
+            if not mirror_plane_obj:
+                return f"Error: No mirror plane found for entityToken: '{mirror_plane_entity_token}'"
+
+            # Build the input for the MirrorFeature
+            mirror_feats = targetComponent.features.mirrorFeatures
+            input_entities = adsk.core.ObjectCollection.create()
+            input_entities.add(body_to_mirror)
+
+            mirror_input = mirror_feats.createInput(input_entities, mirror_plane_obj)
+
+            # If you want to specify Join vs NewBody, do so via isCombine for MirrorFeatures
+            # https://help.autodesk.com/view/fusion360/ENU/?guid=Fusion360_API_Reference_manual_cpp_ref_classadsk_1_1fusion_1_1_mirror_feature_input_html
+            if operation_type == "JoinFeatureOperation":
+                mirror_input.isCombine = True
+            else:
+                mirror_input.isCombine = False
+
+            try:
+                mirror_feature = mirror_feats.add(mirror_input)
+
+                return f"Success: Mirrored body '{body_to_mirror.name}' in component '{targetComponent.name}'"
+
+            except Exception as e:
+                return f"Error: creating mirror feature: {str(e)}"
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
 class CreateObjects(ToolCollection):
 
     @ToolCollection.tool_call
-    def extrude_profiles_in_sketch(
+    def extrude_profiles(
         self,
-        component_name: str = "comp1",
-        sketch_name: str = "Sketch1",
-        profiles_list: list = [[0, 1], [1, 2]],
+        component_entity_token: str = "",
+        profile_entity_tokens: list = [""],
+        extrude_distance: float = 1,
         operation_type: str = "NewBodyFeatureOperation",
         start_extent: float = 0.0,
         taper_angle: float = 0.0
@@ -1310,30 +1202,25 @@ class CreateObjects(ToolCollection):
 
         """
         {
-            "name": "extrude_profiles_in_sketch",
-            "description": "Extrudes one or more profiles in a specified sketch by different amounts. The profiles are indexed by descending area, where 0 refers to the largest profile. Each item in profiles_list is [profileIndex, extrudeDistance]. The operation_type parameter selects which FeatureOperation to use. The unit for extrudeDistance and start_extent is centimeters, and taper_angle is in degrees (can be positive or negative).",
+            "name": "extrude_profiles",
+            "description": "Extrudes one or more profiles. The operation_type parameter selects which FeatureOperation to use. The unit for extrudeDistance and start_extent is centimeters, and taper_angle is in degrees (can be positive or negative).",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "component_name": {
+                    "component_entity_token": {
                         "type": "string",
-                        "description": "The name of the component in the current design containing the sketch."
+                        "description": "The entityToken of the component in the current design containing the sketch."
                     },
-                    "sketch_name": {
-                        "type": "string",
-                        "description": "The name of the sketch inside the specified component containing the profiles."
-                    },
-                    "profiles_list": {
+                    "profile_entity_tokens": {
                         "type": "array",
-                        "items": {
-                            "type": "array",
-                            "items": { "type": "number" },
-                            "minItems": 2,
-                            "maxItems": 2,
-                            "description": "Each element is [profileIndex, extrudeDistance]. profileIndex is an integer referencing the area-sorted profile, extrudeDistance (in cm) is how far to extrude."
-                        },
-                        "description": "A list of profileIndex / extrudeDistance pairs specifying which profiles to extrude and by how much."
+                        "items": { "type": "string" },
+                        "description": "A list of profile entityTokens to extrude."
                     },
+                    "extrude_distance": {
+                        "type": "string",
+                        "description": "The distance to extrude the profiles."
+                    },
+
                     "operation_type": {
                         "type": "string",
                         "enum": [
@@ -1354,7 +1241,7 @@ class CreateObjects(ToolCollection):
                         "description": "Taper angle (in degrees). Positive or negative. Default 0."
                     }
                 },
-                "required": ["component_name", "sketch_name", "profiles_list"],
+                "required": ["component_entity_token", "profile_entity_tokens", "extrude_distance"],
                 "returns": {
                     "type": "string",
                     "description": "A message indicating whether the extrude operations completed successfully or not."
@@ -1382,50 +1269,27 @@ class CreateObjects(ToolCollection):
             app = adsk.core.Application.get()
             design = adsk.fusion.Design.cast(app.activeProduct)
 
-            targetComponent, errors = self._find_component_by_name(component_name)
+            # find the target component by name (assuming you have a local helper method).
+            targetComponent = self.get_hash_obj(component_entity_token)
             if not targetComponent:
-                return errors
-
-            # Locate the sketch by name (within the target component).
-            targetSketch, errors = self._find_sketch_by_name(targetComponent, sketch_name)
-            if not targetSketch:
-                return errors
-
-            if not targetSketch.profiles or targetSketch.profiles.count == 0:
-                return f'Error: Sketch "{sketch_name}" has no profiles to extrude.'
-
-            # Collect and sort profiles by area in descending order (largest first).
-            profile_info = []
-            for prof in targetSketch.profiles:
-                props = prof.areaProperties()
-                profile_info.append((prof, props.area))
-            profile_info.sort(key=lambda x: x[1], reverse=True)
+                return f"Error: No component found for for enityToken: '{component_entity_token}'."
 
             # Prepare extrude feature objects
             extrudes = targetComponent.features.extrudeFeatures
             results = []
 
-            # Loop through requested extrusions
-            for pair in profiles_list:
-                if not isinstance(pair, list) or len(pair) < 2:
-                    results.append("Error: Invalid profiles_list entry (expected [profileIndex, distance]).")
+            # Convert extrudeDist (cm) to internal real value
+            distanceVal = adsk.core.ValueInput.createByReal(float(extrude_distance))
+
+            for profile_entity_token in profile_entity_tokens:
+                profile = self.get_hash_obj(profile_entity_token)
+                if profile is None:
+                    results.append(f"Error: Invalid profile index {profile_entity_token}.")
                     continue
-
-                profileIndex, extrudeDist = pair[0], pair[1]
-
-                # Check the valid index range.
-                if profileIndex < 0 or profileIndex >= len(profile_info):
-                    results.append(f"Error: Invalid profile index {profileIndex}.")
-                    continue
-
-                selectedProfile = profile_info[profileIndex][0]
 
                 try:
-                    # Convert extrudeDist (cm) to internal real value
-                    distanceVal = adsk.core.ValueInput.createByReal(float(extrudeDist))
-
                     # Create the extrude feature input with the requested operation type.
-                    extInput = extrudes.createInput(selectedProfile, operation_map[operation_type])
+                    extInput = extrudes.createInput(profile, operation_map[operation_type])
 
                     # 1) Set an offset start extent if requested
                     if abs(start_extent) > 1e-7:  # effectively non-zero
@@ -1445,17 +1309,18 @@ class CreateObjects(ToolCollection):
                     # Add the extrude feature
                     extrudes.add(extInput)
                     results.append(
-                        f"Profile index {profileIndex} extruded by {extrudeDist} (startExtent={start_extent}, taper={taper_angle})"
+                        f"Success: Profile '{profile_entity_token}' extruded by {extrude_distance} (startExtent={start_extent}, taper={taper_angle})"
                         f" with {operation_type}."
                     )
                 except Exception as e:
-                    results.append(f"Error: Could not extrude profile {profileIndex}. Reason: {e}")
+                    results.append(f"Error: Could not extrude profile '{profile_entity_token}'. Reason: {e}")
 
             # Combine all messages.
             return "\n".join(results)
 
         except Exception as e:
             return f"Error: An unexpected exception occurred: {e}"
+
 
     #@ToolCollection.tool_call
     def revolve_profile_in_sketch(
@@ -1606,8 +1471,9 @@ class CreateObjects(ToolCollection):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+
     @ToolCollection.tool_call
-    #def create_new_component(self, parent_component_name: str="comp1", component_name: str="comp2") -> str:
+    def create_new_component(self, parent_component_name: str="comp1", component_name: str="comp2") -> str:
         """
             {
                 "name": "create_new_component",
@@ -1713,8 +1579,62 @@ class CreateObjects(ToolCollection):
         except Exception as e:
             return f'Error: Failed to copy "{source_component_name}" as a new component into "{target_parent_component_name}":\n{e}'
 
+    @ToolCollection.tool_call
+    def copy_component(self, source_component_name: str, target_parent_component_name: str) -> str:
+        """
+            {
+                "name": "copy_component",
+                "description": "Creates a new occurrence of an existing component inside another parent component. This effectively 'copies' the geometry by referencing the same underlying component in a new location.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "source_component_name": {
+                            "type": "string",
+                            "description": "The name of the existing Fusion 360 component to be copied."
+                        },
+                        "target_parent_component_name": {
+                            "type": "string",
+                            "description": "The name of the component that will serve as the parent for the new copy."
+                        }
+                    },
+                    "required": ["source_component_name", "target_parent_component_name"],
+                    "returns": {
+                        "type": "string",
+                        "description": "A message indicating whether the copy (new occurrence) was successfully created."
+                    }
 
-    ### OLD
+                }
+            }
+        """
+        try:
+            # Access the active design
+            app = adsk.core.Application.get()
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            if not design:
+                return "Error: No active Fusion 360 design found."
+
+            # Locate the source component using a helper method (assumed to exist in your environment)
+
+            sourceComp, errors = self._find_component_by_name(source_component_name)
+            if not sourceComp:
+                return errors
+
+            targetParentComp, errors = self._find_component_by_name(target_parent_component_name)
+            if not targetParentComp:
+                return errors
+
+            # Create a new occurrence of the source component in the target parent component
+            transform = adsk.core.Matrix3D.create()  # Identity transform (no rotation, no translation)
+            new_occurrence = targetParentComp.occurrences.addExistingComponent(sourceComp, transform)
+
+            # (Optional) Rename the new occurrence if you want a distinct name
+            # new_occurrence.name = source_component_name + "_copy"
+
+            return f'Successfully copied "{source_component_name}" into "{target_parent_component_name}".'
+
+        except Exception as e:
+            return f'Error: Failed to copy "{source_component_name}" into "{target_parent_component_name}":\n{e}'
+
 
 
 

@@ -39,12 +39,13 @@ class GetStateData(ToolCollection):
     #def __init__(self):
     #    pass
 
+
     @ToolCollection.tool_call
     def describe_fusion_classes(self, class_names: list = ["Sketch"]) -> str:
         """
         {
           "name": "describe_fusion_classes",
-          "description": "Accepts an array of possible Fusion 360 class names (with or without full path) and returns a JSON object describing each class's methods and parameter info.",
+          "description": "Accepts an array of possible Fusion 360 class names (with or without full path) and returns a JSON object describing each class's methods, attributes, and basic parameter info, including an expected object type for each property if available.",
           "parameters": {
             "type": "object",
             "properties": {
@@ -57,7 +58,7 @@ class GetStateData(ToolCollection):
             "required": ["class_names"],
             "returns": {
               "type": "string",
-              "description": "A JSON object mapping each requested class name to its method data or an error."
+              "description": "A JSON object mapping each requested class name to method and attribute data (including expected object types) or an error."
             }
           }
         }
@@ -86,34 +87,8 @@ class GetStateData(ToolCollection):
                     return None, f"Class '{cls_str}' not found in '{mod_str}'."
                 return cls, None
 
-            def gather_methods(cls):
-                """
-                Use inspect to gather methods' parameter info and docstrings.
-                """
-                method_dict = {}
+            exclude_list = ["cast", "classType", "__init__", "__del__"]  # skip internal
 
-                # isfunction => pure Python function
-                members = inspect.getmembers(cls, predicate=inspect.isfunction)
-
-                for name, func in members:
-                    # ignore internal methods
-                    if name[0] == "_":
-                        continue
-
-                    method_dict[name] = describe_method(func)
-
-                # ismethoddescriptor => some C++ extension or property
-                descriptors = inspect.getmembers(cls, predicate=inspect.ismethoddescriptor)
-                for name, desc in descriptors:
-                    if name[0] == "_":
-                        continue
-                    # Avoid overwriting if we already have it from isfunction
-                    if name not in method_dict:
-                        method_dict[name] = describe_method(desc)
-
-                return method_dict
-
-            exclude_list = ["cast", "classType", ]
             def describe_method(py_callable):
                 """
                 Attempt to parse signature with inspect.signature,
@@ -133,51 +108,126 @@ class GetStateData(ToolCollection):
 
                         default_val = None if param.default is param.empty else param.default
                         annotation_str = None if param.annotation is param.empty else str(param.annotation)
+                        if isinstance(annotation_str, str):
+                            annotation_str = annotation_str.replace("\n", " ")
+
                         params_info.append({
                             "name": param_name,
-                            #"kind": str(param.kind),
                             "default": default_val,
-                            "annotation": annotation_str
+                            "paramType": annotation_str
                         })
+
                 doc_str = inspect.getdoc(py_callable) or ""
+
+
                 return {
                     "params": params_info,
-                    "doc": doc_str
+                    "doc": doc_str.replace("\n", " ")
                 }
+
+            def gather_class_info(cls):
+                """
+                Gather info on methods (callables) and attributes (non-callable) from the class.
+                Returns a dict with 'methods' and 'attributes', including 'expectedObjectType' for attributes if possible.
+                """
+                cls_info = {
+                    "methods": {},
+                    "attributes": {}
+                }
+
+                # 1) Gather methods
+                #   isfunction => pure Python function
+                methods_found = inspect.getmembers(cls, predicate=inspect.isfunction)
+                #   ismethoddescriptor => some C++ extension or property
+                descriptors = inspect.getmembers(cls, predicate=inspect.ismethoddescriptor)
+
+                combined_method_members = dict(methods_found)
+                for name, desc in descriptors:
+                    if name not in combined_method_members:
+                        combined_method_members[name] = desc
+
+                for name, func_obj in combined_method_members.items():
+                    if name[0] == "_" or name in exclude_list:
+                        continue
+                    cls_info["methods"][name] = describe_method(func_obj)
+
+                # 2) Gather all members, separate out attributes
+                #   We'll skip private, skip known methods
+                all_members = inspect.getmembers(cls)
+                known_methods = set(combined_method_members.keys())
+
+                for name, member_obj in all_members:
+                    if name[0] == "_" or name in exclude_list:
+                        continue
+                    if name in known_methods:
+                        continue  # we've described it as a method
+
+                    # If not callable => treat as attribute
+                    if not callable(member_obj):
+                        attr_data = {
+                            "doc": inspect.getdoc(member_obj).replace("\n", " ") or "",
+                            "objectType": None  # We'll fill this below
+                        }
+
+                        # Attempt to see if this is a property descriptor
+                        # If so, we might be able to get a return annotation from fget
+                        if inspect.isdatadescriptor(member_obj):
+                            # Some descriptors may have .fget
+                            fget = getattr(member_obj, 'fget', None)
+                            if fget and callable(fget):
+                                try:
+                                    fget_sig = inspect.signature(fget)
+                                    # If there's a return annotation
+                                    if fget_sig.return_annotation is not inspect.Signature.empty:
+
+                                        if ":" in fget_sig.return_annotation:
+                                            object_type_str = fget_sig.return_annotation.split(":")[-1].strip(">").strip()
+                                        else:
+                                            object_type_str = fget_sig.return_annotation
+
+
+                                        attr_data["objectType"] = object_type_str
+                                except ValueError:
+                                    pass
+
+                        # If we still don't have expectedObjectType, fallback to type
+                        if not attr_data["objectType"]:
+                            attr_data["objectType"] = member_obj.__class__.__name__
+
+                        cls_info["attributes"][name] = attr_data
+
+                return cls_info
 
             results = {}
 
             for class_name in class_names:
-                # If there's a dot, we assume it's a full path (like adsk.fusion.Sketch).
-                # If no dot, try adsk.fusion.CLASSNAME, then adsk.core.CLASSNAME
+                # If there's a dot, assume it's a full path (like adsk.fusion.Sketch).
+                # Otherwise, try adsk.fusion.class_name, then adsk.core.class_name
                 if "." in class_name:
                     cls, err = import_class_from_path(class_name)
                     if err:
                         results[class_name] = {"error": err}
                         continue
-                    # Gather method data
-                    results[class_name] = {
-                        "methods": gather_methods(cls)
-                    }
+                    results[class_name] = gather_class_info(cls)
                 else:
                     # Try adsk.fusion.class_name
                     fusion_path = f"adsk.fusion.{class_name}"
                     cls, err = import_class_from_path(fusion_path)
                     if not err and cls:
-                        results[class_name] = {
-                            "methods": gather_methods(cls),
-                            "resolvedPath": fusion_path
-                        }
+                        data = gather_class_info(cls)
+                        data["resolvedPath"] = fusion_path
+                        results[class_name] = data
                         continue
-                    # Else try adsk.core.class_name
+
+                    # Then try adsk.core.class_name
                     core_path = f"adsk.core.{class_name}"
                     cls2, err2 = import_class_from_path(core_path)
                     if not err2 and cls2:
-                        results[class_name] = {
-                            "methods": gather_methods(cls2),
-                            "resolvedPath": core_path
-                        }
+                        data2 = gather_class_info(cls2)
+                        data2["resolvedPath"] = core_path
+                        results[class_name] = data2
                         continue
+
                     # If both fail, store an error
                     results[class_name] = {"error": f"Could not find class '{class_name}' in adsk.fusion or adsk.core."}
 
@@ -185,6 +235,9 @@ class GetStateData(ToolCollection):
 
         except Exception as e:
             return json.dumps({"error": str(e)})
+
+
+
 
     def describe_fusion_method(self, method) -> str:
         """
@@ -251,89 +304,159 @@ class GetStateData(ToolCollection):
             })
 
 
-    def _get_recursive_2(self, entity, levels):
-        app = adsk.core.Application.get()
-        if not app:
-            return "Error: Fusion 360 is not running."
-
-        product = app.activeProduct
-        if not product or not isinstance(product, adsk.fusion.Design):
-            return "Error: No active Fusion 360 design found."
-
-        design = adsk.fusion.Design.cast(product)
-
-        # return value
-        results = {}
-
-        #space = "   " * (4-levels)
-        #print(f"{space}{attr_name}")
-
-        exclude_list = ["cast","nativeObject", "this", "thisown", "parent", "component"]
-        # attributes in entity
-        #print()
-
-        for attr_name in dir(entity):
-
-            # skip internal methods
-            if (attr_name[0] == "_") or (attr_name in exclude_list):
-                continue
-
-            try:
-                attr_val = getattr(entity, attr_name)
-            except Exception as e:
-                print(f"Error: attr_name: {attr_name} occurred:\n" + traceback.format_exc())
-                continue
-
-            space = "  " * (5-levels)
-            print(f"{space}{attr_name}")
-
-            if any([ isinstance(attr_val, attrType) for attrType in [str, int, float, bool, tuple, list, dict]] ):
-                results[attr_name] = attr_val
-
-            elif levels <= 0:
-                results[attr_name] = str(attr_val)
-            else:
-                results[attr_name] = self._get_recursive(attr_val, levels-1)
-
-
-        return results
-
 
     #@ToolCollection.tool_call
-   # def get_recursive_(self, entity_token: str="", levels: int=1):
+    def list_document_structure(self) -> str:
+        """
+        {
+            "name": "list_document_structure",
+            "description": "Recursively searches the entire Fusion 360 design, returning a JSON structure of occurrences, bodies, sketches, joints, and joint origins in the document. Each object includes its name and entity token (if available).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                },
+                "required": []
+                "returns": {
+                    "type": "string",
+                    "description": "A JSON representation of the entire document's structure, including entity tokens if available."
+                }
 
-   #     """
-   #         {
-   #           "name": "get_recursive",
-   #           "description": "Returns information about any Fusion 360 entity and its sub endities. Including components, bodies, sketches, joints, profiles, etc... Returns a JSON-encoded string describing the entire structure. This function should be called when more detailed information is needed about an entity/object or it's children",
-   #           "parameters": {
-   #             "type": "object",
+            }
+        }
+        """
 
-   #             "properties": {
-   #               "entity_token_list": {
-   #                 "type": "array",
-   #                 "description": "A list of strings representing the entity names sub entities will be returned for",
-   #                 "items": { "type": "string" }
-   #               }
-   #             },
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
 
-   #             "required": ["entity_token_list"],
-   #             "returns": {
-   #               "type": "string",
-   #               "description": "A JSON-encoded string representing the structure of the current design, including name, bodies, sketches, joints, and nested occurrences for each component."
-   #             }
-   #           }
-   #         }
-   #     """
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
 
-   #     # get locally stored ent
-   #     entity = self.get_hash_obj(entity_token)
+            design = adsk.fusion.Design.cast(product)
+            root_comp = design.rootComponent
 
-   #     ent_data = self._get_recursive(entity, levels)
+            # Helper function to retrieve an entity token (or None if not found)
+            def get_token(obj) -> str:
 
-   #     return json.dumps(ent_data, indent=4)
+                token = getattr(obj, "entityToken", None)
 
-    def _get_recursive(self, entity, levels):
+                return self.set_obj_hash(token, obj)  # or your equivalent method
+
+
+            def gather_occurrence_structure(occ: adsk.fusion.Occurrence) -> dict:
+                """
+                Recursively gather info about a single occurrence, including
+                all bodies, sketches, joints, joint origins, and child occurrences.
+                """
+                comp = occ.component
+
+                # 1) Bodies
+                bodies_info = []
+                for b in comp.bRepBodies:
+                    bodies_info.append({
+                        "name": b.name,
+                        "entityToken": get_token(b)
+                    })
+
+                # 2) Sketches
+                sketches_info = []
+                for sk in comp.sketches:
+                    sketches_info.append({
+                        "name": sk.name,
+                        "entityToken": get_token(sk)
+                    })
+
+                # 3) Joints
+                # Joints can appear in various places (often root). We'll assume comp.joints are relevant here.
+                joints_info = []
+                for j in comp.joints:
+                    # j.name is often blank, so you may store j.occurrenceOne / j.occurrenceTwo, etc.
+                    joints_info.append({
+                        "name": j.name,
+                        "entityToken": get_token(j)
+                    })
+
+                # 4) Joint Origins
+                joint_origins_info = []
+                for jo in comp.jointOrigins:
+                    joint_origins_info.append({
+                        "name": jo.name,
+                        "entityToken": get_token(jo)
+                    })
+
+                # 5) Child occurrences
+                children_info = []
+                for child_occ in occ.childOccurrences:
+                    children_info.append(gather_occurrence_structure(child_occ))
+
+                # Build this occurrence's node in the tree
+                return {
+                    "occurrenceName": occ.name,
+                    "occurrenceToken": get_token(occ),
+                    "componentName": comp.name,
+                    "componentToken": get_token(comp),
+                    "bodies": bodies_info,
+                    "sketches": sketches_info,
+                    "joints": joints_info,
+                    "jointOrigins": joint_origins_info,
+                    "children": children_info
+                }
+
+            # Gather top-level occurrences from the root component
+            occurrences_info = []
+            for occ in root_comp.occurrences:
+                occurrences_info.append(gather_occurrence_structure(occ))
+
+            # Additionally, gather bodies/sketches/joints/joint origins directly in root (if any)
+            root_bodies = []
+            for b in root_comp.bRepBodies:
+                root_bodies.append({
+                    "name": b.name,
+                    "entityToken": get_token(b)
+                })
+
+            root_sketches = []
+            for sk in root_comp.sketches:
+                root_sketches.append({
+                    "name": sk.name,
+                    "entityToken": get_token(sk)
+                })
+
+            root_joints = []
+            for j in root_comp.joints:
+                root_joints.append({
+                    "name": j.name,
+                    "entityToken": get_token(j)
+                })
+
+            root_joint_origins = []
+            for jo in root_comp.jointOrigins:
+                root_joint_origins.append({
+                    "name": jo.name,
+                    "entityToken": get_token(jo)
+                })
+
+            # Build a top-level structure representing the entire design
+            design_tree = {
+                "rootComponentName": root_comp.name,
+                "rootComponentToken": get_token(root_comp),
+                "rootBodies": root_bodies,
+                "rootSketches": root_sketches,
+                "rootJoints": root_joints,
+                "rootJointOrigins": root_joint_origins,
+                "occurrences": occurrences_info
+            }
+
+            return json.dumps(design_tree, indent=2)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
+    def _get_recursive(self, entity, levels, total_levels):
         app = adsk.core.Application.get()
         if not app:
             return "Error: Fusion 360 is not running."
@@ -345,51 +468,162 @@ class GetStateData(ToolCollection):
         design = adsk.fusion.Design.cast(product)
 
         # return value
-        results = {}
+        results = {
+
+            "methods": {},
+            "objects": {},
+        }
 
         #space = "   " * (4-levels)
-        #print(f"{space}{attr_name}")
 
-        exclude_list = ["cast","nativeObject", "this", "thisown", "parent", "component", "parentDesign", "attributes)"]
+        exclude_list = [
+            "cast","nativeObject", "this", "thisown",
+            "parent", "component",
+            "parentDesign", "attributes", "baseFeatures"
+        ]
         # attributes in entity
         #print()
+        include_list = [
+            "allComponents",
+            #"components",
+            "occurrence",
+            "occurrences",
+            "childOccurrences",
+            #"component",
+            "asBuiltJoints",
+            "bRepBody",
+            "bRepBodies",
+            "sketches",
+            "sketch",
+            "joints",
+            "joint",
+            "jointOrigins",
+            "constructionAxes",
+            "constructionPlanes",
+            "constructionPoints",
+
+            "name",
+            "entityToken",
+            #"objectType",
+            "sketchDimensions",
+            "sketchCurves",
+            "sketchTexts",
+            "sketchPoints",
+            "profiles",
+            "bRepEdges",
+            "bRepEdge",
+            "faces",
+            "edges",
+            "edge",
+            "face",
+                        ]
+
 
         attrs = dir(entity)
         #attrs = ["name", "objectType"]
         for attr_name in attrs:
-
-            # skip internal methods
-            if (attr_name[0] == "_") or (attr_name in exclude_list):
+            if attr_name not in include_list:
                 continue
-
+            # skip internal methods
+            #if (attr_name[0] == "_") or (attr_name in exclude_list):
+            #    continue
             try:
                 attr_val = getattr(entity, attr_name)
             except Exception as e:
                 print(f"Error: attr_name: {attr_name} occurred:\n" + traceback.format_exc())
                 continue
 
-            space = "  " * (5-levels)
-            print(f"{space}{attr_name}")
+            space = "  " * (total_levels-levels)
+            print(f"{space}{levels}:{attr_name}")
 
-            if any([ isinstance(attr_val, attrType) for attrType in [str, int, float, bool, tuple, list, dict]] ):
-                if attr_name not in ["name", "objectType"]:
-                    continue
+            if attr_name == "entityToken":
+                results[attr_name] = self.set_obj_hash(attr_val, entity)
+                continue
+
+            elif any([ isinstance(attr_val, attrType) for attrType in [str, int, float, bool]] ):
+                #if attr_name not in ["name", "objectType"]:
+                #    continue
                 results[attr_name] = attr_val
+
+
+            elif callable(attr_val) == True:
+                results["methods"][attr_name] = attr_name
+
+            # methods
+            elif hasattr(attr_val, "count") == True:
+
+                #results["iterables"][attr_name] = {"items":[]}
+                #results[] = self._get_recursive(attr_val, levels-1, total_levels)
+
+                results[attr_name] = {}
+                if attr_val.count == 0:
+                    continue
+
+                results[attr_name]["items"] = []
+                for item in attr_val:
+                    results[attr_name]["items"].append(
+                        self._get_recursive(item, levels-1, total_levels)
+                    )
+
+            elif isinstance(attr_val, object) == True:
+                results["objects"][attr_name] = attr_val
 
             elif levels <= 0:
                 results[attr_name] = str(attr_val)
             else:
-                results[attr_name] = self._get_recursive(attr_val, levels-1)
+                pass
+
+
+        for key in ["objects", "methods"]:
+            if len(results[key]) == 0:
+                results.pop(key)
 
 
         return results
 
-
     #@ToolCollection.tool_call
+    def get_ent_dict(self) -> str:
+        """
+        {
+          "name": "call_entity_methods",
+          "description": "Dynamically calls a method on each referenced Fusion 360 entity (by token). Each instruction has { 'entityToken': <string>, 'methodName': <string>, 'arguments': <array> }. The method is invoked with the specified arguments, returning the result or null on error.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "calls_list": {
+                "type": "array",
+                "description": "A list of calls. Each is { 'entityToken': <string>, 'methodName': <string>, 'arguments': <array> }.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "entityToken": { "type": "string" },
+                    "methodName": { "type": "string" },
+                    "arguments": {
+                      "type": "array",
+                      "items": { "type": ["boolean","number","string","null"] },
+                      "description": "A list of positional arguments to pass to the method. Type handling is minimal, so interpret carefully in the method."
+                    }
+                  },
+                  "required": ["entityToken", "methodName", "arguments"]
+                }
+              }
+            },
+            "required": ["calls_list"],
+            "returns": {
+              "type": "string",
+              "description": "A JSON object mapping entityToken to the method call result or null on error."
+            }
+          }
+        }
+        """
+        print(self.ent_dict)
+
+
+    @ToolCollection.tool_call
     def get_recursive(self, entity_token: str="", levels: int=1):
 
         """
-            {
+        {
               "name": "get_recursive",
               "description": "Returns information about any Fusion 360 entity and its sub endities. Including components, bodies, sketches, joints, profiles, etc... Returns a JSON-encoded string describing the entire structure. This function should be called when more detailed information is needed about an entity/object or it's children",
               "parameters": {
@@ -412,12 +646,21 @@ class GetStateData(ToolCollection):
             }
         """
 
+        app = adsk.core.Application.get()
+        if not app:
+            return "Error: Fusion 360 is not running."
+
+        product = app.activeProduct
+        if not product or not isinstance(product, adsk.fusion.Design):
+            return "Error: No active Fusion 360 design found."
         # get locally stored ent
         entity = self.get_hash_obj(entity_token)
 
         #if entity 
+        #design = adsk.fusion.Design.cast(product)
+        #root_comp = design.rootComponent
 
-        ent_data = self._get_recursive(entity, levels)
+        ent_data = self._get_recursive(entity, levels, total_levels=levels)
 
         return json.dumps(ent_data, indent=4)
 
@@ -767,8 +1010,9 @@ class GetStateData(ToolCollection):
                         elif callable(attr) == True:
                             if attr_name in ["cast", "classType"]:
                                 continue
-                            method_data = self.describe_fusion_method(attr)
-                            results[token]["methods"].append(method_data)
+                            #method_data = {""}#self.describe_fusion_method(attr)
+                            #results[token]["methods"].append(method_data)
+                            results[token]["methods"].append(attr_name)
                             continue
 
                         is_iterable = True
@@ -903,10 +1147,7 @@ class GetStateData(ToolCollection):
                 "transform2.translation",
             ]
 
-            #occurrence_data = self._get_ent_attrs(occ, global_attrs)
-            #comp_dict["occurrence_data"] = occurrence_data
             if occ != None:
-                #print(occ.name)
                 #occurrence level attributes
                 ent_info = self._get_ent_attrs(occ, global_attrs)
                 occ_dict.update(ent_info)
@@ -929,15 +1170,12 @@ class GetStateData(ToolCollection):
                             print(f" Error 2: {object_name} {e}\n{traceback.format_exc()}")
                             continue
 
-                        #print(f"try")
-                        #print(f"hasattr: {occ.name}:{object_name}: {hasattr(occ, object_name)}")
 
                     object_type_dict ={
                         "entityToken": self.set_obj_hash(object_name, objectArray),
                         "items": []
                     }
                     for obj in objectArray:
-                        #print(f"context: {obj.assemblyContext}")
                         ent_info = self._get_ent_attrs(obj, global_attrs)
 
                         object_type_dict["items"].append(ent_info)
@@ -1338,7 +1576,6 @@ class GetStateData(ToolCollection):
                 return "Error"
 
             for attr_name in object_path[1:]:
-                #print(f"attr_name: {attr_name}")
 
                 if "(" in  attr_name:
                     attr_name, args = self._parse_function_call(attr_name)
@@ -1482,7 +1719,10 @@ class SetStateData(ToolCollection):
                 #object_type = entity.objectType.split(":")[-1]
                 object_type = entity.__class__.__name__
 
-                object_name = entity.name
+                object_name = getattr(entity, name, None)
+                if object_name is None:
+                    object_name = f"nameless_{object_type}"
+
 
                 attr_exists = hasattr(entity, attribute_name)
                 if attr_exists == False:
@@ -1562,12 +1802,14 @@ class SetStateData(ToolCollection):
 
             design = adsk.fusion.Design.cast(product)
 
+            # return value
             results = {}
 
             for call_dict in calls_list:
                 entity_token = call_dict.get("entityToken")
                 method_name = call_dict.get("methodName")
                 arguments = call_dict.get("arguments", [])
+
 
                 if not entity_token:
                     results["Error"] = f"Error: no entity_token provided"
@@ -1576,18 +1818,44 @@ class SetStateData(ToolCollection):
                     results[entity_token] = f"Error: no method name provided for entity token: {entity_token}"
                     continue
 
+
+                # top level entity
                 entity = self.get_hash_obj(entity_token)
 
                 if entity is None:
                     results[entity_token] = f"Error: no entity found for entity token: {entity_token}, when calling method {method_name}."
                     continue
 
-                # Reflectively get the requested method
-                method = getattr(entity, method_name, None)
+                entity_type = entity.__class__.__name__ 
 
-                if not callable(method):
-                    results[entity_token] = f"Error: no method found for method name {method_name} on object type {str(type(entity))}"
-                    continue
+
+                # handle for method call on attribute
+                if "." in method_name:
+                    sub_entity_name, sub_method_name = method_name.split(".")
+
+                    # attr opf entity to call method on
+                    sub_entity = getattr(entity, sub_entity_name, None)
+
+                    if sub_entity is None:
+                        results[entity_token] = f"Error: no entity {entity_type} {entity_token}, has no attribute '{sub_method_name}'."
+                        continue
+
+                    # Reflectively get the requested method
+                    method = getattr(sub_entity, sub_method_name, None)
+
+                    if not callable(method):
+                        results[entity_token] = f"Error: no method found for method name {sub_method_name} on object type {str(type(entity))}"
+                        continue
+
+                    method_name = sub_method_name
+
+                else:
+                    # Reflectively get the requested method
+                    method = getattr(entity, method_name, None)
+
+                    if not callable(method):
+                        results[entity_token] = f"Error: no method found for method name {method_name} on object type {str(type(entity))}"
+                        continue
 
 
 
@@ -1596,11 +1864,13 @@ class SetStateData(ToolCollection):
                 parsed_arguments = []
                 for arg in arguments:
 
-                    if not isinstance(arg, str):
+                    if isinstance(arg, str) == False:
                         parsed_arguments.append(arg)
 
                     elif "__" in arg:
+
                         entity_arg = self.get_hash_obj(arg)
+                        print(f"EA: A {arg}  {entity_arg}")
                         if entity_arg != None:
                             parsed_arguments.append(entity_arg)
                         else:
@@ -1609,12 +1879,21 @@ class SetStateData(ToolCollection):
                         parsed_arguments.append(arg)
 
 
-
                 # Attempt to call the method with the provided arguments
                 ret_val = None
+
                 try:
                     # This tries a direct call with *arguments
-                    method_ret_val = method(*parsed_arguments)
+                    try:
+                        method_ret_val = method(*parsed_arguments)
+                    except Exception as e:
+                        ret_val = f"Error: method_ret_val error: {e}:\n" + traceback.format_exc()
+                        print(ret_val)
+
+                    #print("abc")
+
+                    #print(f"ret_val: {method_ret_val}")
+
                     if method_ret_val is None:
                         ret_val = f"Error: method '{method_name}' returned '{method_ret_val}'."
 
@@ -1636,80 +1915,20 @@ class SetStateData(ToolCollection):
                 except Exception as e:
                     ret_val == f"Error: '{e}' for method '{method_name}'"
 
+
                 results[entity_token] = ret_val
+
 
             # Return as JSON
             return json.dumps(results)
 
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-
-    @ToolCollection.tool_call
-    def create_point3d_list(self, coords_list: list = [[.5, .5, 0], [1,2,0]]) -> str:
-        """
-        {
-          "name": "create_point3d_list",
-          "description": "Creates a set of adsk.core.Point3D objects in memory from the specified list of [x, y, z] coordinates. Returns a JSON mapping each index to the newly created reference token (or name).",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "coords_list": {
-                "type": "array",
-                "description": "An array of [x, y, z] coordinate triples.",
-                "items": {
-                  "type": "array",
-                  "items": { "type": "number" },
-                  "minItems": 3,
-                  "maxItems": 3
-                }
-              }
-            },
-            "required": ["coords_list"],
-            "returns": {
-              "type": "string",
-              "description": "A JSON object mapping each index in coords_list to the reference token for the newly created Point3D."
-            }
-          }
-        }
-        """
-
-        try:
-            if not coords_list or not isinstance(coords_list, list):
-                return "Error: coords_list must be a non-empty list of [x, y, z] items."
-
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            # If you don't already have a dict for storing references, create one.
-            # We'll store the references as self._point_dict: Dict[str, adsk.core.Point3D]
-            if not hasattr(self, "_point_dict"):
-                self._point_dict = {}
-
-            results = {}
-            for i, coords in enumerate(coords_list):
-                if not isinstance(coords, list) or len(coords) != 3:
-                    results[str(i)] = "Error: invalid [x, y, z] triple."
-                    continue
-
-                x, y, z = coords
-                # Create the Point3D object
-                p3d = adsk.core.Point3D.create(x, y, z)
-                p3d_name = f"{i}_{x}_{y}_{z}"
-                p3d_entity_token = self.set_obj_hash(p3d_name, p3d)
-
-                # Return the token for the user
-                results[p3d_entity_token] = f"Success: Created new Point3D object with entity_token '{p3d_entity_token}' at {coords}"
-
-            return json.dumps(results)
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
+
 
 
     @ToolCollection.tool_call
@@ -1814,7 +2033,7 @@ class SetStateData(ToolCollection):
 
 
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def move_occurrence(self,
                        entity_token: str = "",
                        move_position: list = [1.0, 1.0, 0.0]) -> str:
@@ -1897,7 +2116,7 @@ class SetStateData(ToolCollection):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def reorient_occurrence(self, entity_token: str = "", axis: list = [0, 0, 1], target_vector: list = [1, 0, 0]) -> str:
         """
         {

@@ -52,19 +52,18 @@ class FusionInterface:
         self.app = app
         self.ui = ui
         self.design = adsk.fusion.Design.cast(self.app.activeProduct)
+        ent_dict = {}
 
         # method collections
         self.submodules = [
-            document_data.GetStateData(),
-            document_data.SetStateData(),
-            cad_modeling.Sketches(),
-            cad_modeling.CreateObjects(),
-            ModifyObjects(),
-            #DeleteObjects(),
-            ImportExport(),
-            Joints(),
-            #Timeline(),
-            #NonCad(),
+            document_data.GetStateData(ent_dict),
+            document_data.SetStateData(ent_dict),
+            cad_modeling.CreateObjects(ent_dict),
+            cad_modeling.ModifyObjects(ent_dict),
+            cad_modeling.Sketches(ent_dict),
+            TransientObjects(ent_dict),
+            ImportExport(ent_dict),
+            Joints(ent_dict),
         ]
 
 
@@ -192,259 +191,41 @@ class FusionInterface:
         return wrapper
 
 
-
-
-class NonCad(ToolCollection):
-
-
-
-    # TODO
-    def capture_component_position(self, component_name: str = "comp1") -> str:
-        """
-        {
-          "name": "capture_component_position",
-          "description": "Retrieves the current global position (translation) of each occurrence referencing the specified component.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "component_name": {
-                "type": "string",
-                "description": "The name of the Fusion 360 component whose occurrences' positions will be captured."
-              }
-            },
-            "required": ["component_name"],
-            "returns": {
-              "type": "string",
-              "description": "A JSON array where each element has an 'occurrenceName' and 'position' [x, y, z] in centimeters."
-            }
-          }
-        }
-        """
-
-        return ""
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-            root_comp = design.rootComponent
-
-            # Find all occurrences of this component
-            target_occurrences = []
-            for i in range(root_comp.occurrences.count):
-                occ = root_comp.occurrences.item(i)
-                if occ.component.name == component_name:
-                    target_occurrences.append(occ)
-
-            if not target_occurrences:
-                return f"Error: No occurrences found for component '{component_name}'."
-
-            # Collect the translation vector (x, y, z) for each occurrence
-            positions_info = []
-            for occ in target_occurrences:
-                transform = occ.transform
-                translation = transform.translation
-                positions_info.append({
-                    "occurrenceName": occ.name,
-                    "position": [translation.x, translation.y, translation.z]
-                })
-
-            # Return the data as a JSON array string
-            return json.dumps(positions_info)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-
-
-class ModifyObjects(ToolCollection):
-
-    #@ToolCollection.tool_call
-    def _copy_component_as_new(self,
-                       old_name: str = "M6-Socket-Head-Screw",
-                       new_name: str = "CopiedComponent") -> str:
-        """
-        {
-          "name": "copy_component_as_new",
-          "description": "Creates a new copy of an existing component by copying an occurrence of the original, then pasting it as a new independent component with the specified new name.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "old_name": {
-                "type": "string",
-                "description": "Name of the existing component to copy."
-              },
-              "new_name": {
-                "type": "string",
-                "description": "Name for the newly created component copy."
-              }
-            },
-            "required": ["old_name", "new_name"],
-            "returns": {
-              "type": "string",
-              "description": "A message indicating success or any error encountered."
-            }
-          }
-        }
-        """
-
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-            root_comp = design.rootComponent
-
-            # Find an occurrence whose component name matches old_name
-            source_occ = None
-            all_occurrences = root_comp.allOccurrences
-            for occ in all_occurrences:
-                if occ.component.name == old_name:
-                    source_occ = occ
-                    break
-
-            if not source_occ:
-                return f"Error: No occurrence found for component '{old_name}'."
-
-            # Build an ObjectCollection with this occurrence for copy/paste
-            entities_to_copy = adsk.core.ObjectCollection.create()
-            entities_to_copy.add(source_occ)
-
-            # 1) Copy the occurrence
-            design.copy(entities_to_copy)
-
-            # 2) Paste as a new component definition
-            pasted_objs = design.pasteNew()
-            if not pasted_objs or pasted_objs.count < 1:
-                return "Error: pasteNew() failed to create a new component."
-
-            # Typically, the pasted_objs should contain one new occurrence referencing a new component
-            new_occ = pasted_objs.item(0)
-
-            # Rename the new component
-            new_occ.component.name = new_name
-
-            return (f"Successfully created a copy of '{old_name}' as '{new_name}'. "
-                    f"New occurrence name: {new_occ.name}")
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
+class TransientObjects(ToolCollection):
 
     @ToolCollection.tool_call
-    def copy_component(self, source_component_name: str, target_parent_component_name: str) -> str:
-        """
-            {
-                "name": "copy_component",
-                "description": "Creates a new occurrence of an existing component inside another parent component. This effectively 'copies' the geometry by referencing the same underlying component in a new location.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "source_component_name": {
-                            "type": "string",
-                            "description": "The name of the existing Fusion 360 component to be copied."
-                        },
-                        "target_parent_component_name": {
-                            "type": "string",
-                            "description": "The name of the component that will serve as the parent for the new copy."
-                        }
-                    },
-                    "required": ["source_component_name", "target_parent_component_name"],
-                    "returns": {
-                        "type": "string",
-                        "description": "A message indicating whether the copy (new occurrence) was successfully created."
-                    }
-
-                }
-            }
-        """
-        try:
-            # Access the active design
-            app = adsk.core.Application.get()
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            if not design:
-                return "Error: No active Fusion 360 design found."
-
-            # Locate the source component using a helper method (assumed to exist in your environment)
-
-            sourceComp, errors = self._find_component_by_name(source_component_name)
-            if not sourceComp:
-                return errors
-
-            targetParentComp, errors = self._find_component_by_name(target_parent_component_name)
-            if not targetParentComp:
-                return errors
-
-            # Create a new occurrence of the source component in the target parent component
-            transform = adsk.core.Matrix3D.create()  # Identity transform (no rotation, no translation)
-            new_occurrence = targetParentComp.occurrences.addExistingComponent(sourceComp, transform)
-
-            # (Optional) Rename the new occurrence if you want a distinct name
-            # new_occurrence.name = source_component_name + "_copy"
-
-            return f'Successfully copied "{source_component_name}" into "{target_parent_component_name}".'
-
-        except Exception as e:
-            return f'Error: Failed to copy "{source_component_name}" into "{target_parent_component_name}":\n{e}'
-
-    @ToolCollection.tool_call
-    def fillet_or_chamfer_edges(self,
-                               component_name: str = "comp1",
-                               body_name: str = "Body1",
-                               edge_index_list: list = [0],
-                               operation_value: float = 0.2,
-                               operation_type: str = "fillet") -> str:
+    def create_point3d_list(self, coords_list: list = [[.5, .5, 0], [1,2,0]]) -> str:
         """
         {
-          "name": "fillet_or_chamfer_edges",
-          "description": "Applies either a fillet or chamfer to the specified edges of a body.",
+          "name": "create_point3d_list",
+          "description": "Creates a set of adsk.core.Point3D objects in memory from the specified list of [x, y, z] coordinates. Returns a JSON mapping each index to the newly created reference token (or name).",
           "parameters": {
             "type": "object",
             "properties": {
-              "component_name": {
-                "type": "string",
-                "description": "Name of the Fusion 360 component containing the target body."
-              },
-              "body_name": {
-                "type": "string",
-                "description": "Name of the BRep body whose edges will be modified."
-              },
-              "edge_index_list": {
+              "coords_list": {
                 "type": "array",
-                "description": "A list of integer edge indexes from the body whose edges will be filleted or chamfered.",
+                "description": "An array of [x, y, z] coordinate triples.",
                 "items": {
-                  "type": "number"
+                  "type": "array",
+                  "items": { "type": "number" },
+                  "minItems": 3,
+                  "maxItems": 3
                 }
-              },
-              "operation_value": {
-                "type": "number",
-                "description": "The distance (radius or chamfer distance) to apply, in centimeters."
-              },
-              "operation_type": {
-                "type": "string",
-                "description": "Either 'fillet' or 'chamfer'."
               }
             },
-            "required": ["component_name", "body_name", "edge_index_list", "operation_value", "operation_type"],
+            "required": ["coords_list"],
             "returns": {
               "type": "string",
-              "description": "A message indicating success or details about any errors encountered."
+              "description": "A JSON object mapping each index in coords_list to the reference token for the newly created Point3D."
             }
           }
         }
         """
 
         try:
+            if not coords_list or not isinstance(coords_list, list):
+                return "Error: coords_list must be a non-empty list of [x, y, z] items."
+
             app = adsk.core.Application.get()
             if not app:
                 return "Error: Fusion 360 is not running."
@@ -453,122 +234,66 @@ class ModifyObjects(ToolCollection):
             if not product or not isinstance(product, adsk.fusion.Design):
                 return "Error: No active Fusion 360 design found."
 
-            design = adsk.fusion.Design.cast(product)
+            # If you don't already have a dict for storing references, create one.
+            # We'll store the references as self._point_dict: Dict[str, adsk.core.Point3D]
+            if not hasattr(self, "_point_dict"):
+                self._point_dict = {}
 
+            results = {}
+            for i, coords in enumerate(coords_list):
+                if not isinstance(coords, list) or len(coords) != 3:
+                    results[str(i)] = "Error: invalid [x, y, z] triple."
+                    continue
 
-            # find the target component by name (assuming you have a local helper method).
-            targetComponent, errors = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return errors
+                x, y, z = coords
+                # Create the Point3D object
+                p3d = adsk.core.Point3D.create(x, y, z)
 
-            body, errors  = self._find_body_by_name(targetComponent, body_name)
-            if not body:
-                return errors
+                print(f"p3d: {p3d}")
 
-            # Validate operation_type
-            op_type_lower = operation_type.lower()
-            if op_type_lower not in ("fillet", "chamfer"):
-                return f"Error: Invalid operation_type '{operation_type}'. Must be 'fillet' or 'chamfer'."
+                p3d_name = f"{i}_{x}_{y}_{z}"
+                p3d_entity_token = self.set_obj_hash(p3d_name, p3d)
 
-            # Collect edges
-            edges = body.edges
-            edge_collection = adsk.core.ObjectCollection.create()
-            invalid_indexes = []
-            for idx in edge_index_list:
-                if 0 <= idx < edges.count:
-                    edge_collection.add(edges[idx])
-                else:
-                    invalid_indexes.append(idx)
+                # Return the token for the user
+                results[p3d_entity_token] = f"Success: Created new Point3D object with entity_token '{p3d_entity_token}' at {coords}"
 
-            # If no valid edges were found, return an error.
-            if edge_collection.count == 0:
-                return f"Error: No valid edges found. Invalid indexes: {invalid_indexes}" if invalid_indexes else "Error: No valid edges provided."
-
-            # Create either a fillet or a chamfer
-            if op_type_lower == "fillet":
-                try:
-                    fillet_feats = targetComponent.features.filletFeatures
-                    fillet_input = fillet_feats.createInput()
-                    # Construct the radius ValueInput
-                    radius_val = adsk.core.ValueInput.createByReal(float(operation_value))
-                    # Add all edges to a single radius set
-                    fillet_input.addConstantRadiusEdgeSet(edge_collection, radius_val, True)
-                    fillet_feats.add(fillet_input)
-                    msg = f"Fillet applied with radius {operation_value} to edges: {edge_index_list}."
-                except Exception as e:
-                    return f"Error: Error creating fillet: {e}"
-            else:  # chamfer
-                try:
-                    chamfer_feats = targetComponent.features.chamferFeatures
-                    # For a simple equal-distance chamfer, we set 'distance'
-                    distance_val = adsk.core.ValueInput.createByReal(float(operation_value))
-                    # The createInput function signature is chamferFeatures.createInput(ObjectCollection, isTangentChain)
-                    chamfer_input = chamfer_feats.createInput(edge_collection, True)
-                    chamfer_input.setToEqualDistance(distance_val)
-                    chamfer_feats.add(chamfer_input)
-                    msg = f"Chamfer applied with distance {operation_value} to edges: {edge_index_list}."
-                except Exception as e:
-                    return f"Error: Error creating chamfer: {e}"
-
-            # Include any invalid edge indexes in the output message for clarity
-            if invalid_indexes:
-                msg += f" Some invalid indexes were ignored: {invalid_indexes}"
-
-            return msg
+            return json.dumps(results)
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
     @ToolCollection.tool_call
-    def mirror_body_in_component(
-        self,
-        component_name: str = "comp1",
-        body_name: str = "Body1",
-        operation_type: str = "JoinFeatureOperation",
-        mirror_plane: str = "XY"
-    ) -> str:
+    def create_matrix3d_list(self, matrix_list: list = None) -> str:
         """
         {
-          "name": "mirror_body_in_component",
-          "description": "Mirrors a specified body in a component along one of the component's planes (XY, XZ, YZ) or a planar face in the body by face index. It creates a MirrorFeature in the timeline.",
+          "name": "create_matrix3d_list",
+          "description": "Creates a set of adsk.core.Matrix3D objects from an array of 16-float arrays (row-major). Returns a JSON mapping each new matrix's entity token to a success message.",
           "parameters": {
             "type": "object",
             "properties": {
-              "component_name": {
-                "type": "string",
-                "description": "The name of the component containing the target body."
-              },
-              "body_name": {
-                "type": "string",
-                "description": "The name of the BRepBody to mirror."
-              },
-              "operation_type": {
-                "type": "string",
-                "description": "Either 'JoinFeatureOperation' or 'NewBodyFeatureOperation'.",
-                "enum": [
-                  "JoinFeatureOperation",
-                  "NewBodyFeatureOperation"
-                ]
-              },
-              "mirror_plane": {
-                "type": "string",
-                "description": "The plane to mirror about. Accepted values: 'XY', 'XZ', 'YZ' (the component's origin planes) OR a face reference in the form 'FaceIndex=3'."
+              "matrix_list": {
+                "type": "array",
+                "description": "An array of 16-float arrays representing row-major 4x4 transforms. Example: [[1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1], [...]]",
+                "items": {
+                  "type": "array",
+                  "items": { "type": "number" },
+                  "minItems": 16,
+                  "maxItems": 16
+                }
               }
             },
-            "required": ["component_name", "body_name", "operation_type", "mirror_plane"],
+            "required": ["matrix_list"],
             "returns": {
               "type": "string",
-              "description": "A message indicating success or any error encountered."
+              "description": "A JSON object mapping each new Matrix3D's token to a success or error message."
             }
           }
         }
         """
 
         try:
-            # Validate operation_type
-            valid_ops = ["JoinFeatureOperation", "NewBodyFeatureOperation"]
-            if operation_type not in valid_ops:
-                return (f"Error: operation_type '{operation_type}' must be one of: {valid_ops}.")
+            if not matrix_list or not isinstance(matrix_list, list):
+                return "Error: matrix_list must be a non-empty list of 16-float arrays."
 
             app = adsk.core.Application.get()
             if not app:
@@ -578,83 +303,221 @@ class ModifyObjects(ToolCollection):
             if not product or not isinstance(product, adsk.fusion.Design):
                 return "Error: No active Fusion 360 design found."
 
-            design = adsk.fusion.Design.cast(product)
+            results = {}
 
+            for i, mat_vals in enumerate(matrix_list):
+                # Validate input shape
+                if not isinstance(mat_vals, list) or len(mat_vals) != 16:
+                    results[f"Index_{i}"] = "Error: must provide exactly 16 floats for Matrix3D."
+                    continue
 
-            # Find the target component by name (assuming you have a helper method).
-            targetComponent, errors = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return errors
-
-            body_to_mirror, errors  = self._find_body_by_name(targetComponent, body_name)
-            if not body_to_mirror:
-                return errors
-
-            # Decide on the mirror plane
-            mirror_plane_obj = None
-
-            # 1) If it's one of 'XY', 'XZ', or 'YZ', use the component's origin planes
-            plane_label = mirror_plane.upper().strip()
-            if plane_label in ["XY", "XZ", "YZ"]:
-                planes = targetComponent.constructionPlanes
-
-                #TODO
-                #origin_planes = target_comp.originConstructionPlanes
-                # originConstructionPlanes has .item(0)=XY, .item(1)=XZ, .item(2)=YZ in typical order
-                # But let's map them carefully:
-                plane_map = {
-                    "XY": targetComponent.xYConstructionPlane,
-                    "XZ": targetComponent.xZConstructionPlane,
-                    "YZ": targetComponent.yZConstructionPlane,
-                }
-                mirror_plane_obj = plane_map.get(plane_label)
-
-            # 2) If it starts with 'FaceIndex=', interpret it as a face index on the body
-            elif plane_label.startswith("FACEINDEX="):
-                # Parse out the integer
                 try:
-                    face_index = int(plane_label.split("=")[1])
-                except:
-                    return f"Error: Could not parse face index from '{mirror_plane}'."
-                if face_index < 0 or face_index >= body_to_mirror.faces.count:
-                    return f"Error: Face index {face_index} out of range for body '{body_name}'."
-                face_obj = body_to_mirror.faces.item(face_index)
-                # The face must be planar
-                plane_face = adsk.fusion.BRepFace.cast(face_obj)
-                if not plane_face or not plane_face.geometry or not isinstance(plane_face.geometry, adsk.core.Plane):
-                    return f"Error: Face {face_index} is not planar, cannot mirror about it."
-                mirror_plane_obj = plane_face
+                    m3d = adsk.core.Matrix3D.create()
+                    m3d.setWithArray(mat_vals)
+                    # Generate a name for referencing
+                    mat_name = f"Matrix3D_{i}"
+                    mat_token = self.set_obj_hash(mat_name, m3d)
 
-            else:
-                return (f"Error: mirror_plane '{mirror_plane}' is invalid. "
-                        "Use 'XY', 'XZ', 'YZ', or 'FaceIndex=N' with a planar face.")
+                    results[mat_token] = f"Success: Created new Matrix3D with token '{mat_token}'."
+                except Exception as e:
+                    results[f"Index_{i}"] = f"Error: {str(e)}"
 
-            if not mirror_plane_obj:
-                return f"Error: Could not obtain a valid mirror plane from '{mirror_plane}'."
-
-            # Build the input for the MirrorFeature
-            mirror_feats = targetComponent.features.mirrorFeatures
-            input_entities = adsk.core.ObjectCollection.create()
-            input_entities.add(body_to_mirror)
-
-            mirror_input = mirror_feats.createInput(input_entities, mirror_plane_obj)
-
-            # If you want to specify Join vs NewBody, do so via isCombine for MirrorFeatures
-            # https://help.autodesk.com/view/fusion360/ENU/?guid=Fusion360_API_Reference_manual_cpp_ref_classadsk_1_1fusion_1_1_mirror_feature_input_html
-            if operation_type == "JoinFeatureOperation":
-                mirror_input.isCombine = True
-            else:
-                mirror_input.isCombine = False
-
-            try:
-                mirror_feature = mirror_feats.add(mirror_input)
-                return (f"Mirrored body '{body_name}' in component '{component_name}' about "
-                        f"plane '{mirror_plane}' with operation '{operation_type}'.")
-            except Exception as e:
-                return f"Error creating mirror feature: {str(e)}"
+            return json.dumps(results)
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    @ToolCollection.tool_call
+    def create_point2d_list(self, coords_list: list = None) -> str:
+        """
+        {
+          "name": "create_point2d_list",
+          "description": "Creates adsk.core.Point2D objects from the given list of [x, y] pairs. Returns a JSON mapping tokens to success messages.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "coords_list": {
+                "type": "array",
+                "description": "An array of [x, y] pairs for 2D points.",
+                "items": {
+                  "type": "array",
+                  "items": { "type": "number" },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              }
+            },
+            "required": ["coords_list"],
+            "returns": {
+              "type": "string",
+              "description": "A JSON object mapping each new Point2D's token to a success or error message."
+            }
+          }
+        }
+        """
+
+        try:
+            if not coords_list or not isinstance(coords_list, list):
+                return "Error: coords_list must be a non-empty list of [x, y] pairs."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            results = {}
+
+            for i, coords in enumerate(coords_list):
+                if not isinstance(coords, list) or len(coords) != 2:
+                    results[f"Index_{i}"] = "Error: invalid [x, y] pair."
+                    continue
+
+                x, y = coords
+                try:
+                    p2d = adsk.core.Point2D.create(x, y)
+                    p2d_name = f"Point2D_{i}_{x}_{y}"
+                    p2d_token = self.set_obj_hash(p2d_name, p2d)
+                    results[p2d_token] = f"Success: Created new Point2D with token '{p2d_token}' at {coords}"
+                except Exception as e:
+                    results[f"Index_{i}"] = f"Error: {str(e)}"
+
+            return json.dumps(results)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    @ToolCollection.tool_call
+    def create_matrix2d_list(self, matrix_list: list = None) -> str:
+        """
+        {
+          "name": "create_matrix2d_list",
+          "description": "Creates a set of adsk.core.Matrix2D objects from an array of 9-float arrays (row-major). Returns a JSON mapping each new matrix token to success or error.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "matrix_list": {
+                "type": "array",
+                "description": "An array of 9-float arrays in row-major format for 2D transforms. Example: [[1,0,0, 0,1,0, 0,0,1], [...]]",
+                "items": {
+                  "type": "array",
+                  "items": { "type": "number" },
+                  "minItems": 9,
+                  "maxItems": 9
+                }
+              }
+            },
+            "required": ["matrix_list"],
+            "returns": {
+              "type": "string",
+              "description": "A JSON object mapping each new Matrix2D's token to a success or error message."
+            }
+          }
+        }
+        """
+        try:
+            if not matrix_list or not isinstance(matrix_list, list):
+                return "Error: matrix_list must be a non-empty list of 9-float arrays."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            results = {}
+
+            for i, mat_vals in enumerate(matrix_list):
+                if not isinstance(mat_vals, list) or len(mat_vals) != 9:
+                    results[f"Index_{i}"] = "Error: must provide exactly 9 floats for Matrix2D."
+                    continue
+
+                try:
+                    m2d = adsk.core.Matrix2D.create()
+                    m2d.setWithArray(mat_vals)
+                    mat_name = f"Matrix2D_{i}"
+                    mat_token = self.set_obj_hash(mat_name, m2d)
+
+                    results[mat_token] = f"Success: Created new Matrix2D with token '{mat_token}'."
+                except Exception as e:
+                    results[f"Index_{i}"] = f"Error: {str(e)}"
+
+            return json.dumps(results)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    @ToolCollection.tool_call
+    def create_vector3d_list(self, coords_list: list = [[1, 0, 0], [0, 1, 0]]) -> str:
+        """
+        {
+          "name": "create_vector3d_list",
+          "description": "Creates a set of adsk.core.Vector3D objects from the specified list of [x, y, z] coordinates. Returns a JSON mapping each index to the newly created reference token (or name).",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "coords_list": {
+                "type": "array",
+                "description": "An array of [x, y, z] coordinate triples representing vector directions.",
+                "items": {
+                  "type": "array",
+                  "items": { "type": "number" },
+                  "minItems": 3,
+                  "maxItems": 3
+                }
+              }
+            },
+            "required": ["coords_list"],
+            "returns": {
+              "type": "string",
+              "description": "A JSON object mapping each index in coords_list to the reference token for the newly created Vector3D."
+            }
+          }
+        }
+        """
+
+        try:
+            if not coords_list or not isinstance(coords_list, list):
+                return "Error: coords_list must be a non-empty list of [x, y, z] items."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            # If you don't already have a dict for storing references, create one.
+            # We'll store the references as self._vector_dict: Dict[str, adsk.core.Vector3D]
+            if not hasattr(self, "_vector_dict"):
+                self._vector_dict = {}
+
+            results = {}
+            for i, coords in enumerate(coords_list):
+                if not isinstance(coords, list) or len(coords) != 3:
+                    results[str(i)] = "Error: invalid [x, y, z] triple."
+                    continue
+
+                x, y, z = coords
+                # Create the Vector3D object
+                vec3d = adsk.core.Vector3D.create(x, y, z)
+                vec3d_name = f"Vector3D_{i}_{x}_{y}_{z}"
+                vec3d_token = self.set_obj_hash(vec3d_name, vec3d)
+
+                # Store a success message for the new reference token
+                results[vec3d_token] = f"Success: Created new Vector3D with token '{vec3d_token}' at {coords}"
+
+            return json.dumps(results)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
 
 
 class ImportExport(ToolCollection):
@@ -1521,134 +1384,3 @@ class Joints(ToolCollection):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-
-
-
-#class Timeline(ToolCollection):
-#    pass
-
-    #@ToolCollection.tool_call
-#    def list_timeline_info(self) -> str:
-#        """
-#            {
-#              "name": "list_timeline_info",
-#              "description": "Returns a JSON array describing all items in the Fusion 360 timeline, including entity info, errors/warnings, healthState, etc.",
-#              "parameters": {
-#                "type": "object",
-#                "properties": {
-#                },
-#                "required": [],
-#                "returns": {
-#                  "type": "string",
-#                  "description": "A JSON array; each entry includes timeline item data such as index, name, entityType, healthState, errorOrWarningMessage, etc."
-#                }
-#              }
-#            }
-#        """
-#        try:
-#            app = adsk.core.Application.get()
-#            if not app:
-#                return "Error: Fusion 360 is not running."
-#
-#            product = app.activeProduct
-#            if not product or not isinstance(product, adsk.fusion.Design):
-#                return "Error: No active Fusion 360 design found."
-#
-#            design = adsk.fusion.Design.cast(product)
-#            timeline = design.timeline
-#
-#            timeline_info = []
-#
-#            for i in range(timeline.count):
-#                t_item = timeline.item(i)
-#                if not t_item:
-#                    continue
-#
-#                # Collect basic info
-#                item_data = {
-#                    "index": t_item.index,
-#                    "name": t_item.name,
-#                    "isSuppressed": t_item.isSuppressed,
-#                    "healthState": str(t_item.healthState),          # e.g. 'HealthStateError', 'HealthStateOk'
-#                    "errorOrWarningMessage": t_item.errorOrWarningMessage,
-#                }
-#
-#                # Parent group reference
-#                if t_item.parentGroup:
-#                    item_data["parentGroupIndex"] = t_item.parentGroup.index
-#                    item_data["parentGroupName"] = t_item.parentGroup.name
-#
-#                # Entity info
-#                entity = t_item.entity
-#                if entity:
-#                    # We'll store a few general properties if available
-#                    entity_type = entity.objectType  # e.g. 'adsk::fusion::ExtrudeFeature'
-#                    item_data["entityType"] = entity_type
-#
-#                    # Many entities have a "name" property, but not all. We'll try/catch.
-#                    entity_name = getattr(entity, "name", None)
-#                    if entity_name:
-#                        item_data["entityName"] = entity_name
-#
-#                    # Optionally gather more info if you like:
-#                    # e.g. if entity_type indicates a feature, you could store
-#                    # entity.isSuppressed or others. Just be sure to check for availability.
-#                else:
-#                    item_data["entityType"] = None  # E.g., might be a group or unknown.
-#
-#                timeline_info.append(item_data)
-#
-#            return json.dumps(timeline_info)
-#
-#        except:
-#            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-#
-#
-#
-    #@ToolCollection.tool_call
-#Jj    def roll_back_to_timeline(self, index_to_rollback: int = 0) -> str:
-#Jj        """
-#Jj        {
-#Jj          "name": "roll_back_to_timeline",
-#Jj          "description": "Rolls the design's timeline marker back (or forward) to the specified index, effectively suppressing all features after that index.",
-#Jj          "parameters": {
-#Jj            "type": "object",
-#Jj            "properties": {
-#Jj              "index_to_rollback": {
-#Jj                "type": "number",
-#Jj                "description": "The timeline index to move the marker to. Items after this index will be suppressed in the UI."
-#Jj              }
-#Jj            },
-#Jj            "required": ["index_to_rollback"],
-#Jj            "returns": {
-#Jj              "type": "string",
-#Jj              "description": "A message indicating success or any error encountered."
-#Jj            }
-#Jj          }
-#Jj        }
-#Jj        """
-#Jj
-#Jj        try:
-#Jj
-#Jj            app = adsk.core.Application.get()
-#Jj            if not app:
-#Jj                return "Error: Fusion 360 is not running."
-#Jj
-#Jj            product = app.activeProduct
-#Jj            if not product or not isinstance(product, adsk.fusion.Design):
-#Jj                return "Error: No active Fusion 360 design found."
-#Jj
-#Jj            design = adsk.fusion.Design.cast(product)
-#Jj            timeline = design.timeline
-#Jj
-#Jj            if index_to_rollback < 0 or index_to_rollback >= timeline.count:
-#Jj                return f"Error: index_to_rollback {index_to_rollback} out of range (0..{timeline.count - 1})."
-#Jj
-#Jj            # Move the marker position
-#Jj            timeline.markerPosition = index_to_rollback
-#Jj            return f"Timeline marker moved to index {index_to_rollback}."
-#Jj
-#Jj        except:
-#Jj            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-#Jj
-#Jj

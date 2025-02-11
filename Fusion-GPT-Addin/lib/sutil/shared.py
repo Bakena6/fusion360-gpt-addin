@@ -39,7 +39,6 @@ class ToolCollection:
     #debug_print = True
 
     # store references to fusion object based on id
-    ent_dict = {}
     log_results = True
     log_errors = True
 
@@ -49,8 +48,6 @@ class ToolCollection:
         """
         # TODO probably a better way to select functions wrapped in this 
         func.__wrapper__ = "tool_call"
-
-
 
         # for retrieving wrapped function kwarg names
         @functools.wraps(func)
@@ -83,13 +80,9 @@ class ToolCollection:
         setattr(ToolCollection, setting_name, setting_val)
         print(f"{setting_name} set from {current_val} => {setting_val}")
 
-
-
-
     def print_results(self, results):
 
         if isinstance(results, str):
-
             try:
                 formatted_results = json.dumps(json.loads(results), indent=4)
             except:
@@ -99,8 +92,9 @@ class ToolCollection:
 
         print(formatted_results)
 
-    def __init__(self):
+    def __init__(self, ent_dict):
         self.methods = self._get_methods()
+        self.ent_dict = ent_dict
         #self.ent_dict = {}
 
 
@@ -246,7 +240,6 @@ class ToolCollection:
 
         return body, errors
 
-
     def _hash_string_to_fixed_length(self, input_string: str, length: int = 10) -> str:
         """
         Returns a stable, unique, alphanumeric hash string of the specified length
@@ -258,7 +251,8 @@ class ToolCollection:
         :return: A hash string of the given length (alphanumeric only).
         """
         # 1) Compute SHA-256 hash
-        sha_hash = hashlib.sha256(input_string.encode('utf-8')).digest()
+        input_string = str(input_string)
+        sha_hash = hashlib.sha256(str(input_string).encode('utf-8')).digest()
 
         # 2) Encode as Base64 (returns a bytes object)
         b64_encoded = base64.b64encode(sha_hash)  # e.g. b'abcd1234=='
@@ -278,13 +272,13 @@ class ToolCollection:
 
         return hash_str
 
-
-
     def set_obj_hash(self, entityToken, entity, length=5):
         """
         adds a fusion360 to the hash:object dict
         """
 
+
+        entityToken = str(entityToken)
         hash_val = self._hash_string_to_fixed_length(entityToken, length)
 
         hash_val = f"{entity.objectType.split(":")[-1]}__{hash_val}"
@@ -295,7 +289,6 @@ class ToolCollection:
         self.ent_dict[hash_val] = entity
 
         return hash_val
-
 
     def get_hash_obj(self, hash_val):
         """
