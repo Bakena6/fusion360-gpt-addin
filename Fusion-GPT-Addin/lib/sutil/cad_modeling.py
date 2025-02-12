@@ -35,351 +35,6 @@ print(f"RELOADED: {__name__.split("%2F")[-1]}")
 class Sketches(ToolCollection):
 
     ###### ====== cad design ====== ######
-    #@ToolCollection.tool_call
-    def get_sketch_profiles(self, component_name: str = "comp1", sketch_name: str = "Sketch1"):
-        """
-        {
-            "name": "get_sketch_profiles",
-            "description": "Retrieves all the profiles from a specified sketch within a specified component. Returns a JSON-like object containing each profile's area, center point, and areaIndex (with 0 being the largest profile).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "component_name": {
-                        "type": "string",
-                        "description": "The name of the component in the current design containing the sketch."
-                    },
-                    "sketch_name": {
-                        "type": "string",
-                        "description": "The name of the sketch inside the specified component."
-                    }
-                },
-                "required": ["component_name", "sketch_name"],
-                "returns": {
-                    "type": "object",
-                    "description": "A JSON-like dictionary with a 'profiles' key, listing each profile's area, centroid (x, y, z), and areaIndex sorted by descending area. If an error occurs, a string describing the error is returned instead."
-                }
-            }
-        }
-        """
-        try:
-            # Access the active design
-            app = adsk.core.Application.get()
-            design = adsk.fusion.Design.cast(app.activeProduct)
-
-            # Use a local helper method to find the target component
-            targetComponent, errors = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return errors
-
-            targetSketch, errors = self._find_sketch_by_name(targetComponent, sketch_name)
-            if not targetSketch:
-                return errors
-
-            if not targetSketch.profiles or targetSketch.profiles.count == 0:
-                return "No profiles found in the sketch."
-
-            # Gather profile information (area and centroid)
-            profile_data = []
-            for profile in targetSketch.profiles:
-                props = profile.areaProperties()
-                area = props.area
-                centroid = props.centroid
-                profile_data.append({
-                    "profile": profile,  # Storing the actual profile object (if needed)
-                    "area": area,
-                    "centroid": [centroid.x, centroid.y, centroid.z]
-                })
-
-            # Sort profiles by descending area
-            profile_data.sort(key=lambda p: p["area"], reverse=True)
-
-            # Create the final list of profile info for JSON-like output
-            results = []
-            for idx, data in enumerate(profile_data):
-                results.append({
-                    "areaIndex": idx,  # 0 = largest
-                    "area": data["area"],
-                    "centerPoint": data["centroid"]
-                })
-
-            # Return the JSON-like structure
-            return json.dumps({ "profiles": results })
-
-        except Exception as e:
-            return f"Error: {e}"
-
-    #@ToolCollection.tool_call
-    def get_edges_in_body(self, component_name: str="comp1", body_name: str="Body1") -> str:
-        """
-        {
-            "name": "get_edges_in_body",
-            "description": "Generates a list of all edges in a specified BRep body, including position and orientation data that can be used for future operations like fillets or chamfers.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "component_name": {
-                        "type": "string",
-                        "description": "The name of the component in the current design containing the body."
-                    },
-                    "body_name": {
-                        "type": "string",
-                        "description": "The name of the target body whose edges will be listed."
-                    }
-                },
-                "required": ["component_name", "body_name"],
-                "returns": {
-                    "type": "string",
-                    "description": "A JSON array of edge information. Each element contains 'index', 'geometryType', 'length', bounding-box data, and geometry-specific data like direction vectors or center points."
-                }
-            }
-        }
-        """
-
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            # Locate the target component by name (assuming you have a helper method)
-            targetComponent, errors = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return errors
-
-            body, errors = self._find_body_by_name(targetComponent, body_name)
-            if not body:
-                return errors
-
-            edges = body.edges
-            edge_data_list = []
-
-            for i, edge in enumerate(edges):
-                geom = edge.geometry
-                geometryType = type(geom).__name__  # e.g., "Line3D", "Arc3D", "Circle3D", etc.
-
-                # Basic edge info
-                edge_info = {
-                    "index": i,
-                    "geometryType": geometryType,
-                    "length": edge.length
-                }
-
-                # 1) Collect bounding box data
-                bb = edge.boundingBox
-                if bb:
-                    edge_info["boundingBox"] = {
-                        "minPoint": [bb.minPoint.x, bb.minPoint.y, bb.minPoint.z],
-                        "maxPoint": [bb.maxPoint.x, bb.maxPoint.y, bb.maxPoint.z]
-                    }
-
-                # 2) Collect geometry-specific data
-                if isinstance(geom, adsk.core.Line3D):
-                    # For finite lines, startPoint and endPoint will be non-null.
-                    startPt = geom.startPoint
-                    endPt = geom.endPoint
-
-                    # Compute direction: end - start
-                    if startPt and endPt:
-                        directionVec = adsk.core.Vector3D.create(
-                            endPt.x - startPt.x,
-                            endPt.y - startPt.y,
-                            endPt.z - startPt.z
-                        )
-                        edge_info["geometryData"] = {
-                            "startPoint": [startPt.x, startPt.y, startPt.z],
-                            "endPoint": [endPt.x, endPt.y, endPt.z],
-                            "direction": [directionVec.x, directionVec.y, directionVec.z]
-                        }
-                    else:
-                        # If the line is infinite (rare in typical Fusion designs),
-                        # the start/endPoints might be None.
-                        # You could call getData(...) here if needed.
-                        edge_info["geometryData"] = {
-                            "startPoint": None,
-                            "endPoint": None,
-                            "direction": None
-                        }
-
-                elif isinstance(geom, adsk.core.Arc3D):
-                    centerPt = geom.center
-                    normalVec = geom.normal
-                    edge_info["geometryData"] = {
-                        "centerPoint": [centerPt.x, centerPt.y, centerPt.z],
-                        "normal": [normalVec.x, normalVec.y, normalVec.z],
-                        "radius": geom.radius,
-                        "startAngle": geom.startAngle,
-                        "endAngle": geom.endAngle
-                    }
-
-                elif isinstance(geom, adsk.core.Circle3D):
-                    centerPt = geom.center
-                    normalVec = geom.normal
-                    edge_info["geometryData"] = {
-                        "centerPoint": [centerPt.x, centerPt.y, centerPt.z],
-                        "normal": [normalVec.x, normalVec.y, normalVec.z],
-                        "radius": geom.radius
-                    }
-
-                elif isinstance(geom, adsk.core.Ellipse3D):
-                    centerPt = geom.center
-                    normalVec = geom.normal
-                    edge_info["geometryData"] = {
-                        "centerPoint": [centerPt.x, centerPt.y, centerPt.z],
-                        "normal": [normalVec.x, normalVec.y, normalVec.z],
-                        "majorRadius": geom.majorRadius,
-                        "minorRadius": geom.minorRadius
-                    }
-
-                elif isinstance(geom, adsk.core.NurbsCurve3D):
-                    # NURBS curves can be more complex:
-                    # store some minimal data; adjust as needed
-                    edge_info["geometryData"] = {
-                        "isNurbs": True,
-                        "degree": geom.degree,
-                        "controlPointCount": geom.controlPointCount
-                    }
-
-                edge_data_list.append(edge_info)
-
-            # Return the collected info in JSON format
-            return json.dumps(edge_data_list)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-    #@ToolCollection.tool_call
-    def get_faces_in_body(self, component_name: str="comp1", body_name: str = "Body1") -> str:
-        """
-        {
-            "name": "get_faces_in_body",
-            "description": "Generates a list of all faces in the specified BRep body. Returns face data in JSON format that can be used for future operations.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "component_name": {
-                        "type": "string",
-                        "description": "The name of the component in the current design containing the body."
-                    },
-                    "body_name": {
-                        "type": "string",
-                        "description": "The name of the target body whose faces will be listed."
-                    }
-                },
-                "required": ["component_name", "body_name"],
-                "returns": {
-                    "type": "string",
-                    "description": "A JSON array of face information. Each element contains keys such as 'index', 'surfaceType', 'area', and 'boundingBox'."
-                }
-            }
-        }
-        """
-
-        try:
-            app = adsk.core.Application.get()
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            # Find the target component by name (assuming you have a local helper method).
-            targetComponent, errors = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return errors
-
-            body, errors = self._find_body_by_name(targetComponent, body_name)
-            if not body:
-                return errors
-
-            faces = body.faces
-            face_data_list = []
-
-            for i, face in enumerate(faces):
-                geom = face.geometry
-                surface_type = type(geom).__name__  # e.g., "Plane", "Cylinder", "Cone", "Sphere", "Torus", "NurbsSurface"
-
-                # Store basic face info
-                face_info = {
-                    "index": i,
-                    "surfaceType": surface_type,
-                    "area": face.area
-                }
-
-                # Collect bounding box data for the face (if available)
-                bb = face.boundingBox
-                if bb:
-                    face_info["boundingBox"] = {
-                        "minPoint": [bb.minPoint.x, bb.minPoint.y, bb.minPoint.z],
-                        "maxPoint": [bb.maxPoint.x, bb.maxPoint.y, bb.maxPoint.z]
-                    }
-
-                # Collect geometry-specific data
-                geometry_data = {}
-                if isinstance(geom, adsk.core.Cylinder):
-                    # Cylindrical face
-                    axis = geom.axis
-                    origin = geom.origin
-                    geometry_data = {
-                        "axisVector": [axis.x, axis.y, axis.z],
-                        "origin": [origin.x, origin.y, origin.z],
-                        "radius": geom.radius
-                    }
-
-                elif isinstance(geom, adsk.core.Sphere):
-                    # Spherical face
-                    center = geom.center
-                    geometry_data = {
-                        "center": [center.x, center.y, center.z],
-                        "radius": geom.radius
-                    }
-
-                elif isinstance(geom, adsk.core.Torus):
-                    # Torus face
-                    center = geom.center
-                    axis = geom.axis
-                    geometry_data = {
-                        "center": [center.x, center.y, center.z],
-                        "axisVector": [axis.x, axis.y, axis.z],
-                        "majorRadius": geom.majorRadius,
-                        "minorRadius": geom.minorRadius
-                    }
-
-                elif isinstance(geom, adsk.core.Cone):
-                    # Conical face
-                    axis = geom.axis
-                    origin = geom.origin
-                    geometry_data = {
-                        "axisVector": [axis.x, axis.y, axis.z],
-                        "origin": [origin.x, origin.y, origin.z],
-                        "halfAngle": geom.halfAngle
-                    }
-
-                elif isinstance(geom, adsk.core.NurbsSurface):
-                    # Nurbs-based face
-                    geometry_data = {
-                        "isNurbsSurface": True,
-                        "uDegree": geom.degreeU,
-                        "vDegree": geom.degreeV,
-                        "controlPointCountU": geom.controlPointCountU,
-                        "controlPointCountV": geom.controlPointCountV
-                    }
-
-                if geometry_data:
-                    face_info["geometryData"] = geometry_data
-
-                face_data_list.append(face_info)
-
-            # Convert the collected face data to a JSON string
-            return json.dumps(face_data_list)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
 
     #@ToolCollection.tool_call
     def create_spline_in_sketch(self, component_name: str = "comp1", sketch_name: str = "Sketch1", point_list: list = [[0, 0, 0], [1, 1, 0], [2, 0, 0]]):
@@ -616,370 +271,6 @@ class Sketches(ToolCollection):
         except Exception as e:
 
             return f'Error: Failed to create rectangles in sketch: {e}'
-
-
-    def _create_rectangles_in_sketch(self, component_name: str="comp1", sketch_name: str="Sketch1", center_point_list: list=[[1,1,0]], rectangle_size_list:list=[[2,4]]):
-        """
-            {
-              "name": "create_rectangles_in_sketch",
-              "description": "Creates rectangles in a specified sketch within a specified component in Fusion 360 using addCenterPointRectangle. Each rectangle is defined by a center point (from center_point_list) and a size (width, height) from rectangle_size_list. A corner point is calculated automatically from the center and half the width and height, and two distance dimensions (horizontal and vertical) are applied. The number of elemenets in center_point_list must be equal to the number of elements in rectangle_size_lis. The unit for center_point_list and rectangle_size_list is centimeters",
-              "parameters": {
-                "type": "object",
-                "properties": {
-                  "component_name": {
-                    "type": "string",
-                    "description": "The name of the component in the current design."
-                  },
-                  "sketch_name": {
-                    "type": "string",
-                    "description": "The name of the sketch inside the specified component."
-                  },
-                  "center_point_list": {
-                    "type": "array",
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "type": "number"
-                      },
-                      "minItems": 3,
-                      "maxItems": 3,
-                      "description": "A list representing an XYZ point (x, y, z)."
-                    },
-                    "description": "A list of center points in 3D space for each rectangle to be created."
-                  },
-                  "rectangle_size_list": {
-                    "type": "array",
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "type": "number"
-                      },
-                      "minItems": 2,
-                      "maxItems": 2,
-                      "description": "A list representing the width and height of the rectangle."
-                    },
-                    "description": "A list of [width, height] pairs, corresponding to each center point in center_point_list."
-                  }
-                },
-                "required": ["component_name", "sketch_name", "center_point_list", "rectangle_size_list"],
-                "returns": {
-                  "type": "string",
-                  "description": "A message indicating the success or failure of the rectangle creation."
-                }
-              }
-            }
-        """
-
-        try:
-
-
-            # if dim list passed in as string from user input box
-            if isinstance(center_point_list, str):
-                center_point_list = json.loads(center_point_list)
-            if isinstance(rectangle_size_list, str):
-                rectangle_size_list = json.loads(rectangle_size_list)
-
-
-            # Validate input lengths
-            if len(center_point_list) != len(rectangle_size_list):
-
-                center_point_len = len(center_point_list)
-                rectangle_size_len = len(rectangle_size_list)
-
-                message = f"The lengths of center_point_list ({center_point_len}) and rectangle_size_list ({rectangle_size_len}) must be equal."
-
-                return message
-
-            # Access the active design
-            app = adsk.core.Application.get()
-            ui = app.userInterface
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            if not design:
-                return "Error: No active Fusion 360 design found."
-
-            root_comp = design.rootComponent
-
-            # use base class method
-            targetComponent, errors = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return errors
-
-            targetSketch, errors = self._find_sketch_by_name(targetComponent, sketch_name)
-            if not targetSketch:
-                return errors
-
-            # Create rectangles in the sketch
-            for center_point, size in zip(center_point_list, rectangle_size_list):
-                width, height = size[0], size[1]
-
-                # Create the center point 3D object
-                center3D = adsk.core.Point3D.create(center_point[0], center_point[1], center_point[2])
-
-                # Calculate the corner point (relative to center)
-                # For an axis-aligned rectangle, corner is (center.x + width/2, center.y + height/2, center.z).
-                corner3D = adsk.core.Point3D.create(
-                    center_point[0] + width / 2.0,
-                    center_point[1] + height / 2.0,
-                    center_point[2]
-                )
-
-                # Create the rectangle using addCenterPointRectangle
-                rectangleLines = targetSketch.sketchCurves.sketchLines.addCenterPointRectangle(center3D, corner3D)
-
-                # The addCenterPointRectangle returns a list of four SketchLine objects.
-                # Typically:
-                #   lines[0]: horizontal line (top or bottom)
-                #   lines[1]: vertical line (left or right)
-                #   lines[2]: horizontal line (the other top/bottom)
-                #   lines[3]: vertical line (the other left/right)
-
-                dimensions = targetSketch.sketchDimensions
-
-                # Dimension the first horizontal line as the 'width'
-                horizontalLine = rectangleLines[0]
-                dimPointWidth = adsk.core.Point3D.create(center_point[0], center_point[1] - 1, center_point[2])
-                dimWidth = dimensions.addDistanceDimension(
-                    horizontalLine.startSketchPoint,
-                    horizontalLine.endSketchPoint,
-                    adsk.fusion.DimensionOrientations.HorizontalDimensionOrientation,
-                    dimPointWidth
-                )
-
-                # Dimension the first vertical line as the 'height'
-                verticalLine = rectangleLines[1]
-                dimPointHeight = adsk.core.Point3D.create(center_point[0] - 1, center_point[1], center_point[2])
-                dimHeight = dimensions.addDistanceDimension(
-                    verticalLine.startSketchPoint,
-                    verticalLine.endSketchPoint,
-                    adsk.fusion.DimensionOrientations.VerticalDimensionOrientation,
-                    dimPointHeight
-                )
-
-                # Optionally set exact values of the parameters to fix the rectangle size
-                # Uncomment if you need these to be parametric at exactly 'width' and 'height':
-                #
-                # dimWidth.parameter.value = width
-                # dimHeight.parameter.value = height
-
-            return f'Rectangles created in sketch "{sketch_name}" using center-point rectangle method.'
-
-        except Exception as e:
-
-            return f'Error: Failed to create rectangles in sketch: {e}'
-
-
-    #@ToolCollection.tool_call
-    def create_irregular_polygon_in_sketch(self, parent_component_name:str="comp1", sketch_name:str="Sketch1", point_list:list=[[0,0,0], [0,1,0], [1,2,0]]):
-        """
-        {
-          "name": "create_irregular_polygon_in_sketch",
-          "description": "Creates a polygon in an existing sketch within a specified parent component in Fusion 360. The polygon is formed by connecting a series of points provided in the point_list. the unit for point_list is centimeters",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "parent_component_name": {
-                "type": "string",
-                "description": "The name of the parent component where the polygon will be created."
-              },
-              "sketch_name": {
-                "type": "string",
-                "description": "The name of the existing sketch where the polygon will be created."
-              },
-              "point_list": {
-                "type": "array",
-                "items": {
-                  "type": "array",
-                  "items": {
-                    "type": "number"
-                  },
-                  "minItems": 2,
-                  "maxItems": 2,
-                  "description": "A tuple representing an XY point (x, y)."
-                },
-                "description": "A list of tuples, each representing an XY point (x, y) to be included in the polygon, the unit is centimeters."
-              }
-            },
-            "required": ["parent_component_name", "sketch_name", "point_list"],
-            "returns": {
-              "type": "string",
-              "description": "A message indicating the success or failure of the polygon creation."
-            }
-          }
-        }
-        """
-        try:
-            # Access the active design
-            app = adsk.core.Application.get()
-            ui = app.userInterface
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            rootComp = design.rootComponent
-
-            parentComponent, errors = self._find_component_by_name(parent_component_name)
-            if not parentComponent:
-                return errors
-
-            targetSketch, errors = self._find_sketch_by_name(parentComponent, sketch_name)
-            if not targetSketch:
-                return errors
-
-
-            # Add points and lines to the sketch to form the polygon
-            for i in range(len(point_list)):
-                start_point = adsk.core.Point3D.create(point_list[i][0], point_list[i][1], 0)
-                end_point_index = (i + 1) % len(point_list)
-                end_point = adsk.core.Point3D.create(point_list[end_point_index][0], point_list[end_point_index][1], 0)
-                targetSketch.sketchCurves.sketchLines.addByTwoPoints(start_point, end_point)
-
-
-            return f'Polygon created in sketch "{sketch_name}"'
-
-        except Exception as e:
-            return f'Error: Failed to create polygon in sketch: {e}'
-
-
-    #@ToolCollection.tool_call
-    def create_arcs_and_lines_in_sketch(
-        self,
-        component_name: str = "comp1",
-        sketch_name: str = "Sketch1",
-        geometry_list: list = [
-            { 'object_type': 'arc', 'start': [.5,1,0], 'middle': [.7, .5, 0], 'end': [1,1,0 ] },
-            { 'object_type': 'line', 'start': [1,1,0], 'middle': [0,0,0], 'end': [1.2,2,0 ] },
-        ]
-    ) -> str:
-        """
-            {
-              "name": "create_arcs_and_lines_in_sketch",
-              "description": "Creates SketchArcs (by three points) and SketchLines (by two points) in the specified sketch. This allows complex profiles made of arcs and lines. For sketch lines, the middle point will be ignored",
-              "parameters": {
-                "type": "object",
-                "properties": {
-                  "component_name": {
-                    "type": "string",
-                    "description": "The name of the component containing the target sketch."
-                  },
-                  "sketch_name": {
-                    "type": "string",
-                    "description": "The name of the sketch in which arcs/lines will be created."
-                  },
-                  "geometry_list": {
-                    "type": "array",
-                    "description": "An array of geometry creation instructions. Each item: { 'object_type': 'arc' | 'line', 'start': [x,y,z], 'middle': [x,y,z or null], 'end': [x,y,z] }",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "object_type": {
-                          "type": "string",
-                          "description": "'arc' or 'line'."
-                        },
-                        "start": {
-                          "type": "array",
-                          "items": { "type": "number" },
-                          "description": "[x,y,z] for the start point of the geometry in the sketch plane coordinate system (Z=0)."
-                        },
-                        "middle": {
-                          "type": "array",
-                          "items": { "type": "number" },
-                          "description": "For arcs, the 3D point on the arc. For lines, typically null or ignored."
-                        },
-                        "end": {
-                          "type": "array",
-                          "items": { "type": "number" },
-                          "description": "[x,y,z] for the end point of the geometry in the sketch plane coordinate system."
-                        }
-                      },
-                      "required": ["object_type", "start", "end"]
-                    }
-                  }
-                },
-                "required": ["component_name", "sketch_name", "geometry_list"],
-                "returns": {
-                  "type": "string",
-                  "description": "A message summarizing how many arcs/lines were created or any errors encountered."
-                }
-              }
-            }
-        """
-
-        try:
-            if not geometry_list or not isinstance(geometry_list, list):
-                return "Error: 'geometry_list' must be a list of geometry instructions."
-
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            # Locate the target component
-            target_comp = None
-            for c in design.allComponents:
-                if c.name == component_name:
-                    target_comp = c
-                    break
-            if not target_comp:
-                return f"Error: Component '{component_name}' not found."
-
-            # Locate the specified sketch
-            target_sketch = None
-            for sk in target_comp.sketches:
-                if sk.name == sketch_name:
-                    target_sketch = sk
-                    break
-            if not target_sketch:
-                return f"Error: Sketch '{sketch_name}' not found in component '{component_name}'."
-
-            # We'll create arcs and lines within this sketch
-            lines_collection = target_sketch.sketchCurves.sketchLines
-            arcs_collection = target_sketch.sketchCurves.sketchArcs
-
-            created_arcs = 0
-            created_lines = 0
-
-            for item in geometry_list:
-                obj_type = item.get("object_type", "").lower()
-                start_pt = item.get("start", None)
-                mid_pt = item.get("middle", None)
-                end_pt = item.get("end", None)
-
-                # Basic validation
-                if not (isinstance(start_pt, list) and len(start_pt) == 3 and
-                        isinstance(end_pt, list) and len(end_pt) == 3):
-                    continue  # or record an error
-
-                # Convert to 3D points in the sketch's plane coordinate system (Z=0).
-                # The sketch is typically on some plane in 3D space, but
-                # we pass [x, y, 0] to create the geometry in sketch coordinates.
-                startP = adsk.core.Point3D.create(start_pt[0], start_pt[1], start_pt[2])
-                endP = adsk.core.Point3D.create(end_pt[0], end_pt[1], end_pt[2])
-
-                if obj_type == "line":
-                    # Lines only need start, end
-                    lines_collection.addByTwoPoints(startP, endP)
-                    created_lines += 1
-
-                elif obj_type == "arc":
-                    # Arcs typically need three points (start, some point on the arc, end)
-                    # We'll assume 'middle' is a 3D point on the arc, or we skip if missing
-                    if not (isinstance(mid_pt, list) and len(mid_pt) == 3):
-                        # If we don't have a valid mid-point, skip
-                        continue
-                    midP = adsk.core.Point3D.create(mid_pt[0], mid_pt[1], mid_pt[2])
-                    arcs_collection.addByThreePoints(startP, midP, endP)
-                    created_arcs += 1
-                else:
-                    # Unknown object_type, skip
-                    pass
-
-            return f"Created {created_lines} line(s) and {created_arcs} arc(s) in sketch '{sketch_name}'."
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
 
 
 class ModifyObjects(ToolCollection):
@@ -1241,7 +532,7 @@ class CreateObjects(ToolCollection):
                         "description": "Taper angle (in degrees). Positive or negative. Default 0."
                     }
                 },
-                "required": ["component_entity_token", "profile_entity_tokens", "extrude_distance"],
+                "required": ["component_entity_token", "profile_entity_tokens", "extrude_distance", "start_extent", "taper_angle"],
                 "returns": {
                     "type": "string",
                     "description": "A message indicating whether the extrude operations completed successfully or not."
@@ -1273,6 +564,10 @@ class CreateObjects(ToolCollection):
             targetComponent = self.get_hash_obj(component_entity_token)
             if not targetComponent:
                 return f"Error: No component found for for enityToken: '{component_entity_token}'."
+
+
+            if len(profile_entity_tokens) == 0:
+                return f"Error: '{component_entity_tokens}' Argument 'profile_entity_tokens' must not be empty."
 
             # Prepare extrude feature objects
             extrudes = targetComponent.features.extrudeFeatures
@@ -1320,6 +615,210 @@ class CreateObjects(ToolCollection):
 
         except Exception as e:
             return f"Error: An unexpected exception occurred: {e}"
+
+
+    @ToolCollection.tool_call
+    def thin_extrude_lines(self,
+
+                           component_entity_token: str = "",
+                           line_token_list: list = [],
+                           thin_extrude_width: float = 0.1,
+                           thin_extrude_height: float = 1.0,
+                           operation_type: str = "NewBodyFeatureOperation",
+                           wall_location: str = "side1",
+                           taper_angle: float = 0.0) -> str:
+        """
+        {
+          "name": "thin_extrude_lines",
+          "description": "Performs a 'Thin Extrude' on a list of open lines. Each line is referenced by a token. A new extrude feature is created for each open profile.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+
+                "component_entity_token": {
+                    "type": "string",
+                    "description": "The entityToken of the component in the current design containing the sketch."
+                },
+
+              "line_token_list": {
+                "type": "array",
+                "description": "A list of entity tokens referencing Fusion 360 line objects (SketchLine).",
+                "items": { "type": "string" }
+              },
+              "thin_extrude_width": {
+                "type": "number",
+                "description": "Thickness of the thin extrude (in current design length units)."
+              },
+              "thin_extrude_height": {
+                "type": "number",
+                "description": "How far to extrude (in current design length units)."
+              },
+              "operation_type": {
+                "type": "string",
+                "description": "Feature operation: CutFeatureOperation, JoinFeatureOperation, IntersectFeatureOperation, NewBodyFeatureOperation, NewComponentFeatureOperation."
+              },
+              "wall_location": {
+                "type": "string",
+                "description": "Where to apply the thickness. One of: side1, side2, center."
+              },
+              "taper_angle": {
+                "type": "number",
+                "description": "Taper angle in degrees (positive or negative)."
+              }
+            },
+            "required": ["component_entity_token", "line_token_list", "thin_extrude_width", "thin_extrude_height"],
+            "returns": {
+              "type": "string",
+              "description": "JSON string mapping each extrude result or an error message."
+            }
+          }
+        }
+        """
+        try:
+            # Basic validation of the inputs
+            if not line_token_list or not isinstance(line_token_list, list):
+                return "Error: line_token_list must be a non-empty list of line entity tokens."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            root_comp = design.rootComponent
+
+            # find the target component by name (assuming you have a local helper method).
+            targetComponent = self.get_hash_obj(component_entity_token)
+            if not targetComponent:
+                return f"Error: No component found for for enityToken: '{component_entity_token}'."
+
+            # FeatureOperations mapping
+            operation_map = {
+                "CutFeatureOperation": adsk.fusion.FeatureOperations.CutFeatureOperation,
+                "IntersectFeatureOperation": adsk.fusion.FeatureOperations.IntersectFeatureOperation,
+                "JoinFeatureOperation": adsk.fusion.FeatureOperations.JoinFeatureOperation,
+                "NewBodyFeatureOperation": adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+                "NewComponentFeatureOperation": adsk.fusion.FeatureOperations.NewComponentFeatureOperation
+            }
+            if operation_type not in operation_map:
+                return (f"Error: Unknown operation_type '{operation_type}'. "
+                        f"Valid: {', '.join(operation_map.keys())}.")
+
+
+
+
+            wall_map = {
+                "side1": adsk.fusion.ThinExtrudeWallLocation.Side1,
+                "side2": adsk.fusion.ThinExtrudeWallLocation.Side2,
+                "center": adsk.fusion.ThinExtrudeWallLocation.Center
+            }
+            if wall_location not in wall_map:
+                return ("Error: wall_location must be one of 'side1', 'side2', or 'center'.")
+
+            # Prepare extrude feature objects
+            extrudes = targetComponent.features.extrudeFeatures
+
+            # Convert extrudeDist (cm) to internal real value
+            distanceVal = adsk.core.ValueInput.createByReal(float(thin_extrude_height))
+
+            # We often need a single open profile from the lines. If the lines are from
+            # multiple sketches, or not connected end-to-end, you'll have multiple open profiles.
+            # We'll create 1 open profile from all lines. If that does not match your needs,
+            # you might split them by sketch or connectivity.
+            all_lines = adsk.core.ObjectCollection.create()
+
+            results = {}
+
+            # Collect the line objects from the tokens
+            for token in line_token_list:
+                line_obj = self.get_hash_obj(token)  # or your design.findEntityByToken(token)
+
+                if not line_obj:
+                    results[token] = f"Error: no object found for token '{token}'."
+                    continue
+
+                if not isinstance(line_obj, adsk.fusion.SketchLine):
+                    results[token] = f"Error: object for token '{token}' is not a SketchLine."
+                    continue
+
+                all_lines.add(line_obj)
+                results[token] = "Line added successfully."
+
+            # If no valid lines found, stop
+            if all_lines.count == 0:
+                return json.dumps(results)
+
+            # Gather the lines' sketch. We'll assume they share a single sketch
+            # or just use the first line's sketch.
+            first_line = all_lines.item(0)
+            target_sketch = first_line.parentSketch if first_line else None
+            if not target_sketch:
+                results["Error"] = "Could not find parent sketch for lines."
+                return json.dumps(results)
+
+
+            # Create an open profile from these lines
+            try:
+                open_profile = targetComponent.createOpenProfile(all_lines)
+            except Exception as e:
+                results["Error"] = f"Error creating open profile from lines: {str(e)}"
+                return json.dumps(results)
+
+             #Create the extrude input
+            ext_input = extrudes.createInput(
+                open_profile,
+                operation_map[operation_type]
+            )
+
+            # We'll also create the thickness ValueInput, plus the taper angle.
+            distance_val = adsk.core.ValueInput.createByReal(float(thin_extrude_height))
+            thickness_val = adsk.core.ValueInput.createByReal(float(thin_extrude_width))
+            angle_val = adsk.core.ValueInput.createByString(f"{taper_angle} deg")
+
+            #wallLocation = adsk.fusion.ThinExtrudeWallLocation.Center
+            #wallThickness = adsk.core.ValueInput.createByString("2 mm")
+            #ext_input.setThinExtrude(wallLocation, wallThickness)
+
+            # 3) Set the extent as a one-side distance.
+            #ext_input.setDistanceExtent(False, distanceVal)
+            #extrudes.add(ext_input)
+            #return
+
+
+            # We can do isSymmetric=False if we want a single direction extrude
+            # isChained = False means we won't chain tangential edges. Adjust as needed.
+            try:
+                ext_input.setThinExtrude(
+                    wall_map[wall_location],
+                    thickness_val,
+                    distance_val,
+                    False,  # isSymmetric
+                    angle_val,
+                    False   # isChained
+                )
+            except Exception as e:
+                results["Error"] = f"Error in setThinExtent: {str(e)}"
+                return json.dumps(results)
+
+            # Create the extrude feature
+            try:
+                extrude_feature = extrudes.add(ext_input)
+                results["ThinExtrude"] = (f"Success: Created thin extrude feature with "
+                                          f"width={thin_extrude_width}, "
+                                          f"height={thin_extrude_height}, "
+                                          f"wall_location={wall_location}, "
+                                          f"taper_angle={taper_angle}, "
+                                          f"operation_type={operation_type}.")
+            except Exception as e:
+                results["Error"] = f"Error adding extrude feature: {str(e)}"
+
+            return json.dumps(results)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
     #@ToolCollection.tool_call
@@ -1470,54 +969,6 @@ class CreateObjects(ToolCollection):
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-
-    @ToolCollection.tool_call
-    def create_new_component(self, parent_component_name: str="comp1", component_name: str="comp2") -> str:
-        """
-            {
-                "name": "create_new_component",
-                "description": "Creates a new component inside a specified parent component in Fusion 360. The parent component is identified by its name. If the parent component name matches the root component of the design, the new component is created in the root component.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "parent_component_name": {
-                            "type": "string",
-                            "description": "The name of the parent component where the new component will be created."
-                        },
-                        "component_name": {
-                            "type": "string",
-                            "description": "The name to be assigned to the new component."
-                        }
-                    },
-                    "required": ["parent_component_name", "component_name"],
-                    "returns": {
-                        "type": "string",
-                        "description": "Name of successfully created new component"
-                    }
-
-                }
-            }
-        """
-        try:
-            # Access the active design
-            app = adsk.core.Application.get()
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            rootComp = design.rootComponent
-
-            parentComponent, errors = self._find_component_by_name(parent_component_name)
-            if not parentComponent:
-                return errors
-
-            # Create a new component
-            newOccurrence = parentComponent.occurrences.addNewComponent(adsk.core.Matrix3D.create())
-            newComponent = newOccurrence.component
-            newComponent.name = component_name
-
-            return newComponent.name
-
-        except Exception as e:
-            return 'Error: Failed to create new component:\n{}'.format(parent_component_name)
 
 
     @ToolCollection.tool_call

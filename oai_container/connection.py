@@ -57,11 +57,14 @@ class Assistant:
 
         # TODO eventualy, user should be able to restart thred from Fusion
         # start assistant thread (conversation)
-        self.start_thread()
+        #self.start_thread()
+
+        self.thread_started = False;
 
         # run local process server, how Fusion connects
         #self.start_server()
 
+        # whisper model size
         model_size = "base"
         self.model = whisper.load_model(model_size)  # Load the selected model
 
@@ -206,6 +209,7 @@ class Assistant:
 
         ## laste run step
         self.run_steps = None
+        self.thread_started = True
         print(f'Thread created: {self.thread.id}')
 
 
@@ -230,7 +234,6 @@ class Assistant:
                     print(f" MESSAGE RECIEVED: {message_raw}")
                     #print(f" MESSAGE RECIEVED")
 
-
                     if message_type == "thread_update":
                         message_text = message["content"]
 
@@ -247,6 +250,9 @@ class Assistant:
                         fusion_call = { "content": audio_text }
                         conn.send(json.dumps(fusion_call))
                         continue
+
+                    if self.thread_started == False:
+                        self.start_thread()
 
 
                     # add message to thread

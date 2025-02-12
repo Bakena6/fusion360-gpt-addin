@@ -272,23 +272,38 @@ class ToolCollection:
 
         return hash_str
 
-    def set_obj_hash(self, entityToken, entity, length=5):
+    def set_obj_hash(self, entity: object, token_str: str= None, length=5):
         """
         adds a fusion360 to the hash:object dict
         """
+        entity_attrs = dir(entity)
 
+        # if token_string passed in
+        if token_str !=  None:
+            token_str = str(token_str)
+        else:
+            for attr_name in ["entityToken", "name"]:
+                if attr_name in entity_attrs:
+                    try:
+                        token_str = getattr(entity, attr_name, None)
+                    except Exception as e:
+                        print(e)
+                        continue
+                    if token_str != None:
+                        break
+                    else:
+                        return
 
-        entityToken = str(entityToken)
-        hash_val = self._hash_string_to_fixed_length(entityToken, length)
+        #print(token_str)
+        hash_val = self._hash_string_to_fixed_length(str(token_str), length)
 
-        hash_val = f"{entity.objectType.split(":")[-1]}__{hash_val}"
+        hash_val = f"__{hash_val}"
 
-        #hash_val = f"{entity.name}__{hash_val}"
-        #hash_val = f"{hash_val}"
 
         self.ent_dict[hash_val] = entity
 
         return hash_val
+
 
     def get_hash_obj(self, hash_val):
         """

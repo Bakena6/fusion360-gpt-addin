@@ -63,7 +63,6 @@ class GetStateData(ToolCollection):
           }
         }
         """
-
         try:
             if not class_names or not isinstance(class_names, list):
                 return json.dumps({"error": "class_names must be a non-empty list of strings"})
@@ -234,78 +233,15 @@ class GetStateData(ToolCollection):
             return json.dumps(results, indent=2)
 
         except Exception as e:
-            return json.dumps({"error": str(e)})
+            return json.dumps({"Error": str(e)})
 
 
 
 
-    def describe_fusion_method(self, method) -> str:
-        """
-        {
-          "name": "describe_fusion_method",
-          "description": "Accepts a Python-callable Fusion 360 method reference and returns a JSON object describing the method's parameters and their Python types, if available. For most C++-backed Fusion 360 methods, the info will be limited.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-            },
-            "required": [],
-            "returns": {
-              "type": "string",
-              "description": "A JSON object describing each parameter: { paramName, kind, default, annotation }."
-            }
-          }
-        }
-        """
-        try:
-            # Use the built-in inspect module to retrieve the signature
-            sig = inspect.signature(method)
-            param_info = []
-
-            for name, param in sig.parameters.items():
-                # param.kind can be POSITIONAL_ONLY, VAR_POSITIONAL, KEYWORD_ONLY, VAR_KEYWORD, etc.
-                kind_str = str(param.kind)
-
-                # If there's a default, we show it. If it's param.empty, there's no default
-                default_val = param.default if param.default is not param.empty else None
-
-                # For annotation, if not param.empty, we return its string.
-                annotation_str = None
-                if param.annotation is not param.empty:
-                    annotation_str = str(param.annotation)
-
-                param_data = {
-                    "paramName": name,
-                    "annotation": annotation_str
-                }
-
-                if default_val:
-                    param_data["default"] = default_val
-
-                param_info.append(param_data)
-
-            # We can also retrieve the return annotation if present
-            return_annot = None
-            if sig.return_annotation is not inspect.Signature.empty:
-                return_annot = str(sig.return_annotation)
-
-            # Build a result dict
-            result = {
-                "methodName": getattr(method, "__name__", "unknown"),
-                "parameters": param_info,
-                "returnAnnotation": return_annot
-            }
-
-            #return json.dumps(result, indent=2)
-            return result
-
-        except Exception as e:
-            return json.dumps({
-                "error": f"Could not introspect method. Reason: {str(e)}"
-            })
 
 
 
-    #@ToolCollection.tool_call
+    @ToolCollection.tool_call
     def list_document_structure(self) -> str:
         """
         {
@@ -315,7 +251,7 @@ class GetStateData(ToolCollection):
                 "type": "object",
                 "properties": {
                 },
-                "required": []
+                "required": [],
                 "returns": {
                     "type": "string",
                     "description": "A JSON representation of the entire document's structure, including entity tokens if available."
@@ -342,7 +278,7 @@ class GetStateData(ToolCollection):
 
                 token = getattr(obj, "entityToken", None)
 
-                return self.set_obj_hash(token, obj)  # or your equivalent method
+                return self.set_obj_hash(obj)  # or your equivalent method
 
 
             def gather_occurrence_structure(occ: adsk.fusion.Occurrence) -> dict:
@@ -537,7 +473,7 @@ class GetStateData(ToolCollection):
             print(f"{space}{levels}:{attr_name}")
 
             if attr_name == "entityToken":
-                results[attr_name] = self.set_obj_hash(attr_val, entity)
+                results[attr_name] = self.set_obj_hash(entity)
                 continue
 
             elif any([ isinstance(attr_val, attrType) for attrType in [str, int, float, bool]] ):
@@ -585,7 +521,7 @@ class GetStateData(ToolCollection):
     def get_ent_dict(self) -> str:
         """
         {
-          "name": "call_entity_methods",
+          "name": "get_ent_dict",
           "description": "Dynamically calls a method on each referenced Fusion 360 entity (by token). Each instruction has { 'entityToken': <string>, 'methodName': <string>, 'arguments': <array> }. The method is invoked with the specified arguments, returning the result or null on error.",
           "parameters": {
             "type": "object",
@@ -619,7 +555,7 @@ class GetStateData(ToolCollection):
         print(self.ent_dict)
 
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def get_recursive(self, entity_token: str="", levels: int=1):
 
         """
@@ -671,20 +607,37 @@ class GetStateData(ToolCollection):
         get entity info, return as dict 
         """
 
+        app = adsk.core.Application.get()
+        product = app.activeProduct
+        design = adsk.fusion.Design.cast(product)
+        root_comp = design.rootComponent
+
         ent_info = { }
+        # get list of attr here becaue 'hasattr' throughs error when check for entityToken
+        entity_attrs = dir(entity)
+
         for attr in attr_list:
             target_entity = entity
             target_attr = attr
 
+            #try:
+            #    #print(f"isRef: { entity.isReferencedComponent}")
+            #except Exception as e:
+                #continue
+                #pass
+            #if isinstance(target_entity, adsk.fusion.Occurrence):
+                #print(f"attr: {attr}, name: {entity.name},  source: { entity.sourceComponent.name}")
+
             try:
                 attr_val = None
 
-                # non direct attribute passed
+               # non direct attribute passed
                 if "." in attr:
                     attr0, attr = attr.split(".")
 
                     try:
                         target_entity = getattr(entity, attr0, None)
+
                     except Exception as e:
                         print(f"Error: {attr0} target_entity {e}")
                         continue
@@ -692,12 +645,23 @@ class GetStateData(ToolCollection):
                         #print(f"target_entity, {attr0}, {attr} is None")
                         continue
 
+                #print(attr)
+                #print(target_entity)
+                #print(dir(target_entity))
+
+                if attr not in entity_attrs:
+                    continue
+
+
+                if attr == "entityToken":
+                    attr_val = self.set_obj_hash(target_entity)
+                    ent_info[target_attr] = attr_val
+                    continue
+
                 attr_val = getattr(target_entity, attr, None)
                 if attr_val == None:
                     continue
 
-                if attr == "entityToken":
-                    attr_val = self.set_obj_hash(attr_val, target_entity)
                 elif attr == "objectType":
                     attr_val = target_entity.__class__.__name__
                 elif hasattr(attr_val, "asArray") == True:
@@ -709,10 +673,14 @@ class GetStateData(ToolCollection):
                 ent_info[target_attr] = attr_val
 
             except Exception as e:
-                print(f"Error: _get_ent_attr An unexpected exception occurred: {e} \n" + traceback.format_exc())
+                print(f"Error: entity: ent: {entity} _get_ent_attr An unexpected exception occurred: {e} \n" + traceback.format_exc())
 
 
         return ent_info
+
+
+
+
 
 
     # called get_by design_as_json
@@ -809,7 +777,7 @@ class GetStateData(ToolCollection):
                     attr_val =  getattr(comp, attr, None)
 
                     if attr == "entityToken":
-                        attr_val = self.set_obj_hash(comp.name, comp)
+                        attr_val = self.set_obj_hash(comp)
                         comp_data["attributes"][attr] = attr_val
                         continue
 
@@ -827,7 +795,7 @@ class GetStateData(ToolCollection):
                         #    continue
 
                         sub_object_dict ={
-                            "entityToken": self.set_obj_hash(f"{comp.name}{attr}", attr_val),
+                            "entityToken": self.set_obj_hash(attr_val, f"{comp.name}{attr}"),
                             "items": []
                         }
                         for sub_obj in attr_val:
@@ -845,7 +813,7 @@ class GetStateData(ToolCollection):
                     elif attr_val != None:
 
                         object_dict = {
-                            "entityToken": self.set_obj_hash(f"{comp.name}{attr_val.name}", attr_val),
+                            "entityToken": self.set_obj_hash(attr_val, f"{comp.name}{attr_val.name}"),
                             "objectType": attr_val.objectType
                         }
                         comp_data["objects"][attr] = object_dict
@@ -926,8 +894,8 @@ class GetStateData(ToolCollection):
                 entityToken = None
                 try:
                     if hasattr(entity, "entityToken"):
-                        attr_val =  getattr(entity, "entityToken")
-                        entityToken = self.set_obj_hash(attr_val, entity)
+                        #attr_val =  getattr(entity, "entityToken")
+                        entityToken = self.set_obj_hash(entity)
                 except Exception as e:
                     print(f"Error: Failed to check entityToken attr on {entity}")
 
@@ -975,12 +943,19 @@ class GetStateData(ToolCollection):
                     # skip internal methods
                     if attr_name[0] == "_":
                         continue
+
                     if attr_name in exclude_list:
                         continue
 
-                    # somtimes getattr/hasattr  
+                    # TODO somtimes getattr/hasattr fails 
                     try:
+                        # calling hasattr/getattr will fail if "isReference" is False
+                        if attr_name == "referencedEntity":
+                            if getattr(entity, "isReference", None) != True:
+                                continue
+
                         attr_exists = hasattr(entity, attr_name)
+
                     except Exception as e:
                         print(f"Error: checking hasattr {attr_name} on {entity}:\n" + traceback.format_exc())
                         continue
@@ -1001,7 +976,7 @@ class GetStateData(ToolCollection):
                             attr_dict["value"] = attr
 
                             if attr_name == "entityToken":
-                                attr = self.set_obj_hash(attr, entity)
+                                attr = self.set_obj_hash(entity)
 
                             results[token]["attributes"][attr_name] = attr
                             #is_iterable = False
@@ -1026,7 +1001,7 @@ class GetStateData(ToolCollection):
                             sketch_token_seed = f"{entityToken}{attr_name}"
 
                             #print(sketch_token_seed)
-                            attr_dict["entityToken"] = self.set_obj_hash(sketch_token_seed, attr)
+                            attr_dict["entityToken"] = self.set_obj_hash(attr, sketch_token_seed)
                             attr_dict["children"] =  []
 
                             # iterate over entity of iterable
@@ -1062,19 +1037,23 @@ class GetStateData(ToolCollection):
         """
         {
             "name": "get_root_component_name",
-            "description": "Retrieves the name of the root component in the current Fusion 360 design.",
+            "description": "Retrieves the name and entityToken of the root component in the current Fusion 360 design.",
             "parameters": {}
         }
         """
         try:
             app = adsk.core.Application.get()
             design = adsk.fusion.Design.cast(app.activeProduct)
-            print("func_run")
 
             # Access the active design
             if design:
                 # Return the name of the root component
-                return design.rootComponent.name
+                return_d = {
+                    "rootComponent_name": design.rootComponent.name,
+                    "entityToken": self.set_obj_hash(design.rootComponent)
+                 }
+
+                return json.dumps(return_d)
             else:
                 return None
 
@@ -1153,7 +1132,7 @@ class GetStateData(ToolCollection):
                 occ_dict.update(ent_info)
 
                 # try theese attrbutes on multiple objects
-                for object_name in object_types:
+                for index, object_name in enumerate(object_types):
                     #print(f"{object_name}")
 
                     # joints that reside in the root component fail even though attr exists
@@ -1172,7 +1151,7 @@ class GetStateData(ToolCollection):
 
 
                     object_type_dict ={
-                        "entityToken": self.set_obj_hash(object_name, objectArray),
+                        "entityToken": self.set_obj_hash(objectArray, f"{index}_{object_name}"),
                         "items": []
                     }
                     for obj in objectArray:
@@ -1276,6 +1255,7 @@ class GetStateData(ToolCollection):
                 "isGroup",
                 "isCollapsed",
                 "objectType",
+                "entityToken",
                 "entity.name",
                 "entity.entityToken"
 
@@ -1290,7 +1270,7 @@ class GetStateData(ToolCollection):
 
                 item_data = self._get_ent_attrs(t_item, timeline_attr_names)
 
-                item_data["entityToken"] = self.set_obj_hash(f"timline_obj{t_item.name}", t_item)
+                item_data["entityToken"] = self.set_obj_hash(t_item, f"timline_obj{t_item.name}")
 
                 timeline_info.append(item_data)
 
@@ -1350,7 +1330,7 @@ class GetStateData(ToolCollection):
                     "unit": model_param.unit or "",
                     "expression": model_param.expression or "",
                     "value": model_param.value,      # The resolved numeric value
-                    "enityToken": self.set_obj_hash(model_param.entityToken, model_param),
+                    "enityToken": self.set_obj_hash(model_param),
                     "comment": model_param.comment or ""
                 }
                 comp_dict["modelParameters"].append(param_info)
@@ -1439,7 +1419,7 @@ class GetStateData(ToolCollection):
                     appearance_id = lib_appearance.id
 
                     # save reference to appearance object
-                    appearance_hash_token = self.set_obj_hash(appearance_id, lib_appearance)
+                    appearance_hash_token = self.set_obj_hash(lib_appearance, appearance_id)
 
                     appearance_info = {
                         "name": lib_appearance.name,
@@ -1622,7 +1602,6 @@ class GetStateData(ToolCollection):
 
 
 class SetStateData(ToolCollection):
-
     @ToolCollection.tool_call
     def set_entity_values(self,
                          entity_token_list: list = [],
@@ -1673,7 +1652,7 @@ class SetStateData(ToolCollection):
               },
               "attribute_value": {
                 "type": ["boolean","number","string","null"],
-                "description": "The new value to assign to the specified attribute on each entity."
+                "description": "The new value to assign to the specified attribute on each entity. This can also be an EntityToken referring to another object."
               }
             },
             "required": ["entity_token_list", "attribute_name", "attribute_value"],
@@ -1705,6 +1684,15 @@ class SetStateData(ToolCollection):
             # Final results mapped: token -> final value or None
             results = {}
 
+
+            # if entity token passed as argument, retreive its associated object
+            if isinstance(attribute_value, str) == True:
+                if "__" in attribute_value:
+                    attribute_value_obj = self.get_hash_obj(attribute_value)
+
+                    if attribute_value_obj != None:
+                        attribut_value = attribute_value_obj
+
             for token in entity_token_list:
                 if not token:
                     continue
@@ -1719,7 +1707,7 @@ class SetStateData(ToolCollection):
                 #object_type = entity.objectType.split(":")[-1]
                 object_type = entity.__class__.__name__
 
-                object_name = getattr(entity, name, None)
+                object_name = getattr(entity, "name", None)
                 if object_name is None:
                     object_name = f"nameless_{object_type}"
 
@@ -1750,14 +1738,158 @@ class SetStateData(ToolCollection):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+
+    def describe_fusion_object(self, obj) -> str:
+        """
+        Accepts any Fusion 360 (or Python) object and returns a JSON-like string
+        describing its non-private attributes (properties) and methods. This
+        includes both Python-level and C++-backed method descriptors if found.
+
+        :param obj: The object to introspect.
+        :return: A JSON string with two arrays: 'properties' and 'methods'.
+        """
+        try:
+            # A list or set of known internal or private names to ignore
+            exclude_list = {"cast", "classType", "__init__", "__del__", "this", "thisown", "attributes", "createForAssemblyContext", "convert", "objectType", "isTemporary", "revisionId", "baseFeature", "meshManager", "nativeObject"}
+
+            # We'll gather results in a dictionary
+            result_data = {
+                "objectType": str(type(obj)),
+                "properties": [],
+                "methods": []
+            }
+
+            # Use inspect.getmembers(...) to get all members
+            all_members = inspect.getmembers(obj)
+
+            # For each (name, value) pair, decide if it's a property or method
+            for name, value in all_members:
+                # Skip private/dunder and anything in exclude_list
+                if name.startswith("_") or name in exclude_list:
+                    continue
+
+                if callable(value):
+                    # It's a method (function or method descriptor)
+                    result_data["methods"].append(name)
+                else:
+                    # It's a property/attribute
+                    result_data["properties"].append(name)
+
+            # Convert to JSON
+            return result_data
+
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+
+    def return_sub_method(self, entity: object, method_path: str) -> object:
+        """
+        accepts a and entity and method path
+        """
+
+        delimeter = "."
+        print(f"method_parts: {method_path}")
+
+        if delimeter not in method_path:
+            method = getattr(entity, method_path, None)
+            if method is None:
+                avail_attrs = self.describe_fusion_object(entity)
+                return f"Error: Object {entity.__class__.__name__} has no attribute '{method_path}', available methods/properties for {entity.__class__.__name__}: {avail_attrs}"
+
+            return method
+
+        method_parts = method_path.split(delimeter)
+
+        # update each iteration
+        target_entity = entity
+
+        for method_str in method_parts[:len(method_parts)-1]:
+
+            sub_entity = getattr(target_entity, method_str, None)
+
+            if sub_entity is None:
+                avail_attrs = self.describe_fusion_object(target_entity)
+
+                return f"Error: Object {target_entity.__class__.__name__} has no attribute '{method_str}', available methods/properties for {target_entity}: {avail_attrs}"
+
+            else:
+                target_entity = sub_entity
+
+        method = getattr(target_entity, method_parts[-1])
+        return method
+
+
+    def describe_fusion_method(self, method) -> str:
+        """
+        {
+          "name": "describe_fusion_method",
+          "description": "Accepts a Python-callable Fusion 360 method reference and returns a JSON object describing the method's parameters and their Python types, if available. For most C++-backed Fusion 360 methods, the info will be limited.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+            },
+            "required": [],
+            "returns": {
+              "type": "string",
+              "description": "A JSON object describing each parameter: { paramName, kind, default, annotation }."
+            }
+          }
+        }
+        """
+        try:
+            # Use the built-in inspect module to retrieve the signature
+            sig = inspect.signature(method)
+            param_info = []
+
+            for name, param in sig.parameters.items():
+                # param.kind can be POSITIONAL_ONLY, VAR_POSITIONAL, KEYWORD_ONLY, VAR_KEYWORD, etc.
+                kind_str = str(param.kind)
+
+                # If there's a default, we show it. If it's param.empty, there's no default
+                default_val = param.default if param.default is not param.empty else None
+
+                # For annotation, if not param.empty, we return its string.
+                annotation_str = None
+                if param.annotation is not param.empty:
+                    annotation_str = str(param.annotation)
+
+                param_data = {
+                    "paramName": name,
+                    "annotation": annotation_str
+                }
+
+                if default_val:
+                    param_data["default"] = default_val
+
+                param_info.append(param_data)
+
+            # We can also retrieve the return annotation if present
+            return_annot = None
+            if sig.return_annotation is not inspect.Signature.empty:
+                return_annot = str(sig.return_annotation)
+
+            # Build a result dict
+            result = {
+                "methodName": getattr(method, "__name__", "unknown"),
+                "parameters": param_info,
+                "returnAnnotation": return_annot
+            }
+
+            #return json.dumps(result, indent=2)
+            return result
+
+        except Exception as e:
+            return json.dumps({
+                "error": f"Could not introspect method. Reason: {str(e)}"
+            })
     @ToolCollection.tool_call
     def call_entity_methods(self, calls_list: list = [
-                   { "entityToken": "", "methodName": "", "arguments": [] }
+                   { "entityToken": "", "method_path": "", "arguments": [] }
     ]) -> str:
         """
         {
           "name": "call_entity_methods",
-          "description": "Dynamically calls a method on each referenced Fusion 360 entity (by token). Each instruction has { 'entityToken': <string>, 'methodName': <string>, 'arguments': <array> }. The method is invoked with the specified arguments, returning the result or null on error.",
+          "description": "Dynamically calls a method on each referenced Fusion 360 entity (by token). Each instruction has { 'entityToken': <string>, 'method_path': <string>, 'arguments': <array> }. The method is invoked with the specified arguments, returning the result or null on error.",
           "parameters": {
             "type": "object",
             "properties": {
@@ -1768,14 +1900,17 @@ class SetStateData(ToolCollection):
                   "type": "object",
                   "properties": {
                     "entityToken": { "type": "string" },
-                    "methodName": { "type": "string" },
+                    "method_path": {
+                        "type": "string",
+                        "description": "The path from the entity to the method, seperated with '.' if multi part. If the method directly belongs to the entity then method path is the method name. If the method belongs to one of the entity's child objects then the method_path would be 'sub_object_name.method_name'."
+                        },
                     "arguments": {
                       "type": "array",
                       "items": { "type": ["boolean","number","string","null"] },
                       "description": "A list of positional arguments to pass to the method. Type handling is minimal, so interpret carefully in the method."
                     }
                   },
-                  "required": ["entityToken", "methodName", "arguments"]
+                  "required": ["entityToken", "method_path", "arguments"]
                 }
               }
             },
@@ -1807,9 +1942,8 @@ class SetStateData(ToolCollection):
 
             for call_dict in calls_list:
                 entity_token = call_dict.get("entityToken")
-                method_name = call_dict.get("methodName")
+                method_name = call_dict.get("method_path")
                 arguments = call_dict.get("arguments", [])
-
 
                 if not entity_token:
                     results["Error"] = f"Error: no entity_token provided"
@@ -1826,37 +1960,13 @@ class SetStateData(ToolCollection):
                     results[entity_token] = f"Error: no entity found for entity token: {entity_token}, when calling method {method_name}."
                     continue
 
-                entity_type = entity.__class__.__name__ 
+                entity_type = entity.__class__.__name__
 
-
-                # handle for method call on attribute
-                if "." in method_name:
-                    sub_entity_name, sub_method_name = method_name.split(".")
-
-                    # attr opf entity to call method on
-                    sub_entity = getattr(entity, sub_entity_name, None)
-
-                    if sub_entity is None:
-                        results[entity_token] = f"Error: no entity {entity_type} {entity_token}, has no attribute '{sub_method_name}'."
-                        continue
-
-                    # Reflectively get the requested method
-                    method = getattr(sub_entity, sub_method_name, None)
-
-                    if not callable(method):
-                        results[entity_token] = f"Error: no method found for method name {sub_method_name} on object type {str(type(entity))}"
-                        continue
-
-                    method_name = sub_method_name
-
-                else:
-                    # Reflectively get the requested method
-                    method = getattr(entity, method_name, None)
-
-                    if not callable(method):
-                        results[entity_token] = f"Error: no method found for method name {method_name} on object type {str(type(entity))}"
-                        continue
-
+                print(f"call: {entity}, {method_name}")
+                method = self.return_sub_method(entity, method_name)
+                if isinstance(method, str):
+                    results[entity_token] = method
+                    continue
 
 
                 # TODO clean this up
@@ -1868,9 +1978,7 @@ class SetStateData(ToolCollection):
                         parsed_arguments.append(arg)
 
                     elif "__" in arg:
-
                         entity_arg = self.get_hash_obj(arg)
-                        print(f"EA: A {arg}  {entity_arg}")
                         if entity_arg != None:
                             parsed_arguments.append(entity_arg)
                         else:
@@ -1887,33 +1995,43 @@ class SetStateData(ToolCollection):
                     try:
                         method_ret_val = method(*parsed_arguments)
                     except Exception as e:
-                        ret_val = f"Error: method_ret_val error: {e}:\n" + traceback.format_exc()
-                        print(ret_val)
 
-                    #print("abc")
+                        #method_data = self.describe_fusion_method(method)
+                        #print(method_data)
+                        method_data = method.__doc__
+                        ret_val = f"Error: Method call '{method_name}' on object '{entity_type}' with arguments '{arguments}' failed:  {e}. Method docstring: {method_data}"
 
-                    #print(f"ret_val: {method_ret_val}")
+                        results[entity_token] = ret_val
+                        continue
 
-                    if method_ret_val is None:
-                        ret_val = f"Error: method '{method_name}' returned '{method_ret_val}'."
 
-                    elif method_ret_val == True:
-                        ret_val = f"Success: method '{method_name}' returned: '{method_ret_val}'"
+                    if isinstance(method_ret_val, object):
+                        new_obj_type = method_ret_val.__class__.__name__
+                        new_entity_token = self.set_obj_hash(method_ret_val)
+
+                        # also return component info 
+                        if hasattr(method_ret_val, "component") == True:
+                            new_component = method_ret_val.component
+                            new_comp_token = self.set_obj_hash(new_component)
+                            ret_val = f"Success: method '{method_name}' returned new '{new_obj_type}' object with entityToken '{new_entity_token}' and new 'component' with entityToken '{new_comp_token}'"
+
+                        else:
+                            ret_val = f"Success: method '{method_name}' returned new '{new_obj_type}' object with entityToken '{new_entity_token}'"
 
                     elif isinstance(method_ret_val, str):
                         ret_val = f"Success: method '{method_name}' returned value: '{method_ret_val}'"
 
-                    elif hasattr(method_ret_val, "entityToken"):
-                        new_obj_type = method_ret_val.__class__.__name__
-                        new_token_str = getattr(method_ret_val, "entityToken")
-                        new_entity_token = self.set_obj_hash(new_token_str, method_ret_val)
-                        ret_val = f"Success: method '{method_name}' returned new '{new_obj_type}' object with entityToken '{new_entity_token}'"
+                    elif method_ret_val == True:
+                        ret_val = f"Success: method '{method_name}' returned: '{method_ret_val}'"
+                    elif method_ret_val is None:
+                        ret_val = f"Error: method '{method_name}' returned '{method_ret_val}'."
+
                     else:
                         ret_val = f"Success: method '{method_name}' returned value: '{method_ret_val}'"
 
 
                 except Exception as e:
-                    ret_val == f"Error: '{e}' for method '{method_name}'"
+                    ret_val = f"Error: '{e}' for method '{method_name}'" + traceback.format_exc()
 
 
                 results[entity_token] = ret_val
@@ -1925,9 +2043,6 @@ class SetStateData(ToolCollection):
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-
-
 
 
 

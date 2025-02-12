@@ -59,9 +59,9 @@ class FusionInterface:
             document_data.GetStateData(ent_dict),
             document_data.SetStateData(ent_dict),
             cad_modeling.CreateObjects(ent_dict),
+            TransientObjects(ent_dict),
             cad_modeling.ModifyObjects(ent_dict),
             cad_modeling.Sketches(ent_dict),
-            TransientObjects(ent_dict),
             ImportExport(ent_dict),
             Joints(ent_dict),
         ]
@@ -249,10 +249,8 @@ class TransientObjects(ToolCollection):
                 # Create the Point3D object
                 p3d = adsk.core.Point3D.create(x, y, z)
 
-                print(f"p3d: {p3d}")
-
                 p3d_name = f"{i}_{x}_{y}_{z}"
-                p3d_entity_token = self.set_obj_hash(p3d_name, p3d)
+                p3d_entity_token = self.set_obj_hash(p3d, p3d_name)
 
                 # Return the token for the user
                 results[p3d_entity_token] = f"Success: Created new Point3D object with entity_token '{p3d_entity_token}' at {coords}"
@@ -263,7 +261,11 @@ class TransientObjects(ToolCollection):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
     @ToolCollection.tool_call
-    def create_matrix3d_list(self, matrix_list: list = None) -> str:
+    def create_matrix3d_list(self, matrix_list: list = [[
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0]]) -> str:
         """
         {
           "name": "create_matrix3d_list",
@@ -316,7 +318,7 @@ class TransientObjects(ToolCollection):
                     m3d.setWithArray(mat_vals)
                     # Generate a name for referencing
                     mat_name = f"Matrix3D_{i}"
-                    mat_token = self.set_obj_hash(mat_name, m3d)
+                    mat_token = self.set_obj_hash(m3d, mat_name)
 
                     results[mat_token] = f"Success: Created new Matrix3D with token '{mat_token}'."
                 except Exception as e:
@@ -379,7 +381,7 @@ class TransientObjects(ToolCollection):
                 try:
                     p2d = adsk.core.Point2D.create(x, y)
                     p2d_name = f"Point2D_{i}_{x}_{y}"
-                    p2d_token = self.set_obj_hash(p2d_name, p2d)
+                    p2d_token = self.set_obj_hash(p2d, p2d_name)
                     results[p2d_token] = f"Success: Created new Point2D with token '{p2d_token}' at {coords}"
                 except Exception as e:
                     results[f"Index_{i}"] = f"Error: {str(e)}"
@@ -440,7 +442,7 @@ class TransientObjects(ToolCollection):
                     m2d = adsk.core.Matrix2D.create()
                     m2d.setWithArray(mat_vals)
                     mat_name = f"Matrix2D_{i}"
-                    mat_token = self.set_obj_hash(mat_name, m2d)
+                    mat_token = self.set_obj_hash(m2d, mat_name)
 
                     results[mat_token] = f"Success: Created new Matrix2D with token '{mat_token}'."
                 except Exception as e:
@@ -507,7 +509,7 @@ class TransientObjects(ToolCollection):
                 # Create the Vector3D object
                 vec3d = adsk.core.Vector3D.create(x, y, z)
                 vec3d_name = f"Vector3D_{i}_{x}_{y}_{z}"
-                vec3d_token = self.set_obj_hash(vec3d_name, vec3d)
+                vec3d_token = self.set_obj_hash(vec3d, vec3d_name)
 
                 # Store a success message for the new reference token
                 results[vec3d_token] = f"Success: Created new Vector3D with token '{vec3d_token}' at {coords}"
