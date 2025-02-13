@@ -230,15 +230,10 @@ class GetStateData(ToolCollection):
                     # If both fail, store an error
                     results[class_name] = {"error": f"Could not find class '{class_name}' in adsk.fusion or adsk.core."}
 
-            return json.dumps(results, indent=2)
+            return json.dumps(results)
 
         except Exception as e:
             return json.dumps({"Error": str(e)})
-
-
-
-
-
 
 
     @ToolCollection.tool_call
@@ -275,9 +270,6 @@ class GetStateData(ToolCollection):
 
             # Helper function to retrieve an entity token (or None if not found)
             def get_token(obj) -> str:
-
-                token = getattr(obj, "entityToken", None)
-
                 return self.set_obj_hash(obj)  # or your equivalent method
 
 
@@ -328,7 +320,7 @@ class GetStateData(ToolCollection):
                     children_info.append(gather_occurrence_structure(child_occ))
 
                 # Build this occurrence's node in the tree
-                return {
+                return_dict =  {
                     "occurrenceName": occ.name,
                     "occurrenceToken": get_token(occ),
                     "componentName": comp.name,
@@ -339,6 +331,21 @@ class GetStateData(ToolCollection):
                     "jointOrigins": joint_origins_info,
                     "children": children_info
                 }
+
+
+                exclude_list = []
+                for k,v in return_dict.items():
+
+                    if len(v) == 0:
+                        exclude_list.append(k)
+
+
+                for k in exclude_list:
+                    return_dict.pop(k)
+
+                return return_dict
+
+
 
             # Gather top-level occurrences from the root component
             occurrences_info = []
@@ -385,11 +392,10 @@ class GetStateData(ToolCollection):
                 "occurrences": occurrences_info
             }
 
-            return json.dumps(design_tree, indent=2)
+            return json.dumps(design_tree)
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
 
 
     def _get_recursive(self, entity, levels, total_levels):
@@ -598,7 +604,7 @@ class GetStateData(ToolCollection):
 
         ent_data = self._get_recursive(entity, levels, total_levels=levels)
 
-        return json.dumps(ent_data, indent=4)
+        return json.dumps(ent_data)
 
 
     # TODO probably rename
@@ -677,11 +683,6 @@ class GetStateData(ToolCollection):
 
 
         return ent_info
-
-
-
-
-
 
     # called get_by design_as_json
     def _get_all_components(self) -> str:
@@ -832,7 +833,6 @@ class GetStateData(ToolCollection):
                 "id": root_comp.id,
             }
 
-            #return json.dumps(return_data, indent=4)
             #return json.dumps(return_data)
             return comp_list
 
@@ -1030,8 +1030,6 @@ class GetStateData(ToolCollection):
         except Exception as e:
             return "Error: Failed to retrieve entity information. Exception:\n" + traceback.format_exc()
 
-
-
     @ToolCollection.tool_call
     def get_root_component_name(self):
         """
@@ -1059,7 +1057,6 @@ class GetStateData(ToolCollection):
 
         except Exception as e:
             return None
-
 
     @ToolCollection.tool_call
     def get_design_as_json(self, attributes_list=[]) -> str:
@@ -1213,7 +1210,6 @@ class GetStateData(ToolCollection):
 
             return function_name, parsed_args
 
-
     @ToolCollection.tool_call
     def get_timeline_entities(self) -> str:
         """
@@ -1268,7 +1264,16 @@ class GetStateData(ToolCollection):
                 if not t_item:
                     continue
 
-                item_data = self._get_ent_attrs(t_item, timeline_attr_names)
+                item_data = {}
+                for attr in timeline_attr_names:
+                    val, error = self.get_sub_attr(t_item, attr)
+                    if val is None:
+                        continue
+
+                    if attr == "entity.entityToken":
+                        val = self.set_obj_hash(val, t_item.entity)
+
+                    item_data[attr] = val
 
                 item_data["entityToken"] = self.set_obj_hash(t_item, f"timline_obj{t_item.name}")
 
@@ -1278,8 +1283,6 @@ class GetStateData(ToolCollection):
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-
 
     @ToolCollection.tool_call
     def get_model_parameters_by_component(self) -> str:
@@ -1354,7 +1357,6 @@ class GetStateData(ToolCollection):
 
         # Convert dictionary to a JSON string
         return json.dumps(design_data)
-
 
     @ToolCollection.tool_call
     def list_available_appearances(self) -> str:
@@ -1434,6 +1436,191 @@ class GetStateData(ToolCollection):
 
             # Convert the collected appearance data to a JSON string
             return json.dumps(appearance_list)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    @ToolCollection.tool_call
+    def get_sketch_profiles(self, entity_token: str = "") -> str:
+        """
+        {
+          "name": "get_sketch_profiles",
+          "description": "Retrieves data for all sketch profiles in the sketch referenced by a token, and returns basic info about each child object in JSON format.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "entity_token": {
+                "type": "string",
+                "description": "A entityToken referencing a Fusion 360 Component sketch object  (using your internal hashing system)."
+              }
+            },
+            "required": ["entity_token"],
+            "returns": {
+              "type": "string",
+              "description": "A JSON string describing the requested attributes and their items (if they are collections)."
+            }
+          }
+        }
+        """
+
+        try:
+            if not entity_token:
+                return "Error: No entity_token provided."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # Retrieve the component from your hashing system (or findEntityByToken if you prefer)
+            sketch_obj = self.get_hash_obj(entity_token)
+            if not sketch_obj or not isinstance(sketch_obj, adsk.fusion.Sketch):
+                return f"Error: The token '{entity_token}' does not reference a Fusion Sketch."
+
+            profile_attrs = [
+                "radius",
+                "length",
+                "face.area",
+                "face.centroid",
+                "face.edges",
+            ]
+            results = {
+                "profiles": []
+            }
+
+            for profile in sketch_obj.profiles:
+                profile_dict = {
+                    "entityToken": self.set_obj_hash(profile),
+                    "objectType": profile.__class__.__name__
+                }
+
+                for attr in profile_attrs:
+                    val, errors = self.get_sub_attr(profile, attr)
+                    if val == None:
+                        continue
+
+                    elif any([ isinstance(val, attrType) for attrType in [str, int, float, bool]] ):
+                        profile_dict[attr] = val
+
+                    elif hasattr(val, "asArray"):
+                        profile_dict[attr] = val.asArray()
+                        continue
+
+                results["profiles"].append(profile_dict)
+
+            return json.dumps(results)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+    @ToolCollection.tool_call
+    def get_sketch_curves(self, entity_token: str = "") -> str:
+        """
+        {
+          "name": "get_sketch_curves",
+          "description": "Retrieves data for all sketch curved in the  sketch referenced by a token, and returns basic info about each child object in JSON format.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "entity_token": {
+                "type": "string",
+                "description": "A token referencing a Fusion 360 Sketch object  (using your internal hashing system)."
+              }
+            },
+            "required": ["entity_token"],
+            "returns": {
+              "type": "string",
+              "description": "A JSON string describing the requested attributes and their items (if they are collections)."
+            }
+          }
+        }
+        """
+
+        try:
+            if not entity_token:
+                return "Error: No entity_token provided."
+            #if not attributes_list or not isinstance(attributes_list, list):
+            #    return "Error: attributes_list must be a list of attribute names."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # Retrieve the component from your hashing system (or findEntityByToken if you prefer)
+            sketch_obj = self.get_hash_obj(entity_token)
+            if not sketch_obj or not isinstance(sketch_obj, adsk.fusion.Sketch):
+                return f"Error: The token '{entity_token}' does not reference a Fusion Sketch."
+
+            top_level_keys = ["sketchCurves"]
+
+            results = {}
+
+            exclude_list = []
+            for attr_name in top_level_keys:
+
+                # Check if the component has this attribute
+                if not hasattr(sketch_obj, attr_name):
+                    continue
+
+                attr_value = getattr(sketch_obj, attr_name, None)
+                if attr_value is None:
+                    continue
+
+                # sketch curve types
+                for sub_attr in dir(attr_value):
+                    sub_attr_value = getattr(attr_value, sub_attr, None)
+                    if callable(sub_attr_value):
+                        continue
+                    elif hasattr(sub_attr_value, "count") == False:
+                        continue
+                    elif isinstance(sub_attr_value, str) == True:
+                        continue
+
+                    sub_attr_class = sub_attr_value.__class__.__name__
+                    if sub_attr_value.count != 0:
+                        results[sub_attr_class] = []
+
+                    b_attrs = [
+                        "startSketchPoint.geometry",
+                        "endSketchPoint.geometry",
+                        "radius",
+                        "length",
+                        "face.area",
+                        "face.centroid"
+                    ]
+
+                    for curve in sub_attr_value:
+
+                        curve_dict = {
+                            "entityToken": self.set_obj_hash(curve),
+                            "objectType": curve.__class__.__name__
+                        }
+
+                        for a in b_attrs:
+                            a_val, errors = self.get_sub_attr(curve,a)
+                            if a_val == None:
+                                continue
+                            elif any([ isinstance(a_val, attrType) for attrType in [str, int, float, bool]] ):
+                                curve_dict[a] = a_val
+                            elif hasattr(a_val, "asArray"):
+                                curve_dict[a] = a_val.asArray()
+                                continue
+
+                        results[sub_attr_class].append(curve_dict)
+
+
+            return json.dumps(results)
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
@@ -1684,14 +1871,12 @@ class SetStateData(ToolCollection):
             # Final results mapped: token -> final value or None
             results = {}
 
-
             # if entity token passed as argument, retreive its associated object
             if isinstance(attribute_value, str) == True:
-                if "__" in attribute_value:
-                    attribute_value_obj = self.get_hash_obj(attribute_value)
+                attribute_value_obj = self.get_hash_obj(attribute_value)
+                if attribute_value_obj != None:
+                    attribute_value = attribute_value_obj
 
-                    if attribute_value_obj != None:
-                        attribut_value = attribute_value_obj
 
             for token in entity_token_list:
                 if not token:
@@ -1739,84 +1924,6 @@ class SetStateData(ToolCollection):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
-    def describe_fusion_object(self, obj) -> str:
-        """
-        Accepts any Fusion 360 (or Python) object and returns a JSON-like string
-        describing its non-private attributes (properties) and methods. This
-        includes both Python-level and C++-backed method descriptors if found.
-
-        :param obj: The object to introspect.
-        :return: A JSON string with two arrays: 'properties' and 'methods'.
-        """
-        try:
-            # A list or set of known internal or private names to ignore
-            exclude_list = {"cast", "classType", "__init__", "__del__", "this", "thisown", "attributes", "createForAssemblyContext", "convert", "objectType", "isTemporary", "revisionId", "baseFeature", "meshManager", "nativeObject"}
-
-            # We'll gather results in a dictionary
-            result_data = {
-                "objectType": str(type(obj)),
-                "properties": [],
-                "methods": []
-            }
-
-            # Use inspect.getmembers(...) to get all members
-            all_members = inspect.getmembers(obj)
-
-            # For each (name, value) pair, decide if it's a property or method
-            for name, value in all_members:
-                # Skip private/dunder and anything in exclude_list
-                if name.startswith("_") or name in exclude_list:
-                    continue
-
-                if callable(value):
-                    # It's a method (function or method descriptor)
-                    result_data["methods"].append(name)
-                else:
-                    # It's a property/attribute
-                    result_data["properties"].append(name)
-
-            # Convert to JSON
-            return result_data
-
-        except Exception as e:
-            return json.dumps({"error": str(e)})
-
-
-    def return_sub_method(self, entity: object, method_path: str) -> object:
-        """
-        accepts a and entity and method path
-        """
-
-        delimeter = "."
-        print(f"method_parts: {method_path}")
-
-        if delimeter not in method_path:
-            method = getattr(entity, method_path, None)
-            if method is None:
-                avail_attrs = self.describe_fusion_object(entity)
-                return f"Error: Object {entity.__class__.__name__} has no attribute '{method_path}', available methods/properties for {entity.__class__.__name__}: {avail_attrs}"
-
-            return method
-
-        method_parts = method_path.split(delimeter)
-
-        # update each iteration
-        target_entity = entity
-
-        for method_str in method_parts[:len(method_parts)-1]:
-
-            sub_entity = getattr(target_entity, method_str, None)
-
-            if sub_entity is None:
-                avail_attrs = self.describe_fusion_object(target_entity)
-
-                return f"Error: Object {target_entity.__class__.__name__} has no attribute '{method_str}', available methods/properties for {target_entity}: {avail_attrs}"
-
-            else:
-                target_entity = sub_entity
-
-        method = getattr(target_entity, method_parts[-1])
-        return method
 
 
     def describe_fusion_method(self, method) -> str:
@@ -1875,13 +1982,15 @@ class SetStateData(ToolCollection):
                 "returnAnnotation": return_annot
             }
 
-            #return json.dumps(result, indent=2)
             return result
 
         except Exception as e:
             return json.dumps({
                 "error": f"Could not introspect method. Reason: {str(e)}"
             })
+
+
+
     @ToolCollection.tool_call
     def call_entity_methods(self, calls_list: list = [
                    { "entityToken": "", "method_path": "", "arguments": [] }
@@ -1963,9 +2072,10 @@ class SetStateData(ToolCollection):
                 entity_type = entity.__class__.__name__
 
                 print(f"call: {entity}, {method_name}")
-                method = self.return_sub_method(entity, method_name)
-                if isinstance(method, str):
-                    results[entity_token] = method
+
+                method, errors = self.get_sub_attr(entity, method_name)
+                if errors:
+                    results[errors] = method
                     continue
 
 
@@ -1976,15 +2086,12 @@ class SetStateData(ToolCollection):
 
                     if isinstance(arg, str) == False:
                         parsed_arguments.append(arg)
-
-                    elif "__" in arg:
+                    else:
                         entity_arg = self.get_hash_obj(arg)
                         if entity_arg != None:
                             parsed_arguments.append(entity_arg)
                         else:
                             parsed_arguments.append(arg)
-                    else:
-                        parsed_arguments.append(arg)
 
 
                 # Attempt to call the method with the provided arguments
@@ -2005,8 +2112,9 @@ class SetStateData(ToolCollection):
                         continue
 
 
-                    if isinstance(method_ret_val, object):
+                    if any([ isinstance(method_ret_val, attrType) for attrType in [str, int, float, bool]] ) == False:
                         new_obj_type = method_ret_val.__class__.__name__
+
                         new_entity_token = self.set_obj_hash(method_ret_val)
 
                         # also return component info 
@@ -2145,7 +2253,6 @@ class SetStateData(ToolCollection):
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
 
 
     #@ToolCollection.tool_call

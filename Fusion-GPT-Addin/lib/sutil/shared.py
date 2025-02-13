@@ -33,10 +33,7 @@ class ToolCollection:
     methods colletion
     """
 
-    #DEBUG = True
-    #static
 
-    #debug_print = True
 
     # store references to fusion object based on id
     log_results = True
@@ -54,17 +51,17 @@ class ToolCollection:
         def wrapper(self, *args, **kwds):
             self.app = adsk.core.Application.get()
 
-            #print(f"Call: {func.__name__}")
+            print(func.__name__)
 
             results = func(self, *args, **kwds)
 
             if getattr(ToolCollection, "log_results") == True:
                 self.print_results(results)
 
-            #print("func end")
             return results
 
         return wrapper
+
 
     def log_print(self, output):
         print(output)
@@ -95,8 +92,6 @@ class ToolCollection:
     def __init__(self, ent_dict):
         self.methods = self._get_methods()
         self.ent_dict = ent_dict
-        #self.ent_dict = {}
-
 
     def _get_methods(self):
         """
@@ -272,6 +267,137 @@ class ToolCollection:
 
         return hash_str
 
+    def describe_object(self, obj) -> str:
+        """
+        Accepts any Fusion 360 (or Python) object and returns a JSON-like string
+        describing its non-private attributes (properties) and methods. This
+        includes both Python-level and C++-backed method descriptors if found.
+
+        :param obj: The object to introspect.
+        :return: A JSON string with two arrays: 'properties' and 'methods'.
+        """
+        try:
+            # A list or set of known internal or private names to ignore
+            exclude_list = {"cast", "classType", "__init__", "__del__", "this", "thisown", "attributes", "createForAssemblyContext", "convert", "objectType", "isTemporary", "revisionId", "baseFeature", "meshManager", "nativeObject"}
+
+            # We'll gather results in a dictionary
+            result_data = {
+                "objectType": str(obj.__class__),
+                "attributes": [],
+                "methods": []
+            }
+
+            # Use inspect.getmembers(...) to get all members
+            all_members = inspect.getmembers(obj)
+
+            # For each (name, value) pair, decide if it's a property or method
+            for name, value in all_members:
+                # Skip private/dunder and anything in exclude_list
+                if name.startswith("_") or name in exclude_list:
+                    continue
+
+                if callable(value):
+                    # It's a method (function or method descriptor)
+                    result_data["methods"].append(name)
+                else:
+                    # It's a property/attribute
+                    result_data["attributes"].append(name)
+
+            # Convert to JSON
+            return result_data
+
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+    def get_sub_attr(self, entity: object, attr_path: str) -> tuple:
+        """
+        accepts an entity and attribute path, returns the bottom level method
+        """
+
+        # seperater between attribute levels
+        delimeter = "."
+
+        # if single attribute name passed
+        if delimeter not in attr_path:
+            attr_parts = [attr_path]
+        else:
+            attr_parts = attr_path.split(delimeter)
+
+        # updateed each iteration
+        target_entity = entity
+
+        # return vals
+        errors = None
+
+        processed_path = f"{target_entity.__class__.__name__}"
+        # work down throug attrs
+        for index, attr_str in enumerate(attr_parts):
+
+            # alwas check has attr in cas attr exists but is None
+            attr_exists = hasattr(target_entity, attr_str)
+
+            if attr_exists == False:
+
+                errors = ""
+                error_msg = f"Object '{processed_path}' of class '{target_entity.__class__.__name__}' has no attribute/method '{attr_str}'"
+                avail_attrs = f"'{target_entity.__class__.__name__}' has the following attributes: {self.describe_object(target_entity)}"
+                entity_info = f"Object information: {target_entity.__doc__}"
+                errors += f"Error: {error_msg}\n {avail_attrs}\n {entity_info}"
+                attr = None
+                break
+
+            attr = getattr(target_entity, attr_str)
+            if attr is None:
+                break
+
+            # successfully accessed attributes
+            processed_path += f".{attr_str}"
+
+            # set the target entity to the attr, assumes the attr is an object
+            # when not last iteration
+            target_entity = attr
+
+        return attr, errors
+
+
+    # TODO handle all operation responses
+    def object_creation_response(self, response) -> str:
+        """
+        converts fusion object to json
+        """
+        try:
+            results = []
+            if isinstance(response, adsk.fusion.ExtrudeFeature):
+
+                attr_list = ["name", "area"]
+
+                for ent in response.bodies:
+                    ent_dict = {}
+                    entity_token = self.set_obj_hash(ent)
+                    ent_dict["entityToken"] = entity_token
+                    for attr in attr_list:
+                        val, errors = self.get_sub_attr(ent, attr)
+                        if val:
+                            ent_dict[attr] = val
+                    results.append(ent_dict)
+
+            return results
+
+        except Exception as e:
+            print(e)
+            return ''
+
+
+
+
+
+
+
+
+
+
+
+
     def set_obj_hash(self, entity: object, token_str: str= None, length=5):
         """
         adds a fusion360 to the hash:object dict
@@ -282,22 +408,61 @@ class ToolCollection:
         if token_str !=  None:
             token_str = str(token_str)
         else:
-            for attr_name in ["entityToken", "name"]:
-                if attr_name in entity_attrs:
-                    try:
-                        token_str = getattr(entity, attr_name, None)
-                    except Exception as e:
-                        print(e)
-                        continue
-                    if token_str != None:
-                        break
-                    else:
-                        return
 
-        #print(token_str)
+            token_str = None
+
+            if isinstance(entity, adsk.fusion.Component):
+
+                try:
+                    token_str = getattr(entity, "entityToken", None)
+                except Exception as e:
+                    print(e)
+
+                if token_str == None:
+                    token_str = getattr(entity, "name", None)
+
+                # TODO check for incomplete token by number of "/" not len
+                elif len(token_str) < len("-/v4BAAEAAwAAAAAAAAAAAAAA"):
+                    token_str += getattr(entity, "id", None)
+
+
+            elif hasattr(entity, "entityToken") == True:
+                token_str = getattr(entity, "entityToken", None)
+
+            elif hasattr(entity, "name") == True:
+                token_str = getattr(entity, "name", None)
+
+
+            if token_str == None:
+                print(entity)
+                print(dir(entity))
+                raise Exception("Token Is None")
+
+
+
         hash_val = self._hash_string_to_fixed_length(str(token_str), length)
+        hash_val = f"{hash_val}"
+        # check token exists
+        existing_entity = self.ent_dict.get(hash_val)
+        if existing_entity:
 
-        hash_val = f"__{hash_val}"
+            # if token refers to different entities
+            if existing_entity != entity:
+
+                print_string = f"Token exists: {hash_val}, token_str: {token_str}"
+
+                for n, v in {"prev": existing_entity, "new ": entity }.items():
+
+                    class_name = v.__class__.__name__
+
+                    ent_name = getattr(v, "name", None)
+
+                    print_string += f"\n {n}: {class_name}, {ent_name}"
+
+                print(print_string)
+                #print(entity.isLinked)
+                #raise Exception(f"Token error")
+
 
 
         self.ent_dict[hash_val] = entity

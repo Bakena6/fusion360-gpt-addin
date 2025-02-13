@@ -401,12 +401,30 @@ class Control{
 
     } // end reload
 
+    get_current_cb_val(){
+
+        const settingCbs = document.querySelectorAll('.settingCb');
+
+        settingCbs.forEach(cb => {
+            const args = {
+                "setting_name": cb.id,
+                "setting_val": cb.checked
+            };
+            adsk.fusionSendData("cb_change", JSON.stringify(args)).then((result) =>{ });
+
+        }); // end for each
+
+    };// end get_current_cb
+
 
     reloadModules(){
         const args = { };
         // Send the data to Fusion as a JSON string. The return value is a Promise.
+        // include current checkbox settings
         adsk.fusionSendData("reload_modules", JSON.stringify(args))
-            .then((result) =>{ }); // end then
+            .then((result) =>{ 
+                this.get_current_cb_val();
+            }); // end then
     };
 
     reconnect(){
@@ -547,8 +565,6 @@ class Control{
 
     //function
 
-
-
     record(){
 
         let recordButton = document.getElementById('recordButton');
@@ -616,7 +632,9 @@ function send_cp_val(cb_event){
 
 
 
-// settings check boces
+
+
+// settings check boxes
 window.addEventListener('load', (event) => {
 
     //debugCb = document.getElementById('debugCb');

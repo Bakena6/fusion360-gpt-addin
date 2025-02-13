@@ -174,21 +174,21 @@ class FusionInterface:
 
 
     # TODO function calls should be wrapped
-    def fusion_call(func):
-        """
-        Wraps fusion interface calls
-        """
-        # for retrieving wrapped function kwarg names
-        @functools.wraps(func)
-        def wrapper(self, *args, **kwds):
+    #def fusion_call(func):
+    #    """
+    #    Wraps fusion interface calls
+    #    """
+    #    # for retrieving wrapped function kwarg names
+    #    @functools.wraps(func)
+    #    def wrapper(self, *args, **kwds):
 
-            self.app = adsk.core.Application.get()
-            print("func start")
-            result = func(self, *args, **kwds)
-            print("func end")
-            return result
+    #        self.app = adsk.core.Application.get()
+    #        #print("func start")
+    #        result = func(self, *args, **kwds)
+    #        #print("func end")
+    #        return result
 
-        return wrapper
+    #    return wrapper
 
 
 class TransientObjects(ToolCollection):
@@ -249,11 +249,11 @@ class TransientObjects(ToolCollection):
                 # Create the Point3D object
                 p3d = adsk.core.Point3D.create(x, y, z)
 
-                p3d_name = f"{i}_{x}_{y}_{z}"
+                p3d_name = f"Point3D__{i}_{x}_{y}_{z}"
                 p3d_entity_token = self.set_obj_hash(p3d, p3d_name)
 
                 # Return the token for the user
-                results[p3d_entity_token] = f"Success: Created new Point3D object with entity_token '{p3d_entity_token}' at {coords}"
+                results[p3d_entity_token] = f"Success: Created new 'Point3D' with token '{p3d_entity_token}' at {coords}"
 
             return json.dumps(results)
 
@@ -317,10 +317,10 @@ class TransientObjects(ToolCollection):
                     m3d = adsk.core.Matrix3D.create()
                     m3d.setWithArray(mat_vals)
                     # Generate a name for referencing
-                    mat_name = f"Matrix3D_{i}"
+                    mat_name = f"Matrix3D_{i}_{mat_vals}"
                     mat_token = self.set_obj_hash(m3d, mat_name)
 
-                    results[mat_token] = f"Success: Created new Matrix3D with token '{mat_token}'."
+                    results[mat_token] = f"Success: Created new 'Matrix3D' with token '{mat_token}' at {mat_vals}."
                 except Exception as e:
                     results[f"Index_{i}"] = f"Error: {str(e)}"
 
@@ -382,7 +382,7 @@ class TransientObjects(ToolCollection):
                     p2d = adsk.core.Point2D.create(x, y)
                     p2d_name = f"Point2D_{i}_{x}_{y}"
                     p2d_token = self.set_obj_hash(p2d, p2d_name)
-                    results[p2d_token] = f"Success: Created new Point2D with token '{p2d_token}' at {coords}"
+                    results[p2d_token] = f"Success: Created new 'Point2D' with token '{p2d_token}' at {coords}"
                 except Exception as e:
                     results[f"Index_{i}"] = f"Error: {str(e)}"
 
@@ -441,10 +441,10 @@ class TransientObjects(ToolCollection):
                 try:
                     m2d = adsk.core.Matrix2D.create()
                     m2d.setWithArray(mat_vals)
-                    mat_name = f"Matrix2D_{i}"
+                    mat_name = f"Matrix2D_{i}_{mat_vals}"
                     mat_token = self.set_obj_hash(m2d, mat_name)
 
-                    results[mat_token] = f"Success: Created new Matrix2D with token '{mat_token}'."
+                    results[mat_token] = f"Success: Created new 'Matrix2D' with token '{mat_token}' at {mat_vals}."
                 except Exception as e:
                     results[f"Index_{i}"] = f"Error: {str(e)}"
 
@@ -840,7 +840,7 @@ class Joints(ToolCollection):
                         geoType = "Arc3D"
                         loc = edge.geometry.center.asArray()
                     else:
-                        print(edge.geometry)
+                        #print(edge.geometry)
                         loc = None
 
                     if geoType != "Circle3D":
@@ -1033,7 +1033,6 @@ class Joints(ToolCollection):
                     if geomIndex >= theBody.edges.count:
                         return f"Error: Edge index {geomIndex} out of range on body {bodyIndex}."
                     edgeObj = theBody.edges.item(geomIndex)
-                    #print(edgeObj)
 
 
                     # TODO get edge type
@@ -1189,7 +1188,7 @@ class Joints(ToolCollection):
 
 
             for request in joint_requests:
-                print(request)
+                #print(request)
                 occ_1_name = request.get("occurrence_1_name")
                 j1_name = request.get("joint_origin_1")
                 occ_2_name = request.get("occurrence_2_name")

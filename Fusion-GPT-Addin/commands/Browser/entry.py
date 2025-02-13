@@ -219,6 +219,13 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
     elif message_action == "cb_change":
         server_itf.fusion_itf.set_class_attr(message_data)
 
+    elif message_action == "reload_modules":
+        #server_itf.reload_interface()
+        server_itf.reload_modules()
+
+
+        html_args.returnData = ""
+
 
     # upload function/ prompt to assistant
     elif message_action == "upload_tools":
@@ -234,12 +241,6 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
 
         #audio_text = {"audio_text": audio_text["content"]}
         html_args.returnData = json.dumps(audio_text)
-
-
-    elif message_action == "reload_modules":
-        #server_itf.reload_interface()
-        server_itf.reload_modules()
-        html_args.returnData = ""
 
 
     elif message_action == "get_tools":
