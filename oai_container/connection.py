@@ -161,14 +161,6 @@ class Assistant:
         update assistant tools, and initial prompt instructions
         """
 
-        #print(models)
-        #print(dir(models))
-        #print(models.to_json())
-        # for m in json.loads():
-        #     print(m["id"])
-
-        #models = client.models.list()
-        #print(models.to_json())
 
         # base assistant prompt
         with open("system_instructions.txt") as f:
@@ -193,6 +185,7 @@ class Assistant:
             tools=updated_tools,
             #model=model_name,
             instructions=instructions,
+            response_format="auto"
         )
 
         #print(updated_assistant)
@@ -225,14 +218,13 @@ class Assistant:
 
                 i = 0
                 while True:
-                    print(f"{i} Waiting for user command...")
+                    print(f"{i} WAITING FOR USER COMMAND...")
                     # wait for message from user
                     message_raw = conn.recv()
                     message = json.loads(message_raw)
                     message_type = message["message_type"]
 
                     print(f" MESSAGE RECIEVED: {message_raw}")
-                    #print(f" MESSAGE RECIEVED")
 
                     if message_type == "thread_update":
                         message_text = message["content"]
@@ -264,22 +256,28 @@ class Assistant:
                     event_type = ""
                     message_text = ""
 
-                    #step_count = 0
+                    delta_count = 0
+
+                    thread_start = 0
                     while event_type != "thread.run.completed":
                         print(f"THREAD START")
+                        thread_start +=1
+
+                        if thread_start > 20:
+                            return
 
                         for event in self.stream:
                             event_type = event.event
+                            print(event_type)
+                            thread_start = 0
+
                             data = event.data
-                            #print(event_type)
-                            #step_count += 1
 
                             if event_type == "thread.run.created":
 
                                 # set run id for tool call result calls
                                 self.run = event.data
                                 self.run_id = event.data.id
-                                #print(data)
 
                                 content = {
                                     "run_id": self.run_id,
@@ -294,7 +292,7 @@ class Assistant:
 
 
                             elif event_type == "thread.message.created":
-                                print(event)
+                                #print(event)
 
                                 content = {
                                     "message_id": data.id,
@@ -333,12 +331,11 @@ class Assistant:
 
 
                             elif event_type == "thread.run.step.in_progress":
-                                #print(data)
                                 pass
 
 
                             elif event_type == "thread.message.delta":
-                                #print(event.data)
+
                                 delta_text = event.data.delta.content[0].text.value
                                 message_id = event.data.id
 
@@ -357,17 +354,19 @@ class Assistant:
 
 
                             elif event_type == "thread.run.step.delta":
-
-                                #print(event.data.delta.step_details.tool_calls)
                                 try:
                                     function = event.data.delta.step_details.tool_calls[0].function
+                                    tool_call_len = len(event.data.delta.step_details.tool_calls)
+                                    if tool_call_len != 1:
+                                        print( event.data.delta.step_details.tool_calls)
+                                        print("CHECK TOOL CALL LEN\n\n\n")
+                                        return
 
                                 except Exception as e:
                                     print(e)
                                     continue
 
                                 step_id = event.data.id
-
                                 content = {
                                     "step_id": step_id,
                                     "function_name": function.name,
@@ -382,24 +381,19 @@ class Assistant:
                                     "content": content
                                 }
 
-                                #if step_count % 10 == 0:
+                                delta_count +=1
+                                #if delta_count < 500:
                                 conn.send(json.dumps(fusion_call))
 
                             elif event_type == "thread.message.completed":
                                 content = event.data.content
-                                #conn.send(json.dumps(fusion_call))
-
-                                for content_block in content:
-                                    text = content_block.text.value
-                                    message_text += text
-
+                                delta_count = 0
+                                conn.send(json.dumps(fusion_call))
 
                             elif event_type == "thread.run.requires_action":
                                 print("THREAD.RUN.REQUIRES_ACTION")
-                                print(event.data.required_action)
 
                                 tool_calls = event.data.required_action.submit_tool_outputs.tool_calls
-                                #print(tool_calls)
 
                                 # return data for all tool calls in a step
                                 tool_call_results = []
@@ -411,7 +405,6 @@ class Assistant:
 
                                     if function_name == None:
                                         continue
-
                                     print(f"    CALL TOOL: {function_name}, {function_args}")
 
                                     fusion_call = {
@@ -423,7 +416,6 @@ class Assistant:
                                     }
 
                                     conn.send(json.dumps(fusion_call))
-
                                     # Fusion360 function results
                                     function_result = conn.recv()
 
@@ -431,20 +423,17 @@ class Assistant:
                                         "tool_call_id" : tool_call.id,
                                         "output": function_result
                                     })
-
                                     print(f"    FUNC RESULTS: {function_result}")
 
                                 ## submit results for all tool calls in step
                                 self.stream = self.submit_tool_call(tool_call_results)
                                 print("TOOL CALL RESUTS FINISHED")
 
-
                             elif event_type == "thread.run.step.completed":
-                                #print(event.data)
+                                delta_count = 0
 
                                 step_details = event.data.step_details
                                 step_type = step_details.type
-                                print(step_details)
 
                                 # skip response for mesage completion
                                 if step_type == "message_creation":
@@ -454,7 +443,6 @@ class Assistant:
                                     function = step_details.tool_calls[0].function
                                 except Exception as e:
                                     continue
-                                #print(function)
 
                                 step_id = event.data.id
 
@@ -508,7 +496,6 @@ class Assistant:
         for event in stream:
 
             event_type = event.event
-            print(event_type)
 
             if event_type == "thread.message.completed":
                 print("THREAD.MESSAGE.COMPLETED")
@@ -516,15 +503,13 @@ class Assistant:
 
             elif event_type == "thread.run.requires_action":
                 print("THREAD.RUN.REQUIRES_ACTION")
-                print(event.data)
+                #print(event.data)
 
             elif event_type == "thread.run.step.completed":
                 print("THREAD.RUN.STEP.COMPLETED")
-                #print(event.data)
 
             elif event_type == "thread.run.completed":
                 print("THREAD.RUN.COMPLETED")
-                #print(event.data)
 
     def create_run(self):
         """create initial run"""

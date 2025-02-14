@@ -319,6 +319,7 @@ class GetStateData(ToolCollection):
                 for child_occ in occ.childOccurrences:
                     children_info.append(gather_occurrence_structure(child_occ))
 
+
                 # Build this occurrence's node in the tree
                 return_dict =  {
                     "occurrenceName": occ.name,
@@ -398,6 +399,57 @@ class GetStateData(ToolCollection):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
+    @ToolCollection.tool_call
+    def get_dict(self):
+        """
+        {
+            "name": "get_dict",
+            "description": "Gets all locally avilble entityTokens and thier associated objectTypes.",
+            "parameters": {
+                "type": "object",
+                "properties": { },
+                "required": [],
+                "returns": {
+                    "type": "string",
+                    "description": "A JSON representation of the all local entityToken, and their associated objectTypes."
+                }
+
+            }
+        }
+        """
+
+        results = {}
+        for k, v in self.ent_dict.items():
+            results[k] = str(v.__class__.__name__)
+
+        return json.dumps(results)
+
+
+    #@ToolCollection.tool_call
+    def test_object_data(self, obj_token: str=""):
+        """
+        {
+            "name": "test_object_data",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                },
+                "required": [],
+                "returns": {
+                    "type": "string",
+                    "description": "A JSON representation of the entire document's structure, including entity tokens if available."
+                }
+
+            }
+        }
+        """
+
+        response_obj = self.get_hash_obj(obj_token)
+        resp_list = self.object_creation_response(response_obj)
+
+        return json.dumps(resp_list)
+
+
     def _get_recursive(self, entity, levels, total_levels):
         app = adsk.core.Application.get()
         if not app:
@@ -475,8 +527,8 @@ class GetStateData(ToolCollection):
                 print(f"Error: attr_name: {attr_name} occurred:\n" + traceback.format_exc())
                 continue
 
-            space = "  " * (total_levels-levels)
-            print(f"{space}{levels}:{attr_name}")
+            #space = "  " * (total_levels-levels)
+            #print(f"{space}{levels}:{attr_name}")
 
             if attr_name == "entityToken":
                 results[attr_name] = self.set_obj_hash(entity)
@@ -522,43 +574,6 @@ class GetStateData(ToolCollection):
 
 
         return results
-
-    #@ToolCollection.tool_call
-    def get_ent_dict(self) -> str:
-        """
-        {
-          "name": "get_ent_dict",
-          "description": "Dynamically calls a method on each referenced Fusion 360 entity (by token). Each instruction has { 'entityToken': <string>, 'methodName': <string>, 'arguments': <array> }. The method is invoked with the specified arguments, returning the result or null on error.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "calls_list": {
-                "type": "array",
-                "description": "A list of calls. Each is { 'entityToken': <string>, 'methodName': <string>, 'arguments': <array> }.",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "entityToken": { "type": "string" },
-                    "methodName": { "type": "string" },
-                    "arguments": {
-                      "type": "array",
-                      "items": { "type": ["boolean","number","string","null"] },
-                      "description": "A list of positional arguments to pass to the method. Type handling is minimal, so interpret carefully in the method."
-                    }
-                  },
-                  "required": ["entityToken", "methodName", "arguments"]
-                }
-              }
-            },
-            "required": ["calls_list"],
-            "returns": {
-              "type": "string",
-              "description": "A JSON object mapping entityToken to the method call result or null on error."
-            }
-          }
-        }
-        """
-        print(self.ent_dict)
 
 
     #@ToolCollection.tool_call
@@ -632,7 +647,6 @@ class GetStateData(ToolCollection):
                 #continue
                 #pass
             #if isinstance(target_entity, adsk.fusion.Occurrence):
-                #print(f"attr: {attr}, name: {entity.name},  source: { entity.sourceComponent.name}")
 
             try:
                 attr_val = None
@@ -648,12 +662,8 @@ class GetStateData(ToolCollection):
                         print(f"Error: {attr0} target_entity {e}")
                         continue
                     if target_entity is None:
-                        #print(f"target_entity, {attr0}, {attr} is None")
                         continue
 
-                #print(attr)
-                #print(target_entity)
-                #print(dir(target_entity))
 
                 if attr not in entity_attrs:
                     continue
@@ -821,11 +831,7 @@ class GetStateData(ToolCollection):
                         continue
 
 
-                    #print(f"{attr}")
-
-
                 comp_list.append(comp_data)
-
 
             root_comp = design.rootComponent
             root_comp_data = {
@@ -991,16 +997,22 @@ class GetStateData(ToolCollection):
                             continue
 
                         is_iterable = True
-                        # check if iterable object array
-                        if hasattr(attr, "count") == False:
+
+                        if token != "design":
+                            # check if iterable object array
+                            if hasattr(attr, "count") == False:
+                                is_iterable = False
+                        else:
                             is_iterable = False
+
+
+
                         if isinstance(attr, str):
                             is_iterable = False
 
                         if is_iterable == True:
                             sketch_token_seed = f"{entityToken}{attr_name}"
 
-                            #print(sketch_token_seed)
                             attr_dict["entityToken"] = self.set_obj_hash(attr, sketch_token_seed)
                             attr_dict["children"] =  []
 
@@ -1009,13 +1021,16 @@ class GetStateData(ToolCollection):
                                 sub_ent_attrs_dict = self._get_ent_attrs(sub_entity, ent_attr_names)
                                 attr_dict["children"].append(sub_ent_attrs_dict)
 
+                            if attr_dict["children"] == []:
+                                attr_dict.pop("children")
+
 
                         else:
                             ent_attrs_dict = self._get_ent_attrs(attr, ent_attr_names)
                             attr_dict.update(ent_attrs_dict)
 
                         if len(attr_dict) != 0:
-                            print(f"{attr_name}: {len(attr_dict)}")
+                            #print(f"{attr_name}: {len(attr_dict)}")
                             results[token]["entities"][attr_name] = attr_dict
 
 
@@ -1130,8 +1145,6 @@ class GetStateData(ToolCollection):
 
                 # try theese attrbutes on multiple objects
                 for index, object_name in enumerate(object_types):
-                    #print(f"{object_name}")
-
                     # joints that reside in the root component fail even though attr exists
                     try:
                         # body, joint, sketch etc
@@ -1153,11 +1166,14 @@ class GetStateData(ToolCollection):
                     }
                     for obj in objectArray:
                         ent_info = self._get_ent_attrs(obj, global_attrs)
-
                         object_type_dict["items"].append(ent_info)
+
+                    if object_type_dict["items"] == []:
+                        object_type_dict.pop("items")
 
                     if occ_dict.get(object_name) == None:
                         occ_dict[object_name] = object_type_dict
+
 
 
             if occ == None:
@@ -1171,7 +1187,6 @@ class GetStateData(ToolCollection):
                 if sub_comp:
                     occ_data = get_component_data(occ, sub_comp)
                     object_type = "occurrences"
-
                     if occ_dict.get(object_type) == None:
                         occ_dict["occurrences"] = []
                     occ_dict["occurrences"].append(occ_data)
@@ -1183,11 +1198,9 @@ class GetStateData(ToolCollection):
         design_data = {
             "rootComponent_name": design.rootComponent.name,
             "components": self._get_all_components(),
-            "occurrences": get_component_data(None, design.rootComponent)["occurrences"]
+            "occurrences": get_component_data(None, design.rootComponent).get("occurrences", None)
         }
 
-
-        #print(json.dumps(design_data, indent=4))
         # Convert dictionary to a JSON string with indentation
         return json.dumps(design_data)
 
@@ -1266,12 +1279,13 @@ class GetStateData(ToolCollection):
 
                 item_data = {}
                 for attr in timeline_attr_names:
+
                     val, error = self.get_sub_attr(t_item, attr)
                     if val is None:
                         continue
 
                     if attr == "entity.entityToken":
-                        val = self.set_obj_hash(val, t_item.entity)
+                        val = self.set_obj_hash(t_item.entity)
 
                     item_data[attr] = val
 
@@ -1789,6 +1803,7 @@ class GetStateData(ToolCollection):
 
 
 class SetStateData(ToolCollection):
+
     @ToolCollection.tool_call
     def set_entity_values(self,
                          entity_token_list: list = [],
@@ -1923,9 +1938,6 @@ class SetStateData(ToolCollection):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-
-
-
     def describe_fusion_method(self, method) -> str:
         """
         {
@@ -2049,33 +2061,31 @@ class SetStateData(ToolCollection):
             # return value
             results = {}
 
-            for call_dict in calls_list:
+            for index, call_dict in enumerate(calls_list):
                 entity_token = call_dict.get("entityToken")
                 method_name = call_dict.get("method_path")
                 arguments = call_dict.get("arguments", [])
 
+                results[index] = {}
                 if not entity_token:
-                    results["Error"] = f"Error: no entity_token provided"
+                    results[index] = f"Error: no entity token provided"
                     continue
                 if not method_name:
-                    results[entity_token] = f"Error: no method name provided for entity token: {entity_token}"
+                    results[index][entity_token]= f"Error: no method name provided for entity token: {entity_token}"
                     continue
-
 
                 # top level entity
                 entity = self.get_hash_obj(entity_token)
 
                 if entity is None:
-                    results[entity_token] = f"Error: no entity found for entity token: {entity_token}, when calling method {method_name}."
+                    results[index][entity_token] = f"Error: no entity found for entity token: {entity_token}, when calling method {method_name}."
                     continue
 
                 entity_type = entity.__class__.__name__
 
-                print(f"call: {entity}, {method_name}")
-
                 method, errors = self.get_sub_attr(entity, method_name)
                 if errors:
-                    results[errors] = method
+                    results[index][entity_token] = errors
                     continue
 
 
@@ -2096,53 +2106,66 @@ class SetStateData(ToolCollection):
 
                 # Attempt to call the method with the provided arguments
                 ret_val = None
-
+                new_objects = []
                 try:
                     # This tries a direct call with *arguments
                     try:
                         method_ret_val = method(*parsed_arguments)
+
                     except Exception as e:
 
-                        #method_data = self.describe_fusion_method(method)
-                        #print(method_data)
-                        method_data = method.__doc__
-                        ret_val = f"Error: Method call '{method_name}' on object '{entity_type}' with arguments '{arguments}' failed:  {e}. Method docstring: {method_data}"
 
-                        results[entity_token] = ret_val
+                        method_doc = method.__doc__.replace("    ", "").replace("\n", " ")
+
+                        ret_val = f"Error: Method call '{method_name}' on object '{entity_type}' with arguments '{arguments}' failed:  {str(e).replace('\t', ' ')}. Method docstring: {method_doc}"
+
+
+                        results[index][entity_token] = ret_val
                         continue
 
-
                     if any([ isinstance(method_ret_val, attrType) for attrType in [str, int, float, bool]] ) == False:
-                        new_obj_type = method_ret_val.__class__.__name__
 
-                        new_entity_token = self.set_obj_hash(method_ret_val)
+                        new_obj_type = method_ret_val.__class__.__name__
+                        new_objects += self.object_creation_response(method_ret_val)
+
+                        print("{new_objects}")
+
+                        if hasattr(method_ret_val, "item") == True:
+                            ret_val = f"Success: method '{method_name}' returned new '{new_obj_type}'"
+
 
                         # also return component info 
-                        if hasattr(method_ret_val, "component") == True:
+                        elif hasattr(method_ret_val, "component") == True:
+
+                            # dont call on object lists
+                            new_entity_token = self.set_obj_hash(method_ret_val)
+
                             new_component = method_ret_val.component
+                            new_objects += self.object_creation_response(new_component)
+
                             new_comp_token = self.set_obj_hash(new_component)
                             ret_val = f"Success: method '{method_name}' returned new '{new_obj_type}' object with entityToken '{new_entity_token}' and new 'component' with entityToken '{new_comp_token}'"
 
                         else:
+                            # dont call on object lists
+                            new_entity_token = self.set_obj_hash(method_ret_val)
                             ret_val = f"Success: method '{method_name}' returned new '{new_obj_type}' object with entityToken '{new_entity_token}'"
-
-                    elif isinstance(method_ret_val, str):
-                        ret_val = f"Success: method '{method_name}' returned value: '{method_ret_val}'"
 
                     elif method_ret_val == True:
                         ret_val = f"Success: method '{method_name}' returned: '{method_ret_val}'"
                     elif method_ret_val is None:
                         ret_val = f"Error: method '{method_name}' returned '{method_ret_val}'."
-
                     else:
                         ret_val = f"Success: method '{method_name}' returned value: '{method_ret_val}'"
+
+                    results[index][entity_token] = {}
+                    results[index][entity_token]["Message"] = ret_val
+                    if new_objects != []:
+                        results[index][entity_token]["Objects"] = new_objects
 
 
                 except Exception as e:
                     ret_val = f"Error: '{e}' for method '{method_name}'" + traceback.format_exc()
-
-
-                results[entity_token] = ret_val
 
 
             # Return as JSON

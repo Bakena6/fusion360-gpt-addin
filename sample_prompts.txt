@@ -27,7 +27,5 @@ Can you create a vase. It should have a very detailed, highly contoured profile,
 
 
 
-
-
-
+Hello, can you create a new component called shapes, then create a basic 4 point spline in the sketch?
 

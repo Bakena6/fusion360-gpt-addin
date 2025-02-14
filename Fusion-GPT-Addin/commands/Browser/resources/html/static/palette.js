@@ -426,6 +426,15 @@ class Control{
                 this.get_current_cb_val();
             }); // end then
     };
+    reloadFusionIntf(){
+        const args = { };
+        // include current checkbox settings
+        adsk.fusionSendData("reload_fusion_intf", JSON.stringify(args))
+            .then((result) =>{ 
+                this.get_current_cb_val();
+            }); // end then
+    };
+
 
     reconnect(){
         const args = { };

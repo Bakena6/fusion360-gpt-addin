@@ -220,10 +220,12 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
         server_itf.fusion_itf.set_class_attr(message_data)
 
     elif message_action == "reload_modules":
-        #server_itf.reload_interface()
         server_itf.reload_modules()
+        html_args.returnData = ""
 
-
+    elif message_action == "reload_fusion_intf":
+        #server_itf.reload_interface()
+        server_itf.reload_fusion_intf()
         html_args.returnData = ""
 
 
@@ -238,7 +240,6 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
 
     elif message_action == "stop_record":
         audio_text = server_itf.stop_record()
-
         #audio_text = {"audio_text": audio_text["content"]}
         html_args.returnData = json.dumps(audio_text)
 
@@ -248,7 +249,6 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
         get available tools, display in window
         """
         methods = server_itf.fusion_itf.get_tools()
-
         html_args.returnData = json.dumps(methods)
 
     elif message_action == "reconnect":

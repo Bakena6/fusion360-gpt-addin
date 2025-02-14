@@ -361,47 +361,96 @@ class ToolCollection:
 
 
     # TODO handle all operation responses
-    def object_creation_response(self, response) -> str:
+    def object_creation_response(self, response_obj) -> str:
         """
         converts fusion object to json
         """
-        try:
-            results = []
-            if isinstance(response, adsk.fusion.ExtrudeFeature):
 
-                attr_list = ["name", "area"]
+        attr_list = [
+            #"entityToken",
+            "name",
+            "area",
+            "length",
+            "xConstructionAxis",
+            "yConstructionAxis",
+            "zConstructionAxis",
+            "xYConstructionPlane",
+            "xZConstructionPlane",
+            "yZConstructionPlane",
+            #"timelineObject",
 
-                for ent in response.bodies:
-                    ent_dict = {}
-                    entity_token = self.set_obj_hash(ent)
-                    ent_dict["entityToken"] = entity_token
-                    for attr in attr_list:
-                        val, errors = self.get_sub_attr(ent, attr)
-                        if val:
-                            ent_dict[attr] = val
-                    results.append(ent_dict)
+        ]
 
-            return results
+        sub_attr_list = [
+            "name",
+        ]
 
-        except Exception as e:
-            print(e)
-            return ''
+        # some responses will be iterable
+        response_object_list = []
+
+        if isinstance(response_obj, adsk.fusion.ExtrudeFeature):
+            for ent in response_obj.bodies:
+                response_object_list.append(ent)
+
+        # object arrays
+        elif hasattr(response_obj, "item") == True:
+            #print(f"response_obj: {response_obj}")
+            for ent in response_obj:
+            #    print(f" ent: {ent}")
+
+                response_object_list.append(ent)
+        else:
+            response_object_list.append(response_obj)
+
+
+        results = []
+        for obj in response_object_list:
+            ent_dict = {}
+            entity_token = self.set_obj_hash(obj)
+            ent_dict["entityToken"] = entity_token
+            ent_dict["objectType"] = obj.__class__.__name__
+
+            for attr in attr_list:
+                val, errors = self.get_sub_attr(obj, attr)
+                if val == None:
+                    continue
+
+                # TODO find better way to check if fusion object
+                elif any([ isinstance(val, attrType) for attrType in [str, int, float, bool]] ) == True:
+                    ent_dict[attr] = val
+
+                else:
+
+                    val_dict = {}
+                    val_dict["entityToken"] = self.set_obj_hash(val)
+                    val_dict["objectType"] = obj.__class__.__name__
+
+                    for sub_attr in sub_attr_list:
+                        sub_val, sub_errors = self.get_sub_attr(val, sub_attr)
+                        if sub_val:
+                            val_dict[sub_attr] = sub_val
+
+                    val = val_dict
+
+                if val:
+                    ent_dict[attr] = val
+
+
+            results.append(ent_dict)
 
 
 
-
-
-
-
-
-
-
+        return results
 
 
     def set_obj_hash(self, entity: object, token_str: str= None, length=5):
         """
         adds a fusion360 to the hash:object dict
         """
+        if isinstance(entity, str):
+            print("entity")
+            raise Exception
+
         entity_attrs = dir(entity)
 
         # if token_string passed in
@@ -410,6 +459,7 @@ class ToolCollection:
         else:
 
             token_str = None
+            entity_type = entity.__class__.__name__
 
             if isinstance(entity, adsk.fusion.Component):
 
@@ -431,13 +481,15 @@ class ToolCollection:
 
             elif hasattr(entity, "name") == True:
                 token_str = getattr(entity, "name", None)
-
+            else:
+                token_str = f"{entity_type}_{id(entity_type)}"
+                pass
 
             if token_str == None:
+                print(f"NO TOKEN STRING")
                 print(entity)
                 print(dir(entity))
                 raise Exception("Token Is None")
-
 
 
         hash_val = self._hash_string_to_fixed_length(str(token_str), length)

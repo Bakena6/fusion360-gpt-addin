@@ -100,18 +100,22 @@ class GptClient:
 
 
     def reload_modules(self):
-
-        importlib.reload(fusion_interface)
+        #importlib.reload(fusion_interface)
         self.fusion_itf._reload_modules()
         self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
-        print("Modules reloded")
+        print("Modules Reloded")
+
+    def reload_fusion_intf(self):
+        importlib.reload(fusion_interface)
+        #self.fusion_itf._reload_modules()
+        self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
+        print("Fusion Interface Reloded")
 
 
     def reload_interface(self):
 
         self.connected = False
         self.palette = self.ui.palettes.itemById(self.PALETTE_ID)
-
         importlib.reload(fusion_interface)
         self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
         print("fusion_interface reloded")
@@ -124,16 +128,13 @@ class GptClient:
         address = ('localhost', 6000)
         self.conn = Client(address, authkey=b'fusion260')
         self.connected = True;
-        print(self.conn)
-
-
+        #print(self.conn)
 
 
     def sendToBrowser(self, function_name, data):
         json_data = json.dumps(data)
         # create run output section in html
         self.palette.sendInfoToHTML(function_name, json_data)
-
 
 
     def upload_tools(self):
@@ -153,7 +154,7 @@ class GptClient:
 
         print(f"conn closed: {self.conn.closed}")
         message_confirmation = self.conn.send(message)
-        print(f"  message sent,  waiting for result...")
+        print(f"TOOLS SENT,  waiting for result...")
 
 
     def send_message(self, message):
@@ -184,8 +185,6 @@ class GptClient:
 
             # streaming call outputs
             if event_type == "thread.run.created":
-                #print(event_type)
-                #print(content)
                 self.sendToBrowser("runCreated", content)
 
             # streaming call outputs
@@ -200,7 +199,6 @@ class GptClient:
             elif event_type == "thread.message.delta":
                 self.sendToBrowser("messageDelta", content)
 
-            #elif event_type in ["thread.run.step.delta", "thread.run.step.completed"]:
             elif event_type in ["thread.run.step.delta"]:
                 self.sendToBrowser("stepDelta", content)
 
@@ -234,7 +232,6 @@ class GptClient:
         if function_args == "":
             function_args = None
 
-        #if function_args != None:
         if function_args != None:
             function_args = json.loads(function_args)
 

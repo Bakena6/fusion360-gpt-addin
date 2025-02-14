@@ -32,87 +32,6 @@ print(f"RELOADED: {__name__.split("%2F")[-1]}")
 
 
 
-class Sketches(ToolCollection):
-
-    #@ToolCollection.tool_call
-    def create_spline_in_sketch(self, component_name: str = "comp1", sketch_name: str = "Sketch1", point_list: list = [[0, 0, 0], [1, 1, 0], [2, 0, 0]]):
-        """
-        {
-          "name": "create_spline_in_sketch",
-          "description": "Creates a spline in a specified sketch within a specified component in Fusion 360. The spline is defined by an array of points (each an [x, y, z] coordinate in centimeters) that the spline will interpolate through. This function finds the target component and sketch, then constructs a fitted spline based on the provided points.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "component_name": {
-                "type": "string",
-                "description": "The name of the component in the current design."
-              },
-              "sketch_name": {
-                "type": "string",
-                "description": "The name of the sketch inside the specified component."
-              },
-              "point_list": {
-                "type": "array",
-                "items": {
-                  "type": "array",
-                  "items": {
-                    "type": "number"
-                  },
-                  "minItems": 3,
-                  "maxItems": 3,
-                  "description": "A list representing an XYZ point (x, y, z) on the sketch plane."
-                },
-                "description": "An array of points through which the spline will be drawn. The unit for point coordinates is centimeters."
-              }
-            },
-            "required": ["component_name", "sketch_name", "point_list"],
-            "returns": {
-              "type": "string",
-              "description": "A message indicating the success or failure of the spline creation."
-            }
-          }
-        }
-        """
-
-        try:
-            # If point_list is passed as a JSON string, convert it to a list
-            if isinstance(point_list, str):
-                point_list = json.loads(point_list)
-
-            # Access the active Fusion 360 design
-            app = adsk.core.Application.get()
-            ui = app.userInterface
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            if not design:
-                return "Error: No active Fusion 360 design found."
-
-            root_comp = design.rootComponent
-
-            targetComponent, errors = self._find_component_by_name(component_name)
-            if not targetComponent:
-                return errors
-
-            targetSketch, errors = self._find_sketch_by_name(targetComponent, sketch_name)
-            if not targetSketch:
-                return errors
-
-            # Create an object collection for the spline points
-            points_collection = adsk.core.ObjectCollection.create()
-            for pt in point_list:
-                if len(pt) != 3:
-                    return "Error: Each point in point_list must have three coordinates (x, y, z)."
-                point3D = adsk.core.Point3D.create(pt[0], pt[1], pt[2])
-                points_collection.add(point3D)
-
-            # Create the spline in the sketch using the fitted spline method
-            spline = targetSketch.sketchCurves.sketchFittedSplines.add(points_collection)
-
-            return f"Spline created in sketch '{sketch_name}' of component '{component_name}'."
-        except Exception as e:
-            return f"Error: Failed to create spline in sketch: {e}"
-
-
-
 class ModifyObjects(ToolCollection):
 
     @ToolCollection.tool_call
@@ -444,7 +363,8 @@ class CreateObjects(ToolCollection):
 
                 new_bodies = self.object_creation_response(extrude_results)
 
-                results["Results"] = f"Success: Extruded {profile_collection.count} profiles by {extrude_distance} (startExtent={start_extent}, taper={taper_angle} with {operation_type}."
+                results["Results"] = f"Success: Extruded '{profile_collection.count}' profiles by '{extrude_distance}', startExtent={start_extent}, taper={taper_angle} with '{operation_type}'."
+
                 results["New BRepBodies"] = new_bodies
 
 
@@ -573,9 +493,6 @@ class CreateObjects(ToolCollection):
             # If no valid lines found, stop
             if profile_collection.count == 0:
                 return json.dumps(results)
-
-
-            #print(f"profile_collection: {profile_collection.count}, {profile_collection}")
 
              #Create the extrude input
             ext_input = extrudes.createInput(
@@ -709,10 +626,21 @@ class CreateObjects(ToolCollection):
             angleVal = adsk.core.ValueInput.createByString(f"{revolve_degrees} deg")
             rev_input.setAngleExtent(False, angleVal)
 
+
             try:
-                revolve_feats.add(rev_input)
-                return (f"Revolved profiles in sketch '{sketch.name}' by "
-                        f"{revolve_degrees} degrees using {operation_type}.")
+                revolve_result = revolve_feats.add(rev_input)
+
+                new_objects = self.object_creation_response(revolve_result)
+
+                results = {}
+                msg = f"Revolved profiles in sketch '{targetSketch.name}' by '{revolve_degrees}' degrees using '{operation_type}'."
+
+                results["Message"] = msg
+                results["Objects"] = new_objects
+
+                return json.dumps(results)
+
+
             except Exception as e:
                 return f"Error creating revolve: {e}"
 
