@@ -22,7 +22,7 @@ from ... import config
 from ...lib import fusion360utils as futil
 
 # send info to html palette
-from .shared import ToolCollection 
+from .shared import ToolCollection
 
 def print(string):
     """redefine print for fusion env"""

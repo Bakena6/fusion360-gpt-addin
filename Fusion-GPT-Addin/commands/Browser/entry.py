@@ -28,7 +28,7 @@ import importlib
 
 # custom modules
 #from ...lib.sutil import fusion_interface, gpt_client
-from ...lib.sutil import gpt_client
+from ...f_interface import gpt_client
 
 app = adsk.core.Application.get()
 ui = app.userInterface
@@ -71,7 +71,6 @@ ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resource
 
 # Holds references to event handlers
 local_handlers = []
-
 
 def print(string):
     """redefine print for fusion env"""
@@ -140,6 +139,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
 
 # connects to Assistant Interface running on external process
+# server interface
 server_itf = gpt_client.GptClient()
 
 def command_execute(args: adsk.core.CommandEventArgs):
@@ -173,13 +173,10 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
     server_itf.reload_interface()
 
-
-
 # Use this to handle a user closing your palette.
 def palette_closed(args: adsk.core.UserInterfaceGeneralEventArgs):
     # General logging for debug.
     futil.log(f'{CMD_NAME}: Palette was closed.')
-
 
 # Use this to handle a user navigating to a new page in your palette.
 def palette_navigating(args: adsk.core.NavigationEventArgs):
@@ -233,31 +230,12 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
     elif message_action == "upload_tools":
         server_itf.upload_tools()
 
-
-    elif message_action == "start_record":
-        server_itf.start_record()
-        html_args.returnData = ""
-
-    elif message_action == "stop_record":
-        audio_text = server_itf.stop_record()
-        #audio_text = {"audio_text": audio_text["content"]}
-        html_args.returnData = json.dumps(audio_text)
-
-
-    elif message_action == "get_tools":
-        """
-        get available tools, display in window
-        """
-        methods = server_itf.fusion_itf.get_tools()
-        html_args.returnData = json.dumps(methods)
-
-    elif message_action == "reconnect":
-        server_itf.connect()
-        html_args.returnData = ""
-
+    elif message_action == "submit_prompt":
+        prompt_text = message_data['promptText']
+        if prompt_text != "":
+            server_itf.send_message(prompt_text)
 
     elif message_action == "execute_tool_call":
-
         #server_itf.reload_interface()
         function_name = message_data["function_name"]
         function_args = message_data["function_args"]
@@ -270,15 +248,33 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
 
         if callable(method):
             result = method(**function_args)
-
         html_args.returnData = ""
 
+    elif message_action == "start_record":
+        server_itf.start_record()
+        html_args.returnData = ""
 
-    elif message_action == "submit_prompt":
+    elif message_action == "stop_record":
+        audio_text = server_itf.stop_record()
+        #audio_text = {"audio_text": audio_text["content"]}
+        html_args.returnData = json.dumps(audio_text)
 
-        prompt_text = message_data['promptText']
-        if prompt_text != "":
-            server_itf.send_message(prompt_text)
+    elif message_action == "get_tools":
+        """
+        get available tools, display in window
+        """
+        methods = server_itf.fusion_itf.get_tools()
+        html_args.returnData = json.dumps(methods)
+
+    elif message_action == "reconnect":
+        server_itf.connect()
+        html_args.returnData = ""
+
+    elif message_action == "reset_all":
+        server_itf.reload_modules()
+        server_itf.reload_fusion_intf()
+        html_args.returnData = ""
+
 
 
 

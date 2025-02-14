@@ -20,7 +20,6 @@ import re
 
 from ... import config
 from ...lib import fusion360utils as futil
-
 from .shared import ToolCollection
 
 def print(string):
@@ -28,8 +27,6 @@ def print(string):
     futil.log(str(string))
 
 print(f"RELOADED: {__name__.split("%2F")[-1]}")
-
-
 
 
 class ModifyObjects(ToolCollection):

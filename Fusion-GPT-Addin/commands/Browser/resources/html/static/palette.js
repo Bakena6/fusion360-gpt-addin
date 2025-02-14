@@ -1,7 +1,5 @@
 
 
-
-
 class Thread {
     /*
      * Assistant thread class
@@ -9,22 +7,26 @@ class Thread {
      */
 
     constructor(){
-
-        this.textArea = document.getElementById('promptTextInput');
-
+        //this.textArea = document.getElementById('promptTextInput');
+        this.promptTextInput = document.getElementById('promptTextInput');
         // current run
         this.runId = null;
 
         // track number of function text boxes created
         this.nFunction  = 0;
+
     };
+
+
+
+
+
 
     connect() {
         const args = {  };
         adsk.fusionSendData("connect", JSON.stringify(args))
             .then((result) =>{ }); // end then
     } //end connect
-
 
     createThread() {
 
@@ -45,8 +47,8 @@ class Thread {
 
     submitPrompt() {
         // user input text
-        var textArea = document.getElementById('promptTextInput');
-        var value = textArea.value;
+        //var textArea = document.getElementById('promptTextInput');
+        var value = promptTextInput.value;
 
         const args = { promptText: value };
         // Send the data to Fusion as a JSON string. The return value is a Promise.
@@ -62,7 +64,7 @@ class Thread {
      */
     runCreated(data){
         // user input text
-        var promptTextInput = document.getElementById('promptTextInput');
+        //var promptTextInput = document.getElementById('promptTextInput');
         var value = promptTextInput.value;
 
         // created with initial prompt response
@@ -91,13 +93,15 @@ class Thread {
         };
         buttonContainer.appendChild(copyButton);
 
-        //var showHideButton = document.createElement('button');
-        //showHideButton.textContent = 'Show/Hide Section';
-        //showHideButton.className = 'log-button';
-        //showHideButton.onclick = function() {
-        //    navigator.clipboard.writeText(value);
-        //};
-        //buttonContainer.appendChild(showHideButton);
+        var showHideButton = document.createElement('button');
+        showHideButton.textContent = 'Show/Hide Section';
+        showHideButton.className = 'log-button';
+
+        showHideButton.onclick = function() {
+            runContainer.style.display = "none;";
+        };
+
+        buttonContainer.appendChild(showHideButton);
 
         runContainer.appendChild(buttonContainer);
         
@@ -254,8 +258,6 @@ class Thread {
 
 
 
-let thread = new Thread();
-
 
 
 
@@ -269,7 +271,6 @@ function executeToolCall(function_name) {
     for (let i=0; i < functionArgInputs.length; i++) {
         const name = functionArgInputs[i].name;
         const val = functionArgInputs[i].value;
-        //console.log(val);
         function_args[name] = JSON.parse(val);
     };
 
@@ -284,20 +285,16 @@ function executeToolCall(function_name) {
 
 function setWindowHeight() {
 
-    let outputContainer = document.getElementById('outputContainer');
-    let toolTestContainer = document.getElementById('toolTestContainer');
+    let pageContent = document.getElementById('pageContent');
+    //let toolTestContainer = document.getElementById('toolTestContainer');
+    let tabContent = document.getElementById('tabContainer');
     let inputContainer = document.getElementById('inputContainer');
 
-    let outputHeight = outputContainer.offsetHeight;
-    let toolTestHeight = toolTestContainer.offsetHeight;
-    let inputHeight = inputContainer.offsetHeight;
+    let tabContentHeight= tabContent.offsetHeight;
+    let inputContainerHeight = inputContainer.offsetHeight;
 
-    //console.log("Current outputContainer height:", outputHeight);
-    //console.log("Current toolTestContainer height:", toolTestHeight);
-    //console.log("Current inputContainer height:", inputHeight);
-
-    let newOutputHeight = window.innerHeight - (inputHeight + toolTestHeight +5) ;
-    outputContainer.style.height = `${newOutputHeight}px`;
+    let newOutputHeight = window.innerHeight - (tabContentHeight + inputContainerHeight +20) ;
+    pageContent.style.height = `${newOutputHeight}px`;
 
 
 } // end setWindowHeight
@@ -312,6 +309,13 @@ class Control{
 
         this.textArea = document.getElementById('promptTextInput');
 
+        this.pageContent = document.getElementById('pageContent');
+        //let toolTestContainer = document.getElementById('toolTestContainer');
+        this.tabContent = document.getElementById('tabContainer');
+        this.inputContainer = document.getElementById('inputContainer');
+
+        this.outputContainer = document.getElementById('outputContainer');
+        this.toolTestContainer = document.getElementById('toolTestContainer');
 
         // Listen for the window resize event
         window.addEventListener('resize', function() {
@@ -320,39 +324,71 @@ class Control{
             // e.g., update a span with the height, etc.
         });
 
-
         this.display_tools = false;
-        window.addEventListener('load', (event) => {
-          // Your code to execute after the page loads
-            setWindowHeight();
 
+        
+      // Your code to execute after the page loads
+        setWindowHeight();
+        //this.toggleTools();
+
+        this.textArea.addEventListener('keydown', function(event) {
+          if (event.key === 'Enter') {
+            event.preventDefault(); // Prevent the default action (form submission)
+            this.value += '*'; // Add an asterisk to the input field
+          }
 
         });
 
+   
+        //
         //this.createToolElements();
         this.tools = [];
 
 
-    //this.toolsContainer();
+
     }; // end constructor
 
 
-
-    //async loadTools(){ };
-
      async toggleTools() {
-
          if (this.tools.length == 0){
             this.tools = await this.getTools();
             this.createToolElements();
-        } else{
-
-            this.showHideElement("toolTestContainer");
         };
 
-        setWindowHeight();
-
     } // end hide tools
+
+
+    /*
+     * change tab
+    * */
+    changeTab(tabIndex){
+
+        let tabs  = document.querySelectorAll(".contentTab");
+        let tabButtons = document.querySelectorAll(".tab-button");
+
+        for (let i=0; i < tabs.length; i++) {
+
+            let element = tabs[i];
+            let buttonElement = tabButtons[i];
+
+            if (i == tabIndex) {
+                element.style.display = "block"; 
+
+                buttonElement.style.backgroundColor = "pink"; 
+                this.toggleTools();
+
+            } else {
+                element.style.display = "none"; 
+                buttonElement.style.backgroundColor = "white"; 
+
+            }; //end if
+
+
+        };// end for
+
+    }; // end showHideElement
+
+
 
 
     showHideElement(elementId){
@@ -426,6 +462,7 @@ class Control{
                 this.get_current_cb_val();
             }); // end then
     };
+
     reloadFusionIntf(){
         const args = { };
         // include current checkbox settings
@@ -435,6 +472,12 @@ class Control{
             }); // end then
     };
 
+    resetAll(){
+        const args = { };
+        this.outputContainer.innerHTML = ""
+        this.toolTestContainer.innerHTML = ""
+        adsk.fusionSendData("reset_all", JSON.stringify(args)) .then((result) =>{ }); // end then
+    };
 
     reconnect(){
         const args = { };
@@ -442,7 +485,6 @@ class Control{
         adsk.fusionSendData("reconnect", JSON.stringify(args))
             .then((result) =>{ }); // end then
     };
-
 
 
     createToolElements() {
@@ -453,7 +495,6 @@ class Control{
         // class name, methods
 
         for (const [c_name, methods] of Object.entries(this.tools)) {
-
 
             // methods
             // top class container
@@ -566,7 +607,7 @@ class Control{
         }// end for
 
 
-        toolTestContainer.style.height = '50%';
+        //toolTestContainer.style.height = '100%';
 
         setWindowHeight();
 
@@ -602,7 +643,6 @@ class Control{
 
                     let response = JSON.parse(result);
                     let audio_text = response["content"];
-                    console.log(audio_text)
 
                     var promptTextInput = document.getElementById('promptTextInput');
                     promptTextInput.value = promptTextInput.value + " " + audio_text;
@@ -611,11 +651,7 @@ class Control{
 
 
         }; // end else
-
-
     }; // end start record
-
-
 
     resizeInput(input) {
         input.style.width = (5 +input.value.length) + "ch"; // Adjust multiplier for better spacing
@@ -629,15 +665,26 @@ class Control{
 
 
 function send_cp_val(cb_event){
-
     const args = {
         "setting_name": cb_event.target.id,
         "setting_val": cb_event.target.checked
     };
-
     adsk.fusionSendData("cb_change", JSON.stringify(args))
         .then((result) =>{ });
 };
+
+
+function update_text_size(event){
+
+    const fontSize = event.target.value;
+    //console.log(event.target.value);
+
+    const promptText = document.querySelector('#promptTextInput');
+    promptText.style.fontSize = fontSize;
+    setWindowHeight();
+
+};
+
 
 
 
@@ -649,22 +696,34 @@ window.addEventListener('load', (event) => {
     //debugCb = document.getElementById('debugCb');
 
     const settingCbs = document.querySelectorAll('.settingCb');
-
     settingCbs.forEach(cb => {
-
         cb.addEventListener("change", (cb_event) => send_cp_val(cb_event));
-
     }); // end for each
 
-
-
-
+    const textSizeInput = document.getElementById('textSizeInput');
+    textSizeInput.addEventListener("change", (event) => update_text_size(event));
 
 });
 
 
 
-let control = new Control();
+
+
+let thread;
+let control;
+window.addEventListener('load', (event) => { 
+
+    thread = new Thread();
+
+    control = new Control();
+
+});// end window on load
+
+
+
+
+
+
 
 
 

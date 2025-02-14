@@ -57,7 +57,7 @@ body {
  */
 /* reverse scrolling output container */
 .output-container {
-    height: 500px;
+    height: 100%;
     display: flex;
     width: auto;
     overflow: auto;
@@ -78,14 +78,19 @@ body {
     background-color: #1c1c1c;
  */
 
+/* 
+ * show hide methods
+ *
+ *
+ *
+ */
 #toolTestContainer{
     display: flex;
+    height: 100%;
     width: auto;
     overflow: auto;
     flex-direction: column;
     margin: 0px;
-    height: 0px;
-    padding-top: 5px;
     padding-left: 0px;
     padding-left: 0px;
 }
@@ -233,6 +238,13 @@ body {
 }
 
 
+
+
+/*
+ *
+ *input
+ *
+ * */
 #inputContainer {
     height: auto;
     width: auto;
@@ -245,6 +257,10 @@ body {
     background-color: #262626; /* background gray*/
 }
 
+
+#textSizeInput{
+    width: 50px;
+}
 
 #promptTextInput{
     padding: 10px;
@@ -397,6 +413,52 @@ body {
     font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
 
 }
+
+
+
+#pageContent{
+    height: auto;
+    border: 2px solid cyan;
+    background-color: #303030;
+    border-radius: 0px;
+
+    margin-right: 10px;
+    margin-left: 10px;
+
+    box-sizing: border-box;
+}
+
+
+
+
+#tabContainer{
+    height: auto;
+    border: 1px solid cyan;
+    background-color: #303030;
+    border-radius: 0px;
+    box-sizing: border-box;
+    margin-bottom: 10px;
+}
+
+.tab-button{
+
+    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
+    border: 2px solid pink;
+    font-size: 14px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    width: 200px;
+
+
+}
+
+
+
+
+
+
+
+
 
 
 

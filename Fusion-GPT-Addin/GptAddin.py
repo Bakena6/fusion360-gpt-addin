@@ -10,11 +10,8 @@ def print(string):
     futil.log(str(string))
 
 dirname = os.path.dirname(__file__)
-#lib_path= os.path.dirname(dirname)
-
 
 from . import commands
-
 def run(context):
     try:
         # Display a message when the add-in is manually run.

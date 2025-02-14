@@ -1,3 +1,5 @@
+
+
 import adsk.core
 import adsk.fusion
 import adsk.cam
@@ -12,13 +14,13 @@ from multiprocessing.connection import Client
 from array import array
 import time
 import functools
-from ... import config
-from ...lib import fusion360utils as futil
+
+from .. import config
+from ..lib import fusion360utils as futil
 
 from . import fusion_interface
 
-import asyncio
-
+#import asyncio
 
 def print(string):
     """redefine print for fusion env"""
@@ -29,7 +31,10 @@ print(f"RELOADED: {__name__.split("%2F")[-1]}")
 
 class GptClient:
     """
+    Instantiated in entry.py
+
     connects to command server running on seperate process
+
     """
     def __init__(self):
         """
@@ -103,7 +108,7 @@ class GptClient:
         #importlib.reload(fusion_interface)
         self.fusion_itf._reload_modules()
         self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
-        print("Modules Reloded")
+        print("Modules Reloaded")
 
     def reload_fusion_intf(self):
         importlib.reload(fusion_interface)
