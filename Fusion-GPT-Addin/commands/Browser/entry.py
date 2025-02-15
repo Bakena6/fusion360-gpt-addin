@@ -244,11 +244,14 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
         if isinstance(function_args, str):
             function_args = json.loads(function_args)
 
-        method = getattr(server_itf.fusion_itf, function_name, None)
+        print(f"function_name: {type(function_name)}")
+        print(f"function_args: {type(function_args)}")
 
+        method = getattr(server_itf.fusion_itf, function_name, None)
         if callable(method):
             result = method(**function_args)
         html_args.returnData = ""
+
 
     elif message_action == "start_record":
         server_itf.start_record()

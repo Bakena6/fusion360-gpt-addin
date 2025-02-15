@@ -190,7 +190,6 @@ class Assistant:
 
         #print(updated_assistant)
 
-
     def start_thread(self):
         """
         start thread (conversation) with Assistant API
@@ -204,7 +203,6 @@ class Assistant:
         self.run_steps = None
         self.thread_started = True
         print(f'Thread created: {self.thread.id}')
-
 
 
     def start_server(self):
@@ -269,6 +267,8 @@ class Assistant:
                         for event in self.stream:
                             event_type = event.event
                             print(event_type)
+                            #print(event.data)
+                            #print("------")
                             thread_start = 0
 
                             data = event.data
@@ -311,8 +311,6 @@ class Assistant:
                             elif event_type == "thread.run.step.created":
                                 step_type = data.type
 
-                                print(f"step_type: {step_type}")
-
                                 step_details = data.step_details
 
                                 content = {
@@ -335,7 +333,6 @@ class Assistant:
 
 
                             elif event_type == "thread.message.delta":
-
                                 delta_text = event.data.delta.content[0].text.value
                                 message_id = event.data.id
 
@@ -354,12 +351,19 @@ class Assistant:
 
 
                             elif event_type == "thread.run.step.delta":
+
                                 try:
+                                    #print(event.data.delta.step_details)
                                     function = event.data.delta.step_details.tool_calls[0].function
+
+                                    # tool call is not None on first delta  
+                                    tool_call_id = event.data.delta.step_details.tool_calls[0].id
+
                                     tool_call_len = len(event.data.delta.step_details.tool_calls)
+
                                     if tool_call_len != 1:
                                         print( event.data.delta.step_details.tool_calls)
-                                        print("CHECK TOOL CALL LEN\n\n\n")
+                                        print("CHECK TOOL CALL LEN\n\n\n\n\n")
                                         return
 
                                 except Exception as e:
@@ -367,8 +371,12 @@ class Assistant:
                                     continue
 
                                 step_id = event.data.id
+
+                                #tool_call_id = event.data.id
+
                                 content = {
                                     "step_id": step_id,
+                                    "tool_call_id": tool_call_id,
                                     "function_name": function.name,
                                     "function_args": function.arguments,
                                     "function_output": function.output,
@@ -398,8 +406,8 @@ class Assistant:
                                 # return data for all tool calls in a step
                                 tool_call_results = []
                                 for tool_call in tool_calls:
-                                    #tool_call_status
 
+                                    tool_call_id = tool_call.id
                                     function_name = tool_call.function.name
                                     function_args = tool_call.function.arguments
 
@@ -411,6 +419,7 @@ class Assistant:
                                         "run_status": self.run.status,
                                         "response_type": "tool_call",
                                         "event": event_type,
+                                        "tool_call_id": tool_call_id,
                                         "function_name": function_name,
                                         "function_args": function_args,
                                     }
@@ -442,6 +451,7 @@ class Assistant:
                                 try:
                                     function = step_details.tool_calls[0].function
                                 except Exception as e:
+                                    print(f"Error: thread.run.step.completed: {e}")
                                     continue
 
                                 step_id = event.data.id
@@ -475,8 +485,6 @@ class Assistant:
                                 }
 
                                 conn.send(json.dumps(fusion_call))
-
-
 
 
     def add_message(self, message_text: str):

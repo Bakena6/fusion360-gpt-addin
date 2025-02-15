@@ -2110,11 +2110,10 @@ class SetStateData(ToolCollection):
                 try:
                     # This tries a direct call with *arguments
                     try:
+
                         method_ret_val = method(*parsed_arguments)
 
                     except Exception as e:
-
-
                         method_doc = method.__doc__.replace("    ", "").replace("\n", " ")
 
                         ret_val = f"Error: Method call '{method_name}' on object '{entity_type}' with arguments '{arguments}' failed:  {str(e).replace('\t', ' ')}. Method docstring: {method_doc}"
@@ -2165,7 +2164,7 @@ class SetStateData(ToolCollection):
 
 
                 except Exception as e:
-                    ret_val = f"Error: '{e}' for method '{method_name}'" + traceback.format_exc()
+                    ret_val = f"Error: '{e}' for method '{method_name}'"
 
 
             # Return as JSON

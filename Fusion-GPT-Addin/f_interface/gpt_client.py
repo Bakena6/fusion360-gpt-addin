@@ -118,7 +118,6 @@ class GptClient:
 
 
     def reload_interface(self):
-
         self.connected = False
         self.palette = self.ui.palettes.itemById(self.PALETTE_ID)
         importlib.reload(fusion_interface)
@@ -135,8 +134,9 @@ class GptClient:
         self.connected = True;
         #print(self.conn)
 
-
     def sendToBrowser(self, function_name, data):
+        """send event data to js"""
+
         json_data = json.dumps(data)
         # create run output section in html
         self.palette.sendInfoToHTML(function_name, json_data)
@@ -174,7 +174,7 @@ class GptClient:
         message_confirmation = self.conn.send(message)
         print(f"MESSAGE SENT,  waiting for result...")
 
-        # continue to run as loong thread is open
+        # continue to run as long thread is open
         run_complete = False
         while run_complete == False:
 
@@ -210,9 +210,11 @@ class GptClient:
             # TODO, use event type not response type
             elif response_type == "tool_call":
 
+                tool_call_id = api_result["tool_call_id"]
                 function_name = api_result["function_name"]
                 function_args = api_result["function_args"]
-                function_result = self.call_function(function_name, function_args)
+
+                function_result = self.call_function(function_name, function_args, tool_call_id)
 
                 message = {"message_type": "thread_update", "content": function_result}
                 message = json.dumps(message)
@@ -228,36 +230,47 @@ class GptClient:
         return api_result
 
 
-    def call_function(self, name, function_args):
+    def call_function(self, function_name, function_args, tool_call_id):
         """
-        call function passed from Assistants API
+        called from Assistants API
+        calls function passed from Assistants API
         """
+        print(f"function_name: {type(function_name)}")
+        print(f"function_args: {type(function_args)}")
 
-
+        # TODO make this better
         if function_args == "":
             function_args = None
 
         if function_args != None:
             function_args = json.loads(function_args)
 
-        print(f"CALL FUNCTION: {name}, {function_args}")
+        print(f"CALL FUNCTION: {function_name}, {function_args}, {tool_call_id}")
 
         # check of FusionInterface inst has requested method
-        function = getattr(self.fusion_itf, name, None )
+        function = getattr(self.fusion_itf, function_name, None)
 
         if callable(function):
             if function_args == None:
                 result = function()
             else:
                 result = function(**function_args)
-
         else:
             result = ""
 
-        if "Error:" in result:
-            print(result)
+        # send functoin response to js/html
+        if tool_call_id != None:
+
+            message_data = {
+                "tool_call_id": tool_call_id,
+                "function_result": result
+            }
+
+            self.sendToBrowser("toolCallResponse", message_data)
 
 
+
+        # return function result to Assistant API
         return result
 
 

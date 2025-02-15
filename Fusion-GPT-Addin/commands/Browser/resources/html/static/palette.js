@@ -7,7 +7,6 @@ class Thread {
      */
 
     constructor(){
-        //this.textArea = document.getElementById('promptTextInput');
         this.promptTextInput = document.getElementById('promptTextInput');
         // current run
         this.runId = null;
@@ -16,9 +15,6 @@ class Thread {
         this.nFunction  = 0;
 
     };
-
-
-
 
 
 
@@ -47,7 +43,6 @@ class Thread {
 
     submitPrompt() {
         // user input text
-        //var textArea = document.getElementById('promptTextInput');
         var value = promptTextInput.value;
 
         const args = { promptText: value };
@@ -62,6 +57,25 @@ class Thread {
     /*
      * run created event
      */
+
+
+    toggleSectionVis(event, elementId){
+
+        console.log("toggle section vis");
+        let button = event.target;
+        let element = document.getElementById(elementId);
+
+        if (element.style.display === "none") {
+            element.style.display = "block"; 
+            button.textContent = "Hide";
+        } else {
+            element.style.display = "none"; 
+            button.textContent = "Show";
+        } // end if else
+
+    };
+
+
     runCreated(data){
         // user input text
         //var promptTextInput = document.getElementById('promptTextInput');
@@ -79,118 +93,140 @@ class Thread {
         var runIdSpan = document.createElement('span');
         runIdSpan.textContent = `run: ${runId}`;
         runIdSpan.className = "span-info";
-        runContainer.appendChild(runIdSpan);
-
 
         var buttonContainer = document.createElement('span');
         buttonContainer.className = 'button-container'; // Add class for flexbox styling
-
-        var copyButton = document.createElement('button');
-        copyButton.textContent = 'Copy Prompt';
-        copyButton.className = 'log-button';
-        copyButton.onclick = function() {
-            navigator.clipboard.writeText(value);
-        };
-        buttonContainer.appendChild(copyButton);
+        
+        // contains message and tool call responses
+        var responseContainer = document.createElement('div');
+        responseContainer.className = `response-container`;
+        responseContainer.id = `response_${runId}`;
 
         var showHideButton = document.createElement('button');
-        showHideButton.textContent = 'Show/Hide Section';
-        showHideButton.className = 'log-button';
-
-        showHideButton.onclick = function() {
-            runContainer.style.display = "none;";
-        };
+        showHideButton.textContent = "Show/Hide Section";
+        showHideButton.className = "log-button ";
+        showHideButton.onclick = (event) =>{this.toggleSectionVis(event, responseContainer.id)};
 
         buttonContainer.appendChild(showHideButton);
 
+        //var copyButton = document.createElement('button');
+        //copyButton.textContent = 'Copy Prompt';
+        //copyButton.className = 'log-button';
+        //copyButton.onclick = function() {
+        //    navigator.clipboard.writeText(value);
+        //};
+        //buttonContainer.appendChild(copyButton);
+
         runContainer.appendChild(buttonContainer);
-        
+
+        runContainer.appendChild(runIdSpan);
+
+
         // Create the first child div for the text and the copy button
         var userText = document.createElement('div');
         userText.className = 'user-text'; // Add class for flexbox styling
         userText.textContent = value;
         runContainer.appendChild(userText);
-
+        runContainer.appendChild(responseContainer);
 
         // Get the container and the button row
         var container = document.querySelector('.output-container');
-
+        
         // Insert the new div after the button row
-        //container.insertBefore(runContainer, promptTextInput);
         container.prepend(runContainer);
 
         // Optional: Clear the textarea after submitting
         promptTextInput.value = '';
-    }// end create run
+
+    }// end runCreated
 
     /*
-     *  display streaming output from OpenAI assistant api
+     *  step created
      */
     stepCreated(data){
-        let runId = data.run_id;
-        var runContainer = document.getElementById(runId);
+        var runId = data.run_id;
+
+        //var runContainer = document.getElementById(runId);
+        var responseContainer = document.getElementById(`response_${runId}`);
+
         var eventType = data.event;
         
         // tool calls or message created
         var stepType = data.step_type;
-
+        var stepId = data.step_id;
+        
         // container for message/ tool call response
         var stepContainer = document.createElement('div');
         stepContainer.className = "step-container";
         stepContainer.id = stepType;
 
+
         // step type and id info
-        var idSpan = document.createElement('div');
+        var idSpan = document.createElement('span');
         idSpan.className = "span-info";
-        idSpan.innerHTML = `${stepType}: ${data.step_id}`;
+        idSpan.innerHTML = `${stepType}: ${stepId}`;
+
+        var toggleContainerId = `message_step__${stepId}`;
+        
+        var showHideButton = document.createElement('button');
+        showHideButton.textContent = "Show/Hide Step";
+        showHideButton.className = "log-button";
+        showHideButton.onclick = (event) =>{this.toggleSectionVis(event, toggleContainerId)};
+        stepContainer.appendChild(showHideButton);
         stepContainer.appendChild(idSpan);
+       
 
         // start message
         if (stepType == "message_creation"){
             this.messageContainer = document.createElement('span');
             this.messageContainer.className = "message-container";
+            this.messageContainer.id = toggleContainerId;
             stepContainer.appendChild(this.messageContainer);
 
             // start toolcalls
         } else if ( stepType == "tool_calls"){
-
             this.toolContainer = document.createElement('div');
             this.toolContainer.className = "tool-container";
+            this.toolContainer.id = toggleContainerId;
             stepContainer.appendChild(this.toolContainer);
 
         }// end if
 
 
-        runContainer.appendChild(stepContainer);
+        //runContainer.appendChild(stepContainer);
+        responseContainer.appendChild(stepContainer);
 
-    }// end create message
+    }// end stepCreated
 
 
     /*
-     *  display streaming output from OpenAI assistant api
+     *  step created
      */
     messageCreated(data){
         //this.messageContainer.textContent = this.messageSpan.textContent + content;
-    }// end update message
+
+    }// end messageCreated
 
 
     /*
-     *  display streaming output from OpenAI assistant api
+     *  display streaming output from OpenAI assistant API, message
      */
     messageDelta(data){
         let content = data.message;
         this.messageContainer.textContent = this.messageContainer.textContent + content;
-    }// end update message
 
+    }// end messageDelta
 
     /*
-     *  display streaming output from OpenAI assistant api toolcall
+     *  display streaming output from OpenAI assistant API, toolcall
      */
     stepDelta(data){
 
         let content;
-
         var function_name = data.function_name;
+
+        var tool_call_id = data.tool_call_id;
+
         var function_args = data.function_args;
         var function_output = data.function_output;
 
@@ -198,10 +234,11 @@ class Thread {
         if (function_name != null){
 
             var functionContainer = document.createElement('div');
-            var functionNameEl = document.createElement('span');
+            functionContainer.className = "function-container";
 
-            functionNameEl.className = "function-name";
-            functionNameEl.textContent= `${function_name}`;
+            //var functionNameEl = document.createElement('span');
+            //functionNameEl.className = "function-name";
+            //functionNameEl.textContent= `${function_name}`;
 
             // keep function body
             this.nFunction += 1;
@@ -213,12 +250,12 @@ class Thread {
             functionArgsEl.rows = 1;
             this.functionArgsEl = functionArgsEl;
 
-            var runFunctionBotton = document.createElement('button');
-            runFunctionBotton.textContent = 'Run Function';
-            runFunctionBotton.className = "log-button";
+            var runFunctionButton = document.createElement('button');
+            runFunctionButton.textContent = `${function_name}`;
+            runFunctionButton.className = "function-name";
 
             // re run the function call
-            runFunctionBotton.onclick = function() {
+            runFunctionButton.onclick = function() {
                 var functionArgs = document.getElementById(functionArgsId);
                 var args = {
                     "function_name": function_name,
@@ -228,10 +265,20 @@ class Thread {
                     .then((result) =>{ }); // end then
             };// end click
 
-            functionContainer.appendChild(functionNameEl);
-            functionContainer.appendChild(runFunctionBotton);
+
+            //functionContainer.appendChild(functionNameEl);
+            functionContainer.appendChild(runFunctionButton);
+
+            if (tool_call_id != null){
+                var idSpan = document.createElement("div");
+                idSpan.className = "span-info";
+                idSpan.innerHTML = `tool_call: ${tool_call_id}`;
+                functionContainer.appendChild(idSpan);
+            };
+
             functionContainer.appendChild(functionArgsEl);
 
+            this.functionContainer = functionContainer;
             this.toolContainer.appendChild(functionContainer);
 
 
@@ -250,15 +297,45 @@ class Thread {
             content = `${function_output}`;
         };
 
+    } // end stepDelta
 
-    } // end update message
+
+    /*
+     *  display competed tool call result
+     */
+    toolCallResponse(data){
+
+
+        var tool_call_id = data.tool_call_id;
+        var function_result = data.function_result;
+
+        var functionResults = document.createElement('div');
+        functionResults.className = "function-results";
+        functionResults.id = `result__${tool_call_id}`;
+
+        var showHideButton = document.createElement('button');
+        showHideButton.textContent = "Show/Hide Section";
+        showHideButton.className = "log-button";
+        showHideButton.onclick = (event) =>{this.toggleSectionVis(event, functionResults.id )};
+
+
+        functionResults.textContent = function_result;
+
+        var idSpan = document.createElement("div");
+        idSpan.className = "span-info";
+        idSpan.innerHTML = `tool_call: ${tool_call_id}`;
+
+        this.functionContainer.appendChild(showHideButton);
+        this.functionContainer.appendChild(idSpan);
+        this.functionContainer.appendChild(functionResults);
+
+
+
+    }// end toolCallResponse
+
 
 
 } // end thread
-
-
-
-
 
 
 
@@ -283,17 +360,22 @@ function executeToolCall(function_name) {
 } // end executeToolCall
 
 
+
 function setWindowHeight() {
 
+    let tabContainer = document.getElementById('tabContainer');
     let pageContent = document.getElementById('pageContent');
-    //let toolTestContainer = document.getElementById('toolTestContainer');
-    let tabContent = document.getElementById('tabContainer');
+    //
+
+    let toolTestContainer = document.getElementById('toolTestContainer');
     let inputContainer = document.getElementById('inputContainer');
+    let consoleOutput = document.getElementById('consoleOutput');
 
-    let tabContentHeight= tabContent.offsetHeight;
+    let tabContainerHeight = tabContainer.offsetHeight;
     let inputContainerHeight = inputContainer.offsetHeight;
+    let consoleOutputHeight = consoleOutput.offsetHeight;
 
-    let newOutputHeight = window.innerHeight - (tabContentHeight + inputContainerHeight +20) ;
+    let newOutputHeight = window.innerHeight - (tabContainerHeight + inputContainerHeight + consoleOutputHeight +20) ;
     pageContent.style.height = `${newOutputHeight}px`;
 
 
@@ -305,9 +387,11 @@ function setWindowHeight() {
 
 class Control{
 
-    constructor(){
+    constructor(thread){
 
-        this.textArea = document.getElementById('promptTextInput');
+        this.thread = thread;
+        // input text area
+        this.promptTextArea = document.getElementById('promptTextInput');
 
         this.pageContent = document.getElementById('pageContent');
         //let toolTestContainer = document.getElementById('toolTestContainer');
@@ -317,36 +401,68 @@ class Control{
         this.outputContainer = document.getElementById('outputContainer');
         this.toolTestContainer = document.getElementById('toolTestContainer');
 
-        // Listen for the window resize event
-        window.addEventListener('resize', function() {
-            setWindowHeight();
-            // You can call other functions or update the DOM here
-            // e.g., update a span with the height, etc.
-        });
+        this.submitOnEnter = true;
 
-        this.display_tools = false;
 
-        
-      // Your code to execute after the page loads
-        setWindowHeight();
-        //this.toggleTools();
 
-        this.textArea.addEventListener('keydown', function(event) {
-          if (event.key === 'Enter') {
-            event.preventDefault(); // Prevent the default action (form submission)
-            this.value += '*'; // Add an asterisk to the input field
-          }
-
-        });
-
-   
-        //
         //this.createToolElements();
         this.tools = [];
 
+        this.connectInputs();
 
+        setWindowHeight();
 
     }; // end constructor
+
+
+     send_cp_val(cb_event){
+        const args = {
+            "setting_name": cb_event.target.id,
+            "setting_val": cb_event.target.checked
+        };
+        adsk.fusionSendData("cb_change", JSON.stringify(args))
+            .then((result) =>{ });
+    };
+
+
+    connectInputs(){
+        console.log("connectInputs");
+
+        //debugCb = document.getElementById('debugCb');
+
+        window.addEventListener("resize", (event) => {setWindowHeight()});
+
+        const settingCbs = document.querySelectorAll('.settingCb');
+        settingCbs.forEach(cb => {
+            cb.addEventListener("change", (cb_event) => this.send_cp_val(cb_event));
+        }); // end for each
+
+        // change prompt text size
+        const textSizeInput = document.getElementById('textSizeInput');
+        textSizeInput.addEventListener("change", (event) => {
+            const fontSize = event.target.value;
+            this.promptTextArea.style.fontSize = fontSize;
+            setWindowHeight();
+        });
+
+        const submitOnEnterInput = document.getElementById('submitOnEnter');
+        submitOnEnterInput.addEventListener("change", (event) => {
+            this.submitOnEnter = event.target.checked;
+            console.log(this.submitOnEnter);
+        });
+
+        // submit prompt on ender
+        this.promptTextArea.addEventListener('keydown', (event) => {
+            if ((event.key === 'Enter') && (this.submitOnEnter == true)){
+                event.preventDefault(); // Prevent the default action (form submission)
+                //this.promptTextArea.value += '*'; // Add an asterisk to the input field
+                this.thread.submitPrompt()
+            } // end if
+
+        });// end submit on enter 
+
+    }; // end connect inputs
+
 
 
      async toggleTools() {
@@ -374,21 +490,23 @@ class Control{
             if (i == tabIndex) {
                 element.style.display = "block"; 
 
-                buttonElement.style.backgroundColor = "pink"; 
+                buttonElement.style.backgroundColor = "#262626"; 
+                buttonElement.style.color = "magenta"; 
                 this.toggleTools();
 
             } else {
                 element.style.display = "none"; 
-                buttonElement.style.backgroundColor = "white"; 
+
+                buttonElement.style.color = "white"; 
+                buttonElement.style.backgroundColor = "#878787"; 
 
             }; //end if
 
+        setWindowHeight();
 
         };// end for
 
     }; // end showHideElement
-
-
 
 
     showHideElement(elementId){
@@ -403,23 +521,12 @@ class Control{
     }; // end showHideElement
 
 
-
-
-
-
-
-
-
-
      uploadTools() {
         const args = { };
         // Send the data to Fusion as a JSON string. The return value is a Promise.
         adsk.fusionSendData("upload_tools", JSON.stringify(args))
             .then((result) =>{ }); // end then
     } // end uploadTools
-
-
-
 
     /*
     * get availible tool call from Python class
@@ -433,7 +540,6 @@ class Control{
          var resultJson = await JSON.parse(result);
 
         return resultJson;
-
 
     } // end reload
 
@@ -451,7 +557,6 @@ class Control{
         }); // end for each
 
     };// end get_current_cb
-
 
     reloadModules(){
         const args = { };
@@ -484,17 +589,16 @@ class Control{
         // Send the data to Fusion as a JSON string. The return value is a Promise.
         adsk.fusionSendData("reconnect", JSON.stringify(args))
             .then((result) =>{ }); // end then
-    };
-
+    }; // end reconnect
 
     createToolElements() {
-
         let toolTestContainer = document.getElementById('toolTestContainer');
         toolTestContainer.innerHTML = "";
         //let response = 
         // class name, methods
 
         for (const [c_name, methods] of Object.entries(this.tools)) {
+
 
             // methods
             // top class container
@@ -506,7 +610,6 @@ class Control{
             classSectionTitle.innerHTML = c_name;
             classSectionTitle.type = "button";
             classSectionTitle.className = "toolCallClassTitle";
-
 
             // all methods in a class
             const methodsContainer = document.createElement("div");
@@ -613,10 +716,7 @@ class Control{
 
     } // end getTools
 
-    //function
-
     record(){
-
         let recordButton = document.getElementById('recordButton');
         recordButton.style.backgroundColor = "gray";
         if ( recordButton.textContent == "Start Record"){
@@ -656,54 +756,12 @@ class Control{
     resizeInput(input) {
         input.style.width = (5 +input.value.length) + "ch"; // Adjust multiplier for better spacing
 
-
     } // end resize
 
 
 } // end control container
 
 
-
-function send_cp_val(cb_event){
-    const args = {
-        "setting_name": cb_event.target.id,
-        "setting_val": cb_event.target.checked
-    };
-    adsk.fusionSendData("cb_change", JSON.stringify(args))
-        .then((result) =>{ });
-};
-
-
-function update_text_size(event){
-
-    const fontSize = event.target.value;
-    //console.log(event.target.value);
-
-    const promptText = document.querySelector('#promptTextInput');
-    promptText.style.fontSize = fontSize;
-    setWindowHeight();
-
-};
-
-
-
-
-
-
-// settings check boxes
-window.addEventListener('load', (event) => {
-
-    //debugCb = document.getElementById('debugCb');
-
-    const settingCbs = document.querySelectorAll('.settingCb');
-    settingCbs.forEach(cb => {
-        cb.addEventListener("change", (cb_event) => send_cp_val(cb_event));
-    }); // end for each
-
-    const textSizeInput = document.getElementById('textSizeInput');
-    textSizeInput.addEventListener("change", (event) => update_text_size(event));
-
-});
 
 
 
@@ -715,11 +773,9 @@ window.addEventListener('load', (event) => {
 
     thread = new Thread();
 
-    control = new Control();
+    control = new Control(thread);
 
 });// end window on load
-
-
 
 
 
@@ -753,16 +809,23 @@ window.fusionJavaScriptHandler = {
             } else if (action === "stepDelta") {
                 thread.stepDelta(messageData);
 
+            } else if (action === "toolCallResponse") {
+                thread.toolCallResponse(messageData);
+            } else if (action === "print") {
+                console.log(messageData);
+
             } else if (action === "debugger") {
                 debugger;
+
             } else {
+
                 return `Unexpected command type: ${action}`;
             }
 
         } catch (e) {
             adsk.fusionSendData("error", JSON.stringify(e))
             console.log(e);
-            console.log(`Exception caught with command: ${action}, data: ${data}`);
+            console.log(`Exception caught with command: ${action}, data: ${messageData}`);
 
         }
         //return "OK";

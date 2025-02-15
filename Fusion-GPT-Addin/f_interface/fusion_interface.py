@@ -55,9 +55,6 @@ class FusionInterface:
     interface between Fusion360 api and OpenAI Assistant
     methonds in this class are made avilable to the OpenAI Assistants API
     via the GptClient class
-
-
-
     """
 
     def __init__(self, app, ui):
@@ -92,6 +89,7 @@ class FusionInterface:
         importlib.reload(transient_objects)
         importlib.reload(document_data)
         importlib.reload(cad_modeling)
+        importlib.reload(utilities)
 
     def update_settings(self, settings_dict ):
         ToolCollection.update(settings_dict)

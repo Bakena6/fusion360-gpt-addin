@@ -17,7 +17,8 @@
 
                 <button type="button" class="tab-button" onclick="control.changeTab(0)">Prompt Output</button>
                 <button type="button" class="tab-button" onclick="control.changeTab(1)">Tools</button>
-                <button type="button" class="tab-button" onclick="control.changeTab(2)">JSON Input</button>
+
+                <button type="button" class="tab-button" onclick="control.changeTab(2)">Console Output</button>
 
             </div>
 
@@ -25,10 +26,12 @@
             <div id="pageContent">
 
                 <div id="outputContainer" class="contentTab output-container"> 
-
                 </div>
 
                 <div id="toolTestContainer" class="contentTab" style="display:none;">
+                </div>
+
+                <div id="consoleContainer" class="contentTab" style="display:none;">
                 </div>
 
 
@@ -36,6 +39,10 @@
 
             <!--end input-container-->
 
+            <div id="consoleOutput">
+
+
+            </div>
 
 
 
@@ -63,15 +70,20 @@
                 </div>
                 <!-- end button row-->
 
-                <div class="button-row">
 
-                  <label for="logResults">Log Results</label>
+
+                <div class="input-row">
+
+                  <label for="log_results">Log Results:</label>
                   <input type="checkbox" id="log_results" class="settingCb" name="logResults" checked />
 
-                  <label for="logErrors">Log Errors</label>
+                  <label for="log_errors">Log Errors:</label>
                   <input type="checkbox" id="log_errors" class="settingCb"  name="logErrors" checked />
 
-                  <label for="Text Size">Text Size</label>
+                  <label for="submitOnEnter">Submit on Enter:</label>
+                  <input type="checkbox" id="submitOnEnter" class="cb"  name="submitOnEnter" checked />
+
+                  <label for="Text Size">Text Size:</label>
                   <input type="number" value=20 id="textSizeInput" class="textSizeInput" name="textSize" />
 
                 </div>

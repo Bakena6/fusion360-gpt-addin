@@ -232,8 +232,6 @@ class ModifyObjects(ToolCollection):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-
-
 class CreateObjects(ToolCollection):
 
     @ToolCollection.tool_call
