@@ -20,6 +20,7 @@ from ..lib import fusion360utils as futil
 
 from . import fusion_interface
 
+import time
 #import asyncio
 
 def print(string):
@@ -29,12 +30,40 @@ def print(string):
 print(f"RELOADED: {__name__.split("%2F")[-1]}")
 
 
+class MockServer:
+
+    """
+    test Fusion side code without OpenAI API call
+
+    """
+    def __init__(self):
+
+        self.call_history = []
+        self.msg_index = 0
+
+    def set_index(self, index):
+        self.msg_index = index
+
+    def send(self, message):
+        time.sleep(.05)
+        return True;
+
+
+    def recv(self):
+        time.sleep(.05)
+        msg = self.call_history[self.msg_index]
+        self.msg_index += 1
+        return msg
+
+    def add_call(self, call):
+        self.call_history.append(call)
+
+
+
 class GptClient:
     """
     Instantiated in entry.py
-
-    connects to command server running on seperate process
-
+    connects to command server running on separate process
     """
     def __init__(self):
         """
@@ -51,7 +80,7 @@ class GptClient:
         print(f"palette: {self.palette}:")
         #print(f"PALETTE_ID: {self.PALETTE_ID}:")
 
-        # Fusion360 interface, methodods availible to OpenAI Assistant
+        # Fusion360 interface, methods available to OpenAI Assistant
         self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
 
         # must be defined here,
@@ -60,11 +89,15 @@ class GptClient:
         # current connection status
         self.connected = False
 
+        # store call history for mock playback
+        self.use_mock_server = False
+        self.record_calls = True
+        self.mock_server = MockServer()
+
         # tool call history
-        self.call_history = {}
+        self.user_messages = []
 
 
-    #def async start_record(self):
     def start_record(self):
         message = {
             "message_type": "start_record",
@@ -116,7 +149,6 @@ class GptClient:
         self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
         print("Fusion Interface Reloded")
 
-
     def reload_interface(self):
         self.connected = False
         self.palette = self.ui.palettes.itemById(self.PALETTE_ID)
@@ -124,13 +156,19 @@ class GptClient:
         self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
         print("fusion_interface reloded")
 
-
     def connect(self):
         """
         connect to assistant manager class on seperate process
         """
+
+        if self.use_mock_server == True:
+            self.conn = self.mock_server
+            self.connected = True;
+            return
+
         address = ('localhost', 6000)
         self.conn = Client(address, authkey=b'fusion260')
+
         self.connected = True;
         #print(self.conn)
 
@@ -148,12 +186,14 @@ class GptClient:
         """
         upload tools to assistant
         """
+
         tools = self.fusion_itf.get_docstr()
 
         message = {
             "message_type": "tool_update",
             "content": tools
         }
+
         message = json.dumps(message)
 
         if self.connected == False:
@@ -164,11 +204,33 @@ class GptClient:
         print(f"TOOLS SENT,  waiting for result...")
 
 
+    def playback(self):
+        """run recorded calls"""
+        print(f"start playback")
+
+
+        self.use_mock_server = True
+        self.record_calls = False
+        self.conn = self.mock_server
+        self.mock_server.set_index(0)
+
+        self.connected = True;
+
+        for message in self.user_messages:
+            self.send_message(message)
+
+        self.use_mock_server = False
+        self.record_calls = True
+
+
     def send_message(self, message):
-        """send message"""
+        """send message to process server"""
 
         if self.connected == False:
             self.connect()
+
+        if self.record_calls == True:
+            self.user_messages.append(message)
 
         message = {"message_type": "thread_update", "content": message}
         message = json.dumps(message)
@@ -182,6 +244,10 @@ class GptClient:
 
             # result from server
             api_result = self.conn.recv()
+
+            if self.record_calls == True:
+                self.mock_server.add_call(api_result)
+
             api_result = json.loads(api_result)
 
             response_type = api_result.get("response_type")
@@ -262,7 +328,7 @@ class GptClient:
         else:
             result = ""
 
-        # send functoin response to js/html
+        # send function response to js/html
         if tool_call_id != None:
 
             message_data = {

@@ -244,7 +244,6 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
         # function from an existing thread call
         tool_call_id = message_data.get("tool_call_id")
 
-
         # convert to dict if passed as str when manually testing
         if isinstance(function_args, str) == False:
             function_args = json.dumps(function_args)
@@ -256,6 +255,12 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
         # call function through the server interface class
         server_itf.call_function(function_name, function_args, tool_call_id)
 
+        html_args.returnData = ""
+
+
+    # playback tool calls without OpenAI API aalls 
+    elif message_action == "playback":
+        server_itf.playback()
         html_args.returnData = ""
 
     elif message_action == "resize":

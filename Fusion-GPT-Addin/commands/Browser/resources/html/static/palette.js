@@ -117,14 +117,6 @@ class Thread {
 
         buttonContainer.appendChild(showHideButton);
 
-        //var copyButton = document.createElement('button');
-        //copyButton.textContent = 'Copy Prompt';
-        //copyButton.className = 'log-button';
-        //copyButton.onclick = function() {
-        //    navigator.clipboard.writeText(value);
-        //};
-        //buttonContainer.appendChild(copyButton);
-
         runContainer.appendChild(buttonContainer);
 
         runContainer.appendChild(runIdSpan);
@@ -455,8 +447,6 @@ class Control{
         this.submitOnEnter = true;
 
 
-
-
         //this.createToolElements();
         this.tools = [];
 
@@ -465,6 +455,22 @@ class Control{
         setWindowHeight();
 
     }; // end constructor
+
+
+     playback(){
+
+
+        const args = { };
+        adsk.fusionSendData("playback", JSON.stringify(args))
+            .then((result) =>{ });
+        this.outputContainer.innerHTML = "";
+
+    };
+
+     clearOutputs(){
+        this.outputContainer.innerHTML = "";
+
+    };
 
 
      send_cp_val(cb_event){

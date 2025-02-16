@@ -34,7 +34,6 @@ ASSISTANT_ID = default_config["ASSISTANT_ID"]
 
 client = OpenAI()
 
-
 print(f"RELOADED: {__name__.split('%2F')[-1]}")
 
 
