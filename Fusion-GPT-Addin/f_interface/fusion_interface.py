@@ -94,6 +94,10 @@ class FusionInterface:
     def update_settings(self, settings_dict ):
         ToolCollection.update(settings_dict)
 
+
+
+
+
     def get_tools(self):
         """
         creates list fusion interface functions
@@ -137,7 +141,7 @@ class FusionInterface:
                             default_val = None
 
                         param_info_dict = {
-                            "type": str(annotation),
+                            "type": str(annotation.__name__),
                             "default_val": default_val
                         }
 
@@ -180,4 +184,14 @@ class FusionInterface:
         method_list = json.dumps(method_list)
         self.tools_json = method_list
         return method_list
+
+
+
+
+
+
+
+
+
+
 

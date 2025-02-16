@@ -3,6 +3,14 @@
 Fusion 360 - OpenaAI Assistants API Add-In.
 This Fusion 360 Python Add-In allows the OpenAI Assistant API to interact with the design workspace.
 
+# Key Points
+    1. Fusion 360 runs the Add-In, "Fusion-GPT-Addin". Note that the Python in the Add-In does nto require any thrid part librarys. It is relativly difficult and not recomended to modify the built in Fusion 360 Python environment.
+    2. To overcome the limitations of the Fusion 360 environment, we run a seperate Python program with its own environment. This program is locates in the directory "oai_container".
+    3. Using the Python multiprocessing 
+
+
+
+
 
 # Structure
 ```

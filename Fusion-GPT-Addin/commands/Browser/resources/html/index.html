@@ -1,108 +1,136 @@
 
 <html lang="en">
 
-    <head>
-        <meta charset="UTF-8">
-        <title>STSI GPT Addin</title>
-        <script src="static/palette.js"></script>
-        <link rel="stylesheet" type="text/css" href="static/style.css">
-    </head>
+  <head>
+    <meta charset="UTF-8">
+    <title>STSI GPT Addin</title>
+
+    <script src="static/palette.js"></script>
 
 
-    <body>
+    <link rel="stylesheet" type="text/css" href="static/style.css">
 
-        <div id=pageContainer>
-
-            <div id="tabContainer">
-
-                <button type="button" class="tab-button" onclick="control.changeTab(0)">Prompt Output</button>
-                <button type="button" class="tab-button" onclick="control.changeTab(1)">Tools</button>
-
-                <button type="button" class="tab-button" onclick="control.changeTab(2)">Console Output</button>
-
-            </div>
+  </head>
 
 
-            <div id="pageContent">
+  <body>
 
-                <div id="outputContainer" class="contentTab output-container"> 
-                </div>
-
-                <div id="toolTestContainer" class="contentTab" style="display:none;">
-                </div>
-
-                <div id="consoleContainer" class="contentTab" style="display:none;">
-                </div>
+    <!--end input-container-->
+    <div id=pageContainer>
 
 
-            </div>
+      <div id="tabWrapper" class="top-wrapper">
+        <button type="button" class="tab-button" onclick="control.changeTab(0)">Prompt Output</button>
+        <button type="button" class="tab-button" onclick="control.changeTab(1)">Tools</button>
+        <button type="button" class="tab-button" onclick="control.changeTab(2)">Console Output</button>
 
-            <!--end input-container-->
+      </div>
 
-            <div id="consoleOutput">
+      <div id="pageWrapper" class="top-wrapper">
 
+        <div id="outputContainer" class="content-section content-tab output-container"> 
+        </div>
 
-            </div>
+        <div id="toolTestContainer" class="content-section content-tab" style="display:none;">
+        </div>
 
+        <div id="consoleContainer" class="content-section content-tab" style="display:none;">
+        </div>
 
-
-            <div id="inputContainer" class="input-container">
-
-                <textarea spellcheck="true" id="promptTextInput" placeholder="Enter your text here" rows="4"></textarea>
-
-                <div class="button-row">
-                    <!--
-                    <button type="button" onclick="reconnect()">Reconnect</button>
-                    -->
-
-                    <button type="button" onclick="control.resetAll()">Reset</button>
-                    <button type="button" onclick="control.reloadModules()">Reload Modules</button>
-                    <button type="button" onclick="control.reloadFusionIntf()">Reload Fusion Intf</button>
-                    <button type="button" onclick="control.reconnect()">Reconnect</button>
-
-                    <button type="button" class="control-button" onclick="control.uploadTools()">Upload Tools</button>
-
-                    <span>  </span>
-                    <button id=recordButton type="button" onclick="record()">Start Record</button>
-                    <button id="submitButton" type="button" class="control-button" onclick="thread.submitPrompt()">Submit</button>
+        <!-- pageWrapper -->
+      </div>
 
 
-                </div>
-                <!-- end button row-->
+      <div id="consoleWrapper" class="top-wrapper">
+
+        <div id="consoleOutput" class="content-section">
+        </div>
+
+      </div>
+
+
+      <div id="inputWrapper" class="top-wrapper">
+      <div id="inputContent" class="content-section">
+
+        <textarea spellcheck="true" id="promptTextInput" placeholder="Enter your text here" rows="4"></textarea>
+
+
+        <div class="button-row">
+          <!--
+            <button type="button" onclick="reconnect()">Reconnect</button>
+          -->
+
+          <button type="button" onclick="control.resize()">Resize</button>
+          <button type="button" onclick="reloadStyle()">ReloadStyle</button>
+          <button type="button" onclick="control.resetAll()">Reset</button>
+          <button type="button" onclick="control.reloadModules()">Reload Modules</button>
+          <button type="button" onclick="control.reloadFusionIntf()">Reload Fusion Intf</button>
+          <button type="button" onclick="control.reconnect()">Reconnect</button>
+
+          <button type="button" class="control-button" onclick="control.uploadTools()">Upload Tools</button>
+
+          <span>  </span>
+          <button id=recordButton type="button" onclick="record()">Start Record</button>
+          <button id="submitButton" type="button" class="control-button" onclick="thread.submitPrompt()">Submit</button>
+
+        </div>
+        <!-- end button row-->
+
+
+        <div class="input-row">
+
+          <label for="log_results">Log Results:</label>
+          <input type="checkbox" id="log_results" class="settingCb" name="logResults" checked />
+
+          <label for="log_errors">Log Errors:</label>
+          <input type="checkbox" id="log_errors" class="settingCb"  name="logErrors" checked />
+
+          <label for="submitOnEnter">Submit on Enter:</label>
+          <input type="checkbox" id="submitOnEnter" class="cb"  name="submitOnEnter" checked />
+
+          <label for="Text Size">Text Size:</label>
+          <input type="number" value=20 id="textSizeInput" class="textSizeInput" name="textSize" />
+
+        </div>
+
+        <div class="input-row">
+
+          <label for="showRuns">Show Runs:</label>
+          <input type="checkbox" id="showRuns" class="cb"  name="showRuns" checked />
+          <label for="showSteps">Show Steps:</label>
+          <input type="checkbox" id="showSteps" class="cb"  name="showSteps" checked />
+
+          <label for="showResults">Show Results:</label>
+          <input type="checkbox" id="showResults" class="cb"  name="showResults" checked />
 
 
 
-                <div class="input-row">
-
-                  <label for="log_results">Log Results:</label>
-                  <input type="checkbox" id="log_results" class="settingCb" name="logResults" checked />
-
-                  <label for="log_errors">Log Errors:</label>
-                  <input type="checkbox" id="log_errors" class="settingCb"  name="logErrors" checked />
-
-                  <label for="submitOnEnter">Submit on Enter:</label>
-                  <input type="checkbox" id="submitOnEnter" class="cb"  name="submitOnEnter" checked />
-
-                  <label for="Text Size">Text Size:</label>
-                  <input type="number" value=20 id="textSizeInput" class="textSizeInput" name="textSize" />
-
-                </div>
-
-
-
-
-
-
-                <!--input container-->
-            </div> 
-
-
-            <!--end main-->
         </div>
 
 
-        <!--end body-->
-    </body>
+
+
+
+
+
+        <!--end content-section-->
+      </div> 
+
+        <!--input container-->
+      </div> 
+
+
+
+
+
+
+
+
+      <!--end main-->
+    </div>
+
+    <!--end body-->
+  </body>
 
 
 </html>

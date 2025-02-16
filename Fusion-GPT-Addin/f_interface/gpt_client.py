@@ -141,6 +141,8 @@ class GptClient:
         # create run output section in html
         self.palette.sendInfoToHTML(function_name, json_data)
 
+    def resize_palette(self):
+        self.palette.setSize(400, 900)
 
     def upload_tools(self):
         """
@@ -230,17 +232,19 @@ class GptClient:
         return api_result
 
 
-    def call_function(self, function_name, function_args, tool_call_id):
+    def call_function(self, function_name: str, function_args: str, tool_call_id=None):
         """
         called from Assistants API
         calls function passed from Assistants API
         """
-        print(f"function_name: {type(function_name)}")
-        print(f"function_args: {type(function_args)}")
+        print(f"function_name: {type(function_name)}, {function_name}")
+        print(f"function_args: {type(function_args)}, {function_args}")
+        print(f"tool_call_id: {type(tool_call_id)}, {tool_call_id}")
+
 
         # TODO make this better
-        if function_args == "":
-            function_args = None
+        #if function_args == "":
+        #    function_args = None
 
         if function_args != None:
             function_args = json.loads(function_args)

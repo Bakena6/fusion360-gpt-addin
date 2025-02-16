@@ -240,18 +240,27 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
         function_name = message_data["function_name"]
         function_args = message_data["function_args"]
 
+        # tool call id should only be present if the user calls the
+        # function from an existing thread call
+        tool_call_id = message_data.get("tool_call_id")
+
+
         # convert to dict if passed as str when manually testing
-        if isinstance(function_args, str):
-            function_args = json.loads(function_args)
+        if isinstance(function_args, str) == False:
+            function_args = json.dumps(function_args)
 
-        print(f"function_name: {type(function_name)}")
-        print(f"function_args: {type(function_args)}")
+        #print(f"function_name: {type(function_name)}")
+        #print(f"function_args: {type(function_args)}")
+        #print(f"tool_call_id: {type(tool_call_id)}")
 
-        method = getattr(server_itf.fusion_itf, function_name, None)
-        if callable(method):
-            result = method(**function_args)
+        # call function through the server interface class
+        server_itf.call_function(function_name, function_args, tool_call_id)
+
         html_args.returnData = ""
 
+    elif message_action == "resize":
+        server_itf.resize_palette()
+        html_args.returnData = ""
 
     elif message_action == "start_record":
         server_itf.start_record()

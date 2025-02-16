@@ -41,7 +41,15 @@ class Thread {
 
 
 
+    scrollToBottom(){
+        let wrapper = document.getElementById("pageWrapper");
+        wrapper.scrollTop = wrapper.scrollHeight;
+    };
+
     submitPrompt() {
+
+        this.scrollToBottom();   
+        
         // user input text
         var value = promptTextInput.value;
 
@@ -61,7 +69,6 @@ class Thread {
 
     toggleSectionVis(event, elementId){
 
-        console.log("toggle section vis");
         let button = event.target;
         let element = document.getElementById(elementId);
 
@@ -77,6 +84,7 @@ class Thread {
 
 
     runCreated(data){
+
         // user input text
         //var promptTextInput = document.getElementById('promptTextInput');
         var value = promptTextInput.value;
@@ -132,12 +140,14 @@ class Thread {
         // Get the container and the button row
         var container = document.querySelector('.output-container');
         
+        
         // Insert the new div after the button row
         container.prepend(runContainer);
 
         // Optional: Clear the textarea after submitting
         promptTextInput.value = '';
 
+        this.scrollToBottom();
     }// end runCreated
 
     /*
@@ -160,6 +170,9 @@ class Thread {
         stepContainer.className = "step-container";
         stepContainer.id = stepType;
 
+        // contains buttons, item id
+        var logHeader = document.createElement('div');
+        logHeader.className = "log-header"
 
         // step type and id info
         var idSpan = document.createElement('span');
@@ -169,11 +182,13 @@ class Thread {
         var toggleContainerId = `message_step__${stepId}`;
         
         var showHideButton = document.createElement('button');
-        showHideButton.textContent = "Show/Hide Step";
+        showHideButton.textContent = "Hide";
         showHideButton.className = "log-button";
         showHideButton.onclick = (event) =>{this.toggleSectionVis(event, toggleContainerId)};
-        stepContainer.appendChild(showHideButton);
-        stepContainer.appendChild(idSpan);
+
+        logHeader.appendChild(showHideButton);
+        logHeader.appendChild(idSpan);
+        stepContainer.appendChild(logHeader);
        
 
         // start message
@@ -192,9 +207,8 @@ class Thread {
 
         }// end if
 
-
-        //runContainer.appendChild(stepContainer);
         responseContainer.appendChild(stepContainer);
+        this.scrollToBottom();
 
     }// end stepCreated
 
@@ -214,6 +228,7 @@ class Thread {
     messageDelta(data){
         let content = data.message;
         this.messageContainer.textContent = this.messageContainer.textContent + content;
+        this.scrollToBottom();   
 
     }// end messageDelta
 
@@ -224,9 +239,7 @@ class Thread {
 
         let content;
         var function_name = data.function_name;
-
         var tool_call_id = data.tool_call_id;
-
         var function_args = data.function_args;
         var function_output = data.function_output;
 
@@ -235,10 +248,11 @@ class Thread {
 
             var functionContainer = document.createElement('div');
             functionContainer.className = "function-container";
+            
+            // contains buttons, item id
+            var logHeader = document.createElement('div');
+            logHeader.className = "log-header"
 
-            //var functionNameEl = document.createElement('span');
-            //functionNameEl.className = "function-name";
-            //functionNameEl.textContent= `${function_name}`;
 
             // keep function body
             this.nFunction += 1;
@@ -246,7 +260,7 @@ class Thread {
             var functionArgsId = `functionArgs_${this.nFunction}`;
 
             functionArgsEl.id = functionArgsId;
-            functionArgsEl.className = 'functionBody';
+            functionArgsEl.className = 'function-body-textarea';
             functionArgsEl.rows = 1;
             this.functionArgsEl = functionArgsEl;
 
@@ -259,27 +273,79 @@ class Thread {
                 var functionArgs = document.getElementById(functionArgsId);
                 var args = {
                     "function_name": function_name,
-                    "function_args": functionArgs.value
+                    "function_args": functionArgs.value,
+                    "tool_call_id": tool_call_id
                 }
                 adsk.fusionSendData("execute_tool_call", JSON.stringify(args))
                     .then((result) =>{ }); // end then
             };// end click
 
 
-            //functionContainer.appendChild(functionNameEl);
-            functionContainer.appendChild(runFunctionButton);
+            logHeader.appendChild(runFunctionButton);
 
+            // tool call id should be passed with first delta,
+            // we use this is to write the function results in the correct div
             if (tool_call_id != null){
-                var idSpan = document.createElement("div");
+                var idSpan = document.createElement("span");
                 idSpan.className = "span-info";
-                idSpan.innerHTML = `tool_call: ${tool_call_id}`;
-                functionContainer.appendChild(idSpan);
+                idSpan.innerHTML = `tool_call_start: ${tool_call_id}`;
+                logHeader.appendChild(idSpan);
+
+                // create the function results container when the function call starts
+                // this way the result container exists when the results are run, rerun
+                var functionResults = document.createElement('div');
+                functionResults.className = "function-results";
+                functionResults.id = `result_container__${tool_call_id}`;
+                
+                // <pre> for displaying pretty json
+                var resultsJson = document.createElement('pre');
+                resultsJson.id = `result__${tool_call_id}`;
+                resultsJson.innerHTML = "Pending...";
+                // json output
+                functionResults.appendChild(resultsJson);
+
+                // contains buttons, item id
+                var resultsLogHeader = document.createElement('div');
+                resultsLogHeader.className = "log-header log-response-header"
+
+
+                var showHideButton = document.createElement('button');
+                showHideButton.textContent = "Hide";
+                showHideButton.className = "log-button";
+                showHideButton.onclick = (event) =>{this.toggleSectionVis(event, functionResults.id )};
+
+                // clear outputs
+                var clearResultButton = document.createElement('button');
+                clearResultButton.textContent = "Clear";
+                clearResultButton.className = "log-button";
+                clearResultButton.onclick = (event) =>{
+                    resultsJson.innerHTML="";
+                };
+
+                // tool call response id
+                var resultsIdSpan = document.createElement("span");
+                resultsIdSpan.className = "span-info";
+                resultsIdSpan.innerHTML = `${tool_call_id}`;
+
+                resultsLogHeader.appendChild(showHideButton);
+                resultsLogHeader.appendChild(clearResultButton);
+                resultsLogHeader.appendChild(idSpan);
+
+
             };
 
+            // tool call name/argument
+            functionContainer.appendChild(logHeader);
             functionContainer.appendChild(functionArgsEl);
+
+            // tool call response
+            functionContainer.appendChild(resultsLogHeader);
+            functionContainer.appendChild(functionResults);
 
             this.functionContainer = functionContainer;
             this.toolContainer.appendChild(functionContainer);
+
+            this.scrollToBottom();
 
 
         // set function args height
@@ -305,31 +371,16 @@ class Thread {
      */
     toolCallResponse(data){
 
-
         var tool_call_id = data.tool_call_id;
         var function_result = data.function_result;
 
-        var functionResults = document.createElement('div');
-        functionResults.className = "function-results";
-        functionResults.id = `result__${tool_call_id}`;
-
-        var showHideButton = document.createElement('button');
-        showHideButton.textContent = "Show/Hide Section";
-        showHideButton.className = "log-button";
-        showHideButton.onclick = (event) =>{this.toggleSectionVis(event, functionResults.id )};
-
-
-        functionResults.textContent = function_result;
-
-        var idSpan = document.createElement("div");
-        idSpan.className = "span-info";
-        idSpan.innerHTML = `tool_call: ${tool_call_id}`;
-
-        this.functionContainer.appendChild(showHideButton);
-        this.functionContainer.appendChild(idSpan);
-        this.functionContainer.appendChild(functionResults);
-
-
+        // function results container/ pre element should alreaddy exist,
+        // created during function call delta start
+        var resultsJson = document.getElementById(`result__${tool_call_id}`);
+        
+        // pretty printJson
+        //var resultJsonContainer = document.createElement('pre');
+        resultsJson.innerHTML = JSON.stringify(JSON.parse(function_result), null, 2 );
 
     }// end toolCallResponse
 
@@ -363,19 +414,19 @@ function executeToolCall(function_name) {
 
 function setWindowHeight() {
 
-    let tabContainer = document.getElementById('tabContainer');
-    let pageContent = document.getElementById('pageContent');
+    let tabContainer = document.getElementById('tabWrapper');
+    let pageContent = document.getElementById('pageWrapper');
     //
 
-    let toolTestContainer = document.getElementById('toolTestContainer');
-    let inputContainer = document.getElementById('inputContainer');
-    let consoleOutput = document.getElementById('consoleOutput');
+    //let toolTestContainer = document.getElementById('toolTestContainer');
+    let inputContainer = document.getElementById('inputWrapper');
+    let consoleOutput = document.getElementById('consoleWrapper');
 
     let tabContainerHeight = tabContainer.offsetHeight;
     let inputContainerHeight = inputContainer.offsetHeight;
     let consoleOutputHeight = consoleOutput.offsetHeight;
 
-    let newOutputHeight = window.innerHeight - (tabContainerHeight + inputContainerHeight + consoleOutputHeight +20) ;
+    let newOutputHeight = window.innerHeight - (tabContainerHeight + inputContainerHeight + consoleOutputHeight ) ;
     pageContent.style.height = `${newOutputHeight}px`;
 
 
@@ -405,6 +456,7 @@ class Control{
 
 
 
+
         //this.createToolElements();
         this.tools = [];
 
@@ -426,7 +478,6 @@ class Control{
 
 
     connectInputs(){
-        console.log("connectInputs");
 
         //debugCb = document.getElementById('debugCb');
 
@@ -436,6 +487,8 @@ class Control{
         settingCbs.forEach(cb => {
             cb.addEventListener("change", (cb_event) => this.send_cp_val(cb_event));
         }); // end for each
+
+
 
         // change prompt text size
         const textSizeInput = document.getElementById('textSizeInput');
@@ -448,8 +501,15 @@ class Control{
         const submitOnEnterInput = document.getElementById('submitOnEnter');
         submitOnEnterInput.addEventListener("change", (event) => {
             this.submitOnEnter = event.target.checked;
-            console.log(this.submitOnEnter);
         });
+
+        const showRunsInput = document.getElementById('showRuns');
+        showRunsInput.addEventListener("change", (event) => {
+            let className = "run-container";
+            this.showHideClass(className, event.target.checked);
+        });
+
+
 
         // submit prompt on ender
         this.promptTextArea.addEventListener('keydown', (event) => {
@@ -479,7 +539,7 @@ class Control{
     * */
     changeTab(tabIndex){
 
-        let tabs  = document.querySelectorAll(".contentTab");
+        let tabs  = document.querySelectorAll(".content-tab");
         let tabButtons = document.querySelectorAll(".tab-button");
 
         for (let i=0; i < tabs.length; i++) {
@@ -489,7 +549,6 @@ class Control{
 
             if (i == tabIndex) {
                 element.style.display = "block"; 
-
                 buttonElement.style.backgroundColor = "#262626"; 
                 buttonElement.style.color = "magenta"; 
                 this.toggleTools();
@@ -508,6 +567,26 @@ class Control{
 
     }; // end showHideElement
 
+
+    /*
+    * show hide all elements in a class
+    */
+    showHideClass(className, vis){
+
+        let elements = document.querySelectorAll(`.${className}`);
+        console.log(elements.length);
+
+        elements.forEach(e => {
+
+            if (vis == true) {
+                e.style.display = "block"; 
+            } else {
+                e.style.display = "none"; 
+            }
+
+        })
+
+    }; // end showHideClass
 
     showHideElement(elementId){
 
@@ -558,9 +637,15 @@ class Control{
 
     };// end get_current_cb
 
+    resize(){
+        const args = { };
+        // include current checkbox settings
+        adsk.fusionSendData("resize", JSON.stringify(args))
+            .then((result) =>{ }); // end then
+    };
+
     reloadModules(){
         const args = { };
-        // Send the data to Fusion as a JSON string. The return value is a Promise.
         // include current checkbox settings
         adsk.fusionSendData("reload_modules", JSON.stringify(args))
             .then((result) =>{ 
@@ -609,7 +694,7 @@ class Control{
             const classSectionTitle = document.createElement("button");
             classSectionTitle.innerHTML = c_name;
             classSectionTitle.type = "button";
-            classSectionTitle.className = "toolCallClassTitle";
+            classSectionTitle.className = "tool-call-class-title";
 
             // all methods in a class
             const methodsContainer = document.createElement("div");
@@ -661,15 +746,34 @@ class Control{
                 functionButton.type = "button";
                 functionButton.id = m_name;
                 functionButton.setAttribute("onClick", `javascript: executeToolCall("${m_name}");`);
-                functionButton.className = "toolCallButton";
+                functionButton.className = "tool-call-button";
 
                 const inputContainer = document.createElement("span");
-                inputContainer.className = "functionInputContainer";
+                inputContainer.className = "function-input-container";
 
                 // params
                 for (const [param_name, param_info] of Object.entries(params)) {
                     //const paramInput = document.createElement("input");
                     const paramInput = document.createElement("textarea");
+                    //console.log(param_name,param_info);
+                    const paramType = param_info.type
+
+                    let paramColor = "none";
+                    if (paramType == "str"){
+                        paramColor = "#FFEBDD";
+
+                    } else if (paramType == "float"){
+                        paramColor = "#FEF7E8";
+
+                    } else if (paramType == "list"){
+                        paramColor = "#FED7FB";
+                    } else if (paramType == "dict"){
+                        paramColor = "#E3FEF7";
+
+                    };
+
+                    paramInput.style.backgroundColor=paramColor;
+
 
                     const paramDefault = param_info.default_val;
                     paramInput.id = `${m_name}__${param_name}`;
@@ -682,6 +786,7 @@ class Control{
 
                     paramInput.value = JSON.stringify(paramDefault);
 
+
                     this.resizeInput(paramInput);
 
                     function autoResizeTextarea(textarea) {
@@ -689,11 +794,17 @@ class Control{
                         textarea.style.height = textarea.scrollHeight + "px"; // Set height to scroll height
                     }
 
+
                     paramInput.addEventListener("click", () => autoResizeTextarea(paramInput));
 
                     inputContainer.appendChild(paramInput);
+                    autoResizeTextarea(paramInput);
+
 
                 };
+
+
+
 
                 //responseDiv.className = 'message-response'; // Add class for styling
                 toolRow.appendChild(functionButton);
@@ -770,17 +881,20 @@ class Control{
 let thread;
 let control;
 window.addEventListener('load', (event) => { 
-
     thread = new Thread();
-
     control = new Control(thread);
 
 });// end window on load
 
 
-
-
-
+function reloadStyle() {
+  const links = document.querySelectorAll('link[rel="stylesheet"]');
+  links.forEach(link => {
+    const href = link.href;
+    const newHref = href.includes('?') ? `${href}&reload=${Date.now()}` : `${href}?reload=${Date.now()}`;
+    link.href = newHref;
+  });
+}
 
 
 window.fusionJavaScriptHandler = {

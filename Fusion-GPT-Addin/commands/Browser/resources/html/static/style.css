@@ -10,7 +10,6 @@
 /* Hover effect for the button */
 .input-container label {
     color: white;
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
 
 }
 
@@ -22,6 +21,19 @@
 }
 
 
+/* 
+ * global font styles
+ */
+textarea, button, input, span, div, label {
+    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
+
+
+}
+
+label{
+    color: white;
+
+}
 
 
 body {
@@ -31,6 +43,17 @@ body {
     background-color: cyan;
     background-color: #262626; /* background gray*/
 }
+
+div, span{
+    padding: 0px;
+    margin 0px;
+
+}
+
+
+
+
+
 
 /* 
  * margin bottom must macth inputwrapper height
@@ -45,8 +68,108 @@ body {
     margin: 0px;
     border: none;
     background-color: #262626; /* background gray*/
+    background-color: pink; /* background gray*/
+    background-color: #262626; /* background gray*/
+    background-color:	#1B1212;
 }
 
+
+
+/* 
+ * notes
+ * 
+ * any input color should be light gray
+ *
+ */
+
+/* 
+ * ============ Wrapper ===========
+ * top-wrapper class is full width elemnt
+ * the top levle in pageContainer
+ *
+    border: 1px solid white;
+ */
+
+.top-wrapper{
+    margin: 0px;
+    padding: 0px;
+    border-radius: 0px;
+    box-sizing: border-box; /* includes padding/ border in content width*/
+    width: 100%;
+    padding-left: 5px;
+    padding-right: 5px;
+
+}
+
+#tabWrapper{
+    height: auto;
+    padding: 0px;
+    padding-bottom: 15px;
+}
+
+#pageWrapper{
+    height: auto;
+    overflow: auto;
+    flex-direction: column-reverse;
+}
+
+#consoleWrapper{
+    display:none;
+    overflow: auto;
+    height: 100px;
+}
+
+#inputWrapper {
+    height: auto;
+    padding-top: 10px;
+}
+
+
+.content-section{
+    background-color:	#1B1212;
+    padding-left: 5px;
+    padding-right: 5px;
+
+}
+
+
+
+
+
+
+/* 
+ * =========== tabs ===========
+ */
+
+
+.tab-button {
+
+    color: white;
+    background-color: #878787;
+
+    box-shadow: none;
+    border: none;
+    text-decoration: none;
+    font-size: 15px;
+
+    padding-top: 2px;
+    padding-bottom: 2px;
+    padding-left: 0px;
+    padding-right: 0px;
+    margin: 0px;
+    width: 200px;
+
+
+}
+
+
+
+
+
+
+/* 
+ * =========== response container ===========
+ */
 
 
 .response-container{
@@ -57,145 +180,150 @@ body {
 
 
 /* 
+ * display console output
+ */
+
+
+#consoleOutput{
+
+    width: auto;
+    height:100%;
+
+    overflow: auto;
+
+    border: 2px solid magenta;
+    border-radius: 2px;
+    padding: 0px;
+
+    margin-top: 5px;
+    margin-bottom: 5px;
+    margin-left: 0px;
+    margin-right: 0px;
+
+}
+
+
+
+/* 
  * margin bottom must macth inputwrapper height
  * postion: fixed and bottom:0 keep text box at bottom
  * 
  *
-    margin-bottom: 230px;
-    #border: 2px solid white;
  */
-/* reverse scrolling output container */
-.output-container {
-    height: 100%;
+
+
+
+/* 
+ * show hide methods
+*
     display: flex;
-    width: auto;
-    overflow: auto;
-    flex-direction: column-reverse;
-    margin-right: 0px;
-    margin-left: 0px;
+    flex-direction: column;
+*/
+#toolTestContainer{
+    box-sizing: border-box; /* includes padding/ border in content width*/
+    height: 100%;
+    width: 100%;
+    margin: 0px;
+    padding: 0px;
+}
+
+
+
+/* 
+ * show hide methods
+ * button
+ */
+.tool-call-class-title{
+    display: inline-block;
+    margin: 0px;
+    font-size: 16;
     padding-left: 10px;
     padding-right: 10px;
-    border-radius: 5px;
-    background-color: #262626; /* background gray*/
-
-}
-
-/* 
- * Use Flexbox to arrange buttons in a row 
- * postion: fixed and bottom:0 keep text box at bottom
- *
-    background-color: #1c1c1c;
- */
-
-/* 
- * show hide methods
- *
- *
- *
- */
-#toolTestContainer{
-    display: flex;
-    height: 100%;
-    width: auto;
-    overflow: auto;
-    flex-direction: column;
-    margin: 0px;
-    padding-left: 0px;
-    padding-left: 0px;
-}
-
-/* 
- * show hide methods
- */
-.toolCallClassTitle{
-    padding: 0px;
-    margin: 0px;
-    padding-left: 10px;
-    padding-right: 0px;
-
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
+    padding-top: 5px;
+    padding-bottom: 5px;
     border: 2px solid pink;
     border-radius: 5px;
 
 }
 
 .tool-row{
-
-    vertical-align: bottom;
+    box-sizing: border-box; /* includes padding/ border in content width*/
+    vertical-align: top;
 
     margin-right: 0px;
     margin-left: 0px;
-    margin-top: 0px;
-    margin-bottom: 0px;
-    padding: 0px;
+    margin-top: 5px;
+    margin-bottom: 5px;
+    padding: 5px;
+    padding:0px;
+
+    border-radius: 5px;
 
     border: 1px solid cyan;
 
 }
 
 /* call function method button */
-.toolCallButton{
+.tool-call-button{
+    box-sizing: border-box; /* includes padding/ border in content width*/
     display: inline-block;
-
-    padding: 0px;
-    padding: 2px;
-    vertical-align: bottom;
-
+    font-size:14px;
+    vertical-align: top;
     text-align: left;
+
+    padding-left: 5px;
+    padding-right: 5px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+
+    margin: 0px;
 
     width: 250px;
     min-height: 30px;
-
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
-    margin: 0px;
-    border: 2px solid pink;
     border-radius: 5px;
     white-space: normal; /* Allow text to wrap */
     word-break: break-word; /* Break words if necessary */
 
-
 }
 
 
-#toolTestContainer textarea{
+.function-input-container{
+    box-sizing: border-box; /* includes padding/ border in content width*/
+    display: inline-block;
+    vertical-align: top;
+    max-width: 100%;
+    margin: 0px;
+
+    margin-left: 5px;
+    margin-right: 5px;
+
+    min-height: 30px;
+    min-width: 100px;
+
+    border-radius: 5px;
+    word-break: break-word; /* Break words if necessary */
+}
+
+
+.function-input-container textarea{
+    box-sizing: border-box; /* includes padding/ border in content width*/
     vertical-align: middle;
     text-align: center;
-    width: auto;
+    margin-left: 4px;
+    margin-right: 4px;
     height: auto;
     min-height: 30px;
-
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
-
-    padding: 0px;
-    padding: 2px;
-    margin: 0px;
-    margin-right: 4px;
-    margin-left: 4px;
-    max-width: 90%;
+    min-width: 50px;
+    max-width: 100%;
+    border-radius: 5px;
 }
 
-.functionInputContainer{
-    display: inline-block;
-
-    vertical-align: bottom;
-
-    width: auto;
-    min-width: 5ch;
-    min-height: 30px;
-
-    margin-right: 5px;
-    margin-left: 5px;
-    padding: 0px;
-
-    border: 1px solid yellow;
-}
 
 
 
 /* tool test title, buttons and input boxes*/
 .toolClassContainer{
     width: auto;
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
     font-size: 12px;
     color: white;
     min-width: 5ch;
@@ -217,8 +345,6 @@ body {
 .toolCallClassTitle{
     width: auto;
     font-size: 14px;
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
-
     margin-left: 1px;
     margin-right: 1px;
     margin-bottom: 1px;
@@ -233,7 +359,6 @@ body {
     display: block;
     width: auto;
 
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
     font-size: 14px;
     color: white;
     margin-left: 10px;
@@ -243,29 +368,13 @@ body {
 
 }
 
-.toolCallButton {
-    margin-right: 20px;
-}
 
 
 
 
 /*
- *
- *input
- *
- * */
-#inputContainer {
-    height: auto;
-    width: auto;
-    padding-top: 10px;
-    margin-left: 0px;
-    margin-right: 0px;
-    margin-bottom: 0px;
-    padding-bottom: 0px;
-    padding: 10px;
-    background-color: #262626; /* background gray*/
-}
+ * ===== Input container  =====
+ */
 
 
 #textSizeInput{
@@ -273,6 +382,7 @@ body {
 }
 
 #promptTextInput{
+    box-sizing: border-box;
     padding: 10px;
     margin-right: 0px;
     margin-left: 0px;
@@ -283,22 +393,9 @@ body {
     background-color: #303030;
     color: white;
     border-radius: 5px;
-    box-sizing: border-box;
     margin-top: 5px;
     margin-bottom: 15px; /* Space between the textarea and the button row */
     resize: vertical;
-}
-
-#consoleOutput{
-    height: 100px;
-    border: 2px solid magenta;
-    border-radius: 2px;
-
-    margin-top: 5px;
-    margin-bottom: 5px;
-    margin-left: 10px;
-    margin-right: 10px;
-
 }
 
 
@@ -333,7 +430,6 @@ body {
     padding-right: 5px;
     padding-left: 5px;
 
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
     border: 3px solid cyan;
     border-radius: 5px;
     font-size: 14px;
@@ -348,15 +444,6 @@ body {
 }
 
 
-.run-output {
-    margin-top: 10px;
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    padding: 10px;
-    background-color: pink;
-
-}
 
 /* top run container
  *
@@ -365,39 +452,69 @@ body {
 * background-color: rgb(55,247,247); green 
  *
  *
- *
  * */
+
+
+
+
+
+/* 
+ * =========== run output ===============t
+ *
+ */
+
+.run-output {
+    box-sizing: border-box;
+    margin-top: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    padding: 10px;
+    padding-right: 0px;
+    background-color: pink;
+
+}
+
 .run-container{
+    box-sizing: border-box;
     margin: 5px;
     padding: 5px;
+    padding-right: 0px;
     border: 1px solid white;
     border-radius: 5px;
     background-color: darkgray;
 }
 
+.log-header{
+    background-color:none;
+}
+
+
+.log-response-header{
+    padding-left: 20px;
+}
+
+
+
 /* element type */
 .span-info{
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
     font-size: 10px;
     color: red;
 }
 
 .user-text {
+    box-sizing: border-box;
     display: flex;
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
     justify-content: space-between;
     align-items: center;
     color: yellow;
     border: 2px solid white;
     background-color: purple;
     border-radius: 5px;
-    box-sizing: border-box;
     padding: 5px;
     margin: 5px;
 }
 
 .log-button {
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
     margin: 2px;
     font-size: 14px;
     padding-top: 2px;
@@ -408,28 +525,29 @@ body {
 }
 
 .function-button{
-
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
     margin: 5px;
     color: #00ffff;  /*cyan*/
 
 }
 
 .function-name {
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
     margin: 5px;
+    font-size: 14px;
     color: #00ffff;  /*cyan*/
-    border: 3px solid black;
+    color: magenta;  /*cyan*/
+    border: 1px solid black;
+    background-color: white;
     border-radius: 5px;
 }
 
 .step-container {
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
     border: 1px solid black;
     border-radius: 5px;
-    margin: 5px;
+
     margin-left: 20px;
-    margin-right: 10px;
+    margin-right: 5px;
+    margin-top: 5px;
+    margin-bottom: 10px;
     padding: 5px;
     background-color: #3a3a3a;
     color: white;
@@ -437,37 +555,33 @@ body {
 
 
 /*text area*/
-.functionBody {
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
+.function-body-textarea , .functionBody{
+    box-sizing: border-box;
     color: #ff00ff;
     font-size: 16px;
     width: 100%;
     padding: 10px;
-    margin: 5px;
-    margin-right: 10px;
-    border: 2px solid white;
-    background-color: #303030;
+    border: 1px solid white;
     border-radius: 5px;
-    box-sizing: border-box;
-    resize: vertical;
+    resize: vertical; /*text area wont resize horizontal*/
+    background-color: #303030;
 }
 
 
 .function-results{
-
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
-    color: cyan;
-    font-size: 12px;
-    border-radius: 5px;
-    width: 100%;
-    padding: 10px;
-    padding-left: 30px;
-    margin: 5px;
-    margin-right: 10px;
-    border: 2px solid white;
-    background-color: #303030;
-    border-radius: 5px;
     box-sizing: border-box;
+    border: 1px solid white;
+    border-radius: 5px;
+
+    min-width: 90%;
+    font-size: 12px;
+    padding: 10px;
+    margin-left: 20px;
+    max-height: 400px;
+    background-color: #303030;
+    color: cyan;
+    resize: vertical; /*text area wont resize horizontal*/
+    overflow: auto;
 
 
 }
@@ -476,64 +590,14 @@ body {
 
 .text-response {
     margin-left: 10px;
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
     color: white;
 }
 
 
 
 .streamOutput{
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
 
 }
-
-
-
-#pageContent{
-    height: auto;
-    border: 2px solid cyan;
-    background-color: #303030;
-    border-radius: 0px;
-
-    margin-right: 10px;
-    margin-left: 10px;
-
-    box-sizing: border-box;
-}
-
-
-
-
-#tabContainer{
-    height: auto;
-    border-radius: 0px;
-    margin-bottom: 15px;
-}
-
-.tab-button{
-
-    font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
-
-    color: white;
-    background-color: #878787;
-
-    box-shadow: none;
-    border: none;
-    text-decoration: none;
-    font-size: 15px;
-    padding-top: 2px;
-    padding-bottom: 2px;
-    padding-left: 0px;
-    padding-right: 0px;
-    margin: 0px;
-    width: 200px;
-
-
-}
-
-
-
-
 
 
 
