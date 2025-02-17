@@ -847,7 +847,7 @@ class GetStateData(ToolCollection):
 
 
     @ToolCollection.tool_call
-    def get_entity_entities(self, entity_token_list: str=[]) -> str:
+    def get_entity_entities(self, entity_token_list: str=[], sub_entity_names: str=[]) -> str:
         """
             {
               "name": "get_entity_entities",
@@ -856,14 +856,21 @@ class GetStateData(ToolCollection):
                 "type": "object",
 
                 "properties": {
-                  "entity_token_list": {
+
+                  "entity_token_list":{
                     "type": "array",
                     "description": "A list of strings representing the entity names sub entities will be returned for",
                     "items": { "type": "string" }
+                  },
+                  "sub_entity_names":{
+                    "type": "array",
+                    "description": "A list of sub entity names, to inlcude in the response, if the parameter is left empty all sub entities will be included in the response.",
+                    "items": { "type": "string" }
                   }
+
                 },
 
-                "required": ["entity_token_list"],
+                "required": ["entity_token_list", "sub_entity_names"],
                 "returns": {
                   "type": "string",
                   "description": "A JSON-encoded string representing the structure of the current design, including name, bodies, sketches, joints, and nested occurrences for each component."
@@ -1005,12 +1012,17 @@ class GetStateData(ToolCollection):
                         else:
                             is_iterable = False
 
-
-
                         if isinstance(attr, str):
                             is_iterable = False
 
                         if is_iterable == True:
+                            # filter
+
+                            if len(sub_entity_names) != 0:
+
+                                if attr_name not in sub_entity_names:
+                                    continue
+
                             sketch_token_seed = f"{entityToken}{attr_name}"
 
                             attr_dict["entityToken"] = self.set_obj_hash(attr, sketch_token_seed)

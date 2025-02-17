@@ -31,6 +31,8 @@ print(f"RELOADED: {__name__.split("%2F")[-1]}")
 
 class ModifyObjects(ToolCollection):
 
+
+
     @ToolCollection.tool_call
     def fillet_or_chamfer_edges(self,
                                component_entity_token: str ="",
@@ -233,6 +235,31 @@ class ModifyObjects(ToolCollection):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 class CreateObjects(ToolCollection):
+
+
+
+
+    def _get_operation_obj(self, operation_type):
+
+        # Map the operation_type string to the Fusion enum
+        operation_map = {
+            "CutFeatureOperation": adsk.fusion.FeatureOperations.CutFeatureOperation,
+            "IntersectFeatureOperation": adsk.fusion.FeatureOperations.IntersectFeatureOperation,
+            "JoinFeatureOperation": adsk.fusion.FeatureOperations.JoinFeatureOperation,
+            "NewBodyFeatureOperation": adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+            "NewComponentFeatureOperation": adsk.fusion.FeatureOperations.NewComponentFeatureOperation
+        }
+
+        operation_obj = operation_map.get(operation_type)
+        errors = None
+
+        if operation_type is None:
+            errors = f"Error: Unknown operation_type '{operation_type}', Valid: {', '.join(operation_map.keys())}."
+
+        return operation_obj, errors
+
+
+
 
     @ToolCollection.tool_call
     def extrude_profiles(
@@ -760,7 +787,304 @@ class CreateObjects(ToolCollection):
 
 
 
+    @ToolCollection.tool_call
+    def create_pipe_from_lines(self,
+                              line_token_list: list = [""],
+                              pipe_diameter: float = 1.0,
+                              operation_type: str = "NewBodyFeatureOperation") -> str:
+        """
+        {
+          "name": "create_pipe_from_lines",
+          "description": "Creates a Pipe feature on each SketchLine in the list, each line is referenced by a token.",
+
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "line_token_list": {
+                "type": "array",
+                "description": "A list of entity tokens referencing SketchLine objects.",
+                "items": { "type": "string" }
+              },
+              "pipe_diameter": {
+                "type": "number",
+                "description": "Diameter of the pipe in the current design's length units."
+              },
+              "operation_type": {
+                "type": "string",
+                "description": "Feature operation: CutFeatureOperation, JoinFeatureOperation, IntersectFeatureOperation, NewBodyFeatureOperation, NewComponentFeatureOperation."
+              }
+            },
+            "required": ["line_token_list", "pipe_diameter"],
+            "returns": {
+              "type": "string",
+              "description": "A JSON object mapping each line token to a success or error message."
+            }
+          }
+        }
+        """
+
+        results = {}
+        try:
+            if not line_token_list or not isinstance(line_token_list, list):
+                return "Error: line_token_list must be a non-empty list of token strings."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            #root_comp = design.rootComponent
+
+            operation_obj, errors = self._get_operation_obj(operation_type)
+            if operation_obj is None:
+                return errors
+
+            targetComponent = self.get_hash_obj(line_token_list[0]).parentSketch.parentComponent
+            # find the target component by name (assuming you have a local helper method).
+            if not targetComponent:
+                return f"Error: No component found"
+
+            # Convert extrudeDist (cm) to internal real value
+            thickness = adsk.core.ValueInput.createByReal(float( pipe_diameter))
+
+            # Prepare pipe feature objects
+            pipe_features = targetComponent.features.pipeFeatures
+
+            for token in line_token_list:
+                line_obj = self.get_hash_obj(token)
+
+                if not line_obj:
+                    results[token] = f"Error: no object found for token '{token}'."
+                    continue
+
+                if not isinstance(line_obj, adsk.fusion.SketchLine):
+                    results[token] = f"Error: object for token '{token}' is not a SketchLine."
+                    continue
+
+                # 2) Create a Path from this line
+                path_entity = adsk.core.ObjectCollection.create()
+                path_entity.add(line_obj)
+                # Create a path object
+                path = targetComponent.features.createPath(path_entity, False)  # isChain = False
+
+                pipe_input = pipe_features.createInput(path, operation_obj)
+                pipe_input.sectionSize = thickness
+
+                #creationOccurrence
+
+                try:
+                    pipe_feature = pipe_features.add(pipe_input)
+
+                    results[token] = f"Success: Created pipe with diameter={pipe_diameter} using line token '{token}'."
+                except Exception as e:
+                    results[token] = f"Error creating sweep for line token '{token}': {str(e)}"
 
 
 
+            return json.dumps(results)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+    #@ToolCollection.tool_call
+    def create_spheres_from_points(self,
+                                   point_token_list: list = None,
+                                   sphere_radius: float = 1.0) -> str:
+        """
+        {
+          "name": "create_spheres_from_points",
+          "description": "Creates a set of sphere bodies from a list of Point3D references using TemporaryBRepManager. Adds all spheres to a single Base Feature. Returns JSON with body tokens for each sphere or any errors.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "point_token_list": {
+                "type": "array",
+                "description": "A list of tokens referencing adsk.core.Point3D objects, each specifying a center for a sphere.",
+                "items": { "type": "string" }
+              },
+              "sphere_radius": {
+                "type": "number",
+                "description": "The radius of each sphere in the current design's length units."
+              }
+            },
+            "required": ["point_token_list", "sphere_radius"],
+            "returns": {
+              "type": "string",
+              "description": "A JSON object mapping each token to success or error, plus a 'baseFeatureToken' referencing the base feature, and new body tokens if desired."
+            }
+          }
+        }
+        """
+        try:
+            if not point_token_list or not isinstance(point_token_list, list):
+                return "Error: point_token_list must be a non-empty list of string tokens."
+            if sphere_radius <= 0:
+                return "Error: sphere_radius must be positive."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            root_comp = design.rootComponent
+            results = {}
+
+            # 1) Create or retrieve a TemporaryBRepManager
+            temp_brep_mgr = adsk.fusion.TemporaryBRepManager.get()
+
+            # 2) Create a new Base Feature (non-parametric) in the root component
+            base_feat = root_comp.features.baseFeatures.add()
+            base_feat.startEdit()
+
+            # We'll store references to newly created bodies so we can assign tokens
+            # if desired. For example, "sphere_body_tokens": { "tokenForPointA": "bodyToken123", ... }
+            sphere_body_tokens = {}
+
+            # 3) Loop over each point token
+            for token in point_token_list:
+                pt_obj = self.get_hash_obj(token)
+                if not pt_obj or not isinstance(pt_obj, adsk.core.Point3D):
+                    results[token] = f"Error: token '{token}' is not a valid Point3D."
+                    continue
+
+                # Create a sphere for each point using the temporary BRep manager
+                try:
+                    sphere_body = temp_brep_mgr.createSphere(pt_obj, sphere_radius)
+                except Exception as e:
+                    results[token] = f"Error creating sphere for token '{token}': {str(e)}"
+                    continue
+
+                # Add the BRep body to the Base Feature
+                try:
+                    new_body = base_feat.bodies.add(sphere_body)
+                    # Generate a token if you want to keep track of it
+                    # e.g. "Sphere_{x}_{y}_{z}" or something similar
+                    sphere_name = f"Sphere_{token}"
+                    sphere_body_token = self.set_obj_hash(sphere_name, new_body)
+                    sphere_body_tokens[token] = sphere_body_token
+
+                    results[token] = f"Success: Created sphere with radius={sphere_radius} at token '{token}'."
+                except Exception as e:
+                    results[token] = f"Error adding BRep body to base feature: {str(e)}"
+
+            # 4) Finish editing the Base Feature
+            try:
+                base_feat.finishEdit()
+            except Exception as e:
+                results["Error_baseFeature"] = f"Error finishing Base Feature: {str(e)}"
+
+            # 5) Optionally store a token for the entire base feature
+            base_feat_name = f"BaseFeature_{len(point_token_list)}Spheres"
+            base_feat_token = self.set_obj_hash(base_feat, base_feat_name)
+
+            # Build final JSON
+            results["baseFeatureToken"] = base_feat_token
+            results["sphere_body_tokens"] = sphere_body_tokens
+
+            return json.dumps(results, indent=2)
+
+        except:
+            import traceback
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
+    @ToolCollection.tool_call
+    def join_bodies(self, body_token_list: list = None) -> str:
+        """
+        {
+          "name": "join_bodies",
+          "description": "Performs a Combine 'Join' operation on all the provided bodies. The first body is the target, and the rest are tools. Returns a JSON result.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "body_token_list": {
+                "type": "array",
+                "description": "A list of entity tokens referencing Fusion 360 bodies that will be merged via a Combine feature.",
+                "items": { "type": "string" }
+              }
+            },
+            "required": ["body_token_list"],
+            "returns": {
+              "type": "string",
+              "description": "A JSON object with success or error messages."
+            }
+          }
+        }
+        """
+
+        try:
+            if not body_token_list or not isinstance(body_token_list, list):
+                return "Error: body_token_list must be a non-empty list of body tokens."
+
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+            root_comp = design.rootComponent
+
+            results = {}
+
+            # We need at least two bodies to do a join
+            if len(body_token_list) < 2:
+                return "Error: At least two bodies are required to perform a join."
+
+            # Retrieve the first body as the target
+            target_token = body_token_list[0]
+            target_body = self.get_hash_obj(target_token)
+            if not target_body or not isinstance(target_body, adsk.fusion.BRepBody):
+                return f"Error: The first token '{target_token}' is not a valid Fusion BRepBody."
+
+            # Gather the tool bodies in an ObjectCollection
+            tool_bodies = adsk.core.ObjectCollection.create()
+            for token in body_token_list[1:]:
+                b = self.get_hash_obj(token)
+                if not b or not isinstance(b, adsk.fusion.BRepBody):
+                    results[token] = f"Error: Token '{token}' is not a valid BRepBody. Skipping."
+                    continue
+                tool_bodies.add(b)
+                results[token] = "Added as a tool body."
+
+            if tool_bodies.count == 0:
+                return json.dumps({
+                    "Error": "No valid tool bodies found after the first token.",
+                    "Details": results
+                })
+
+            # Create Combine feature input
+            combine_feats = root_comp.features.combineFeatures
+            combine_input = combine_feats.createInput(
+                target_body,
+                tool_bodies
+            )
+            # Set operation to Join
+            combine_input.operation = adsk.fusion.FeatureOperations.JoinFeatureOperation
+            # Optionally, you can keep tool bodies if needed
+            combine_input.isKeepToolBodies = False
+
+            try:
+                combine_feat = combine_feats.add(combine_input)
+                results["Operation"] = "Success: Bodies joined into the first body."
+            except Exception as e:
+                results["Operation"] = f"Error creating Combine feature: {str(e)}"
+
+            return json.dumps(results, indent=2)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+ 
 

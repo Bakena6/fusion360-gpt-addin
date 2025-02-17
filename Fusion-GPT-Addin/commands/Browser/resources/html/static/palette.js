@@ -13,10 +13,7 @@ class Thread {
 
         // track number of function text boxes created
         this.nFunction  = 0;
-
     };
-
-
 
     connect() {
         const args = {  };
@@ -33,12 +30,11 @@ class Thread {
         let promptTextValue = promptTextArea.value;
 
         const args = { promptText: promptTextValue };
-        //const args = {  };
+        
         // Send the data to Fusion as a JSON string. The return value is a Promise.
-        adsk.fusionSendData("create_thread", JSON.stringify(args))
-            .then((result) =>{ }); // end then
-    }// end create thread
+        adsk.fusionSendData("create_thread", JSON.stringify(args)).then((result) =>{ }); // end then
 
+    }// end create thread
 
 
     scrollToBottom(){
@@ -65,7 +61,6 @@ class Thread {
     /*
      * run created event
      */
-
 
     toggleSectionVis(event, elementId){
 
@@ -134,7 +129,7 @@ class Thread {
         
         
         // Insert the new div after the button row
-        container.prepend(runContainer);
+        container.append(runContainer);
 
         // Optional: Clear the textarea after submitting
         promptTextInput.value = '';
@@ -349,6 +344,7 @@ class Thread {
             this.functionArgsEl.style.height = 'auto';
             this.functionArgsEl.style.height = this.functionArgsEl.scrollHeight + 'px';
             this.functionArgsEl.textContent = existingText + content;
+            this.scrollToBottom();
             
 
         } else if (function_output != null){
@@ -456,33 +452,6 @@ class Control{
 
     }; // end constructor
 
-
-     playback(){
-
-
-        const args = { };
-        adsk.fusionSendData("playback", JSON.stringify(args))
-            .then((result) =>{ });
-        this.outputContainer.innerHTML = "";
-
-    };
-
-     clearOutputs(){
-        this.outputContainer.innerHTML = "";
-
-    };
-
-
-     send_cp_val(cb_event){
-        const args = {
-            "setting_name": cb_event.target.id,
-            "setting_val": cb_event.target.checked
-        };
-        adsk.fusionSendData("cb_change", JSON.stringify(args))
-            .then((result) =>{ });
-    };
-
-
     connectInputs(){
 
         //debugCb = document.getElementById('debugCb');
@@ -508,13 +477,36 @@ class Control{
         submitOnEnterInput.addEventListener("change", (event) => {
             this.submitOnEnter = event.target.checked;
         });
+        
+        // settings container
+        const showSettingsInput = document.getElementById('showSettings');
+        showSettingsInput.addEventListener("change", (event) => {
+            let elementId = "settingsContainer";
+            this.showHideElement(elementId)
+            setWindowHeight();
+        });
 
+        // runs
         const showRunsInput = document.getElementById('showRuns');
         showRunsInput.addEventListener("change", (event) => {
-            let className = "run-container";
+            let className = "response-container";
+            this.showHideClass(className, event.target.checked);
+
+        });
+
+        // steps
+        const showStepsInput = document.getElementById('showSteps');
+        showStepsInput.addEventListener("change", (event) => {
+            let className = "tool-container";
             this.showHideClass(className, event.target.checked);
         });
 
+        // results
+        const showResultsInput = document.getElementById('showResults');
+        showResultsInput.addEventListener("change", (event) => {
+            let className = "function-results";
+            this.showHideClass(className, event.target.checked);
+        });
 
 
         // submit prompt on ender
@@ -528,6 +520,32 @@ class Control{
         });// end submit on enter 
 
     }; // end connect inputs
+
+     playback(){
+
+        const args = { };
+        adsk.fusionSendData("playback", JSON.stringify(args))
+            .then((result) =>{ });
+        this.outputContainer.innerHTML = "";
+
+    };
+
+     clearOutputs(){
+        this.outputContainer.innerHTML = "";
+
+    };
+
+
+     send_cp_val(cb_event){
+        const args = {
+            "setting_name": cb_event.target.id,
+            "setting_val": cb_event.target.checked
+        };
+        adsk.fusionSendData("cb_change", JSON.stringify(args))
+            .then((result) =>{ });
+    };
+
+
 
 
 
@@ -892,7 +910,7 @@ window.addEventListener('load', (event) => {
 
 });// end window on load
 
-
+// reload css for debugging
 function reloadStyle() {
   const links = document.querySelectorAll('link[rel="stylesheet"]');
   links.forEach(link => {
@@ -906,7 +924,7 @@ function reloadStyle() {
 window.fusionJavaScriptHandler = {
 
     handle: function (action, messageString) {
-        //console.log("from js");
+
         try {
             // Message is sent from the add-in as a JSON string.
             const messageData = JSON.parse(messageString);

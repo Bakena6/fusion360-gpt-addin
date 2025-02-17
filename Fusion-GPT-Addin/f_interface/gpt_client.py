@@ -45,18 +45,22 @@ class MockServer:
         self.msg_index = index
 
     def send(self, message):
-        time.sleep(.05)
+        time.sleep(.0001)
         return True;
 
 
     def recv(self):
-        time.sleep(.05)
+        time.sleep(.0001)
         msg = self.call_history[self.msg_index]
         self.msg_index += 1
         return msg
 
     def add_call(self, call):
         self.call_history.append(call)
+
+
+    def download_call_hostory(self):
+        pass
 
 
 
@@ -155,6 +159,7 @@ class GptClient:
         importlib.reload(fusion_interface)
         self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
         print("fusion_interface reloded")
+
 
     def connect(self):
         """
@@ -287,6 +292,7 @@ class GptClient:
                 message = {"message_type": "thread_update", "content": function_result}
                 message = json.dumps(message)
 
+                adsk.doEvents()
                 self.conn.send(function_result)
 
             # thread complete break loop
@@ -303,9 +309,9 @@ class GptClient:
         called from Assistants API
         calls function passed from Assistants API
         """
-        print(f"function_name: {type(function_name)}, {function_name}")
-        print(f"function_args: {type(function_args)}, {function_args}")
-        print(f"tool_call_id: {type(tool_call_id)}, {tool_call_id}")
+        #print(f"function_name: {type(function_name)}, {function_name}")
+        #print(f"function_args: {type(function_args)}, {function_args}")
+        #print(f"tool_call_id: {type(tool_call_id)}, {tool_call_id}")
 
 
         # TODO make this better

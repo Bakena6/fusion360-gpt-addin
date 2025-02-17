@@ -170,8 +170,9 @@ class Assistant:
         # functions
         tools = json.loads(tools)
         updated_tools = []
-        for tool in tools:
+        for index, tool in enumerate(tools):
             updated_tools.append({"type": "function", "function": tool})
+            print(f"{index}: {tool['name']}")
 
         #model_name = "o1-mini"
         #model_name = "o1-preview"
@@ -179,15 +180,19 @@ class Assistant:
         #model_name = "o3-mini-2025-01-31"
         #model_name = "4o"
 
-        updated_assistant = client.beta.assistants.update(
-            self.assistant_id,
-            tools=updated_tools,
-            #model=model_name,
-            instructions=instructions,
-            response_format="auto"
-        )
+        try:
+            updated_assistant = client.beta.assistants.update(
+                self.assistant_id,
+                tools=updated_tools,
+                #model=model_name,
+                instructions=instructions,
+                response_format="auto"
+            )
+        except Exception as e:
+            for index, tool in enumerate(tools):
+                print(f"{index}: {tool['name']}")
+            print(f"ERROR: {e}")
 
-        #print(updated_assistant)
 
     def start_thread(self):
         """

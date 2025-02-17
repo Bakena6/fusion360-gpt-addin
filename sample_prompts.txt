@@ -26,6 +26,21 @@ I am designing a common TKL keyboard. It will have a main body, which should be 
 Can you create a vase. It should have a very detailed, highly contoured profile, and you should probably use the spline tool. Make sure the walls are sufficiently far from the Z axis. The walls should be a few mm thick.
 
 
-
 Hello, can you create a new component called shapes, then create a basic 4 point spline in the sketch?
+
+
+# shapes
+Cuboctahedron
+
+Hello, can you create Great dodecahedron. You should Create a new component and sketch. The create the Great dodecahedron vertices and edges used sketch lines. Remember sketch object can be 3d.
+
+# Rhombicuboctahedron 
+Hello, Please create a Rhombicuboctahedron in the current design. Start by creating a component and sketch, they should have meaningful names. Then create all the faces by drawing the edges and vertices with sketchLines or any other type of sketch geometry you think is appropriate. Remember all sketch geometry can be 3d. The overall height of the Rhombicuboctahedron should be about 100mm, although the exact dimensions are not that important. 
+
+
+
+# fail Truncated octahedron
+Hello, Please create a Truncated octahedron in the current design. Create a component and sketch, then create the edges and vertices with sketch objects, such as sketchLines, sketchPoints, polygons, etc. he overall height of the polyhedron should be about 100mm, although the exact dimensions are not that important. After you have created the sketch lines, add a 5mm diameter pipe feature to each line. Please give the component and sketch meaning full names. 
+
+
 

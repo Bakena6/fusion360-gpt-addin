@@ -4,14 +4,13 @@ import adsk.core
 import os
 import sys
 from . import config
-
+from . import commands
 
 def print(string):
     futil.log(str(string))
 
 dirname = os.path.dirname(__file__)
 
-from . import commands
 def run(context):
     try:
         # Display a message when the add-in is manually run.

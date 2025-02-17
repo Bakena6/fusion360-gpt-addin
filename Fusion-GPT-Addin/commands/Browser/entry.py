@@ -157,8 +157,8 @@ def command_execute(args: adsk.core.CommandEventArgs):
             isVisible=True,
             showCloseButton=True,
             isResizable=True,
-            width=1000,
-            height=2000,
+            width=1400,
+            height=800,
             useNewWebBrowser=True
         )
         futil.add_handler(palette.closed, palette_closed)

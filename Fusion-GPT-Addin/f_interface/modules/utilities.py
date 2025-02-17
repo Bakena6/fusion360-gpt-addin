@@ -34,18 +34,21 @@ class Utilities(ToolCollection):
     def move_all_objects_into_view(self) -> str:
         """
         {
-          "name": "move_all_objects_into_view",
-          "description": "Moves/zooms the active viewport camera so that all objects in the current Fusion 360 design are visible.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-            },
-            "required": []
-          },
-          "returns": {
-            "type": "string",
-            "description": "A message indicating success or any error encountered."
-          }
+            "name": "move_all_objects_into_view",
+            "description": "Moves/zooms the active viewport camera so that all objects in the current Fusion 360 design are visible.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                },
+                "required": [],
+
+                "returns": {
+                    "type": "string",
+                    "description": "A message indicating success or any error encountered."
+                }
+
+            }
+
         }
         """
 
