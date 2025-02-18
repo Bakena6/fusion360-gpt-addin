@@ -62,10 +62,17 @@ class Assistant:
 
         # run local process server, how Fusion connects
         #self.start_server()
+        #self.system_instructions_path = "system_instructions/system_instructions.txt"
+        #self.selected_model = "gpt-4o"
+
+        # store incomplete tool call ids, during an Exception in
+        # the Fusion program, we can still respond to theese tool calls
+        # and continue the thread
+        self.pending_tool_calls = {}
 
         # whisper model size
         model_size = "base"
-        self.model = whisper.load_model(model_size)  # Load the selected model
+        #self.model = whisper.load_model(model_size)  # Load the selected model
 
     def start_record(self, conn):
         """
@@ -154,16 +161,30 @@ class Assistant:
         spacer = " " *spacer_len 
         return f"{string}{spacer}"
 
+    def get_available_system_instructions(self):
+        """
+        List available system instructions in the system
+        """
+        instructions = os.listdir("./system_instructions")
+        return instructions
+
+    def get_available_models(self):
+        """
+        List available Assistant models,
+        This partially depends on on user payment tier
+        """
+        models_resp = self.client.models.list()
+        models = models_resp.data
+        model_ids = [m.id for m in models]
+        return model_ids
 
     def update_tools(self, tools):
         """
         update assistant tools, and initial prompt instructions
         """
 
-
         # base assistant prompt
-        with open("system_instructions.txt") as f:
-        #with open("system_instructions_v1.txt") as f:
+        with open(self.system_instructions_path) as f:
             instructions = f.read()
             instructions = instructions.strip()
 
@@ -173,13 +194,6 @@ class Assistant:
         for index, tool in enumerate(tools):
             updated_tools.append({"type": "function", "function": tool})
             print(f"{index}: {tool['name']}")
-
-        #model_name = "o1-mini"
-        #model_name = "o1-preview"
-        #model_name = "o3-mini"
-        #model_name = "o3-mini-2025-01-31"
-        #model_name = "4o"
-
         try:
             updated_assistant = client.beta.assistants.update(
                 self.assistant_id,
@@ -188,11 +202,59 @@ class Assistant:
                 instructions=instructions,
                 response_format="auto"
             )
+            return "Success:"
+
         except Exception as e:
             for index, tool in enumerate(tools):
                 print(f"{index}: {tool['name']}")
             print(f"ERROR: {e}")
+            return "Error: {e}"
 
+
+    def update_settings(self, model_settings):
+        """
+        update assistant tools, and initial prompt instructions
+        """
+
+        #print(f"model_settings:  {model_settings}")
+        #model_settings = json.loads(model_settings)
+
+        model_name = model_settings["model_name"]
+        instructions_path = model_settings["instructions_path"]
+        tools = model_settings["tools"]
+
+        # base assistant prompt
+        with open(instructions_path) as f:
+            instructions = f.read()
+            instructions = instructions.strip()
+
+        # functions
+        tools = json.loads(tools)
+        updated_tools = []
+        for index, tool in enumerate(tools):
+            updated_tools.append({"type": "function", "function": tool})
+            #print(f"{index}: {tool['name']}")
+        try:
+            updated_assistant = client.beta.assistants.update(
+                self.assistant_id,
+                model=model_name,
+                instructions=instructions,
+                tools=updated_tools,
+                response_format="auto"
+            )
+
+            return {
+                "id": updated_assistant.id,
+                "name": updated_assistant.name,
+                "model": updated_assistant.model,
+                "created_at": updated_assistant.created_at,
+            }
+
+        except Exception as e:
+            #for index, tool in enumerate(tools):
+                #print(f"{index}: {tool['name']}")
+            #print(f"ERROR: {e}")
+            return f"Error: {e}"
 
     def start_thread(self):
         """
@@ -203,292 +265,338 @@ class Assistant:
 
         self.thread_id = self.thread.id
 
-        ## laste run step
+        # last run step
         self.run_steps = None
         self.thread_started = True
         print(f'Thread created: {self.thread.id}')
 
 
+
+    def run(self, conn):
+        """
+        main server loop, called from "start server" accepts a multiprocess connection object
+        """
+
+        user_message_index = 0
+        while True:
+            print(f"\n{user_message_index}: WAITING FOR USER COMMAND...")
+            user_message_index +=1
+
+            # wait for message from user
+            message_raw = conn.recv()
+            message = json.loads(message_raw)
+
+            message_type = message["message_type"]
+
+            print(f"  MESSAGE RECEIVED:\n  {message_raw}")
+
+            # handle system update calls, assitant meta data
+            # check if method exists on our Assistant class
+            if message_type == "function_call":
+
+                function_name = message.get("function_name")
+                function_args = message.get("function_args", {})
+                print(f"args: {function_args}")
+
+                if not function_name:
+                    results = f"Error: function_name is '{function_name}'"
+                    print(results)
+                elif not hasattr(self, function_name):
+                    results = f"Error: {self} has no function '{function_name}'"
+                    print(results)
+                else:
+                    function = getattr(self, function_name)
+                    if not callable(function):
+                        results = f"Error: '{function_name}' is not callable"
+                        print(results)
+                    else:
+                        # call function
+                        results = function(**function_args)
+
+                conn.send(json.dumps(results))
+                continue
+
+
+            if message_type == "thread_update":
+                message_text = message["content"]
+
+            # start audio recording
+            elif message_type == "start_record":
+                # stop_record handled in self.start_record poll loop
+                audio_text = self.start_record(conn)
+                fusion_call = { "content": audio_text }
+                conn.send(json.dumps(fusion_call))
+                continue
+
+            # start assistant thread
+            if self.thread_started == False:
+                self.start_thread()
+
+            # add message to thread
+            self.add_message(message_text)
+
+            # once message(s) are added, run
+            self.stream = self.create_run()
+
+            event_type = ""
+            message_text = ""
+            delta_count = 0
+            thread_start = 0
+
+            # TODO condense much of this
+            while event_type != "thread.run.completed":
+                print(f"THREAD START")
+                thread_start +=1
+
+                if thread_start > 20:
+                    return
+
+                for event in self.stream:
+                    event_type = event.event
+                    print(event_type)
+                    thread_start = 0
+                    data = event.data
+
+                    fusion_call = None
+                    if event_type == "thread.run.created":
+                        # set run id for tool call result calls
+                        self.run = event.data
+                        self.run_id = event.data.id
+
+                        content = {
+                            "run_id": self.run_id,
+                        };
+
+                        fusion_call = {
+                            "run_status": "in_progress",
+                            "event": event_type,
+                            "content": content
+                        }
+                        #conn.send(json.dumps(fusion_call))
+
+                    elif event_type == "thread.message.created":
+                        content = {
+                            "message_id": data.id,
+                            "run_id": data.run_id,
+                            "event": event_type,
+                        };
+
+                        fusion_call = {
+                            "run_status": "in_progress",
+                            "event": event_type,
+                            "content": content
+                        }
+
+                        #conn.send(json.dumps(fusion_call))
+
+                    elif event_type == "thread.run.step.created":
+                        step_type = data.type
+
+                        step_details = data.step_details
+
+                        content = {
+                            "step_id": data.id,
+                            "run_id": data.run_id,
+                            "status": data.status,
+                            "step_type": step_type,
+                            "event": event_type,
+                        };
+                        fusion_call = {
+                            "run_status": "in_progress",
+                            "event": event_type,
+                            "content": content
+                        }
+                        #conn.send(json.dumps(fusion_call))
+
+
+                    elif event_type == "thread.run.step.in_progress":
+                        pass
+
+
+                    elif event_type == "thread.message.delta":
+                        delta_text = event.data.delta.content[0].text.value
+                        message_id = event.data.id
+
+                        content = {
+                            "message_id": message_id,
+                            "message": delta_text,
+                            "event": event_type,
+                        }
+
+                        fusion_call = {
+                            "run_status": "in_progress",
+                            "event": event_type,
+                            "content": content
+                        }
+                        #conn.send(json.dumps(fusion_call))
+
+
+                    elif event_type == "thread.run.step.delta":
+
+                        try:
+                            #print(event.data.delta.step_details)
+                            function = event.data.delta.step_details.tool_calls[0].function
+
+                            # tool call is not None on first delta  
+                            tool_call_id = event.data.delta.step_details.tool_calls[0].id
+
+                            tool_call_len = len(event.data.delta.step_details.tool_calls)
+
+                            if tool_call_len != 1:
+                                print( event.data.delta.step_details.tool_calls)
+                                print("CHECK TOOL CALL LEN\n\n\n\n\n")
+                                return
+
+                        except Exception as e:
+                            print(e)
+                            continue
+
+                        step_id = event.data.id
+
+                        content = {
+                            "step_id": step_id,
+                            "tool_call_id": tool_call_id,
+                            "function_name": function.name,
+                            "function_args": function.arguments,
+                            "function_output": function.output,
+                            "event": event_type,
+                        }
+
+                        fusion_call = {
+                            "run_status": "in_progress",
+                            "event": event_type,
+                            "content": content
+                        }
+
+                        delta_count +=1
+                        #if delta_count < 500:
+                        #conn.send(json.dumps(fusion_call))
+
+                    elif event_type == "thread.message.completed":
+                        content = event.data.content
+                        delta_count = 0
+
+                    elif event_type == "thread.run.requires_action":
+
+                        tool_calls = event.data.required_action.submit_tool_outputs.tool_calls
+
+                        # return data for all tool calls in a step
+                        tool_call_results = []
+
+                        for tool_call in tool_calls:
+
+                            tool_call_id = tool_call.id
+                            function_name = tool_call.function.name
+                            function_args = tool_call.function.arguments
+
+                            if function_name == None:
+                                continue
+                            print(f"    CALL TOOL: {function_name}, {function_args}")
+
+                            fusion_call = {
+                                "run_status": self.run.status,
+                                "response_type": "tool_call",
+                                "event": event_type,
+                                "tool_call_id": tool_call_id,
+                                "function_name": function_name,
+                                "function_args": function_args,
+                            }
+
+                            # set tool call status in case of Exception during tool call
+                            self.pending_tool_calls[tool_call_id] = "in_progress"
+
+                            conn.send(json.dumps(fusion_call))
+                            # Fusion360 function results
+                            function_result = conn.recv()
+
+                            tool_call_results.append({
+                                "tool_call_id" : tool_call.id,
+                                "output": function_result
+                            })
+
+                            # remove tool_cal_id after successful completion 
+                            self.pending_tool_calls.pop(tool_call_id)
+
+
+                            print(f"    FUNC RESULTS: {function_result}")
+
+                        ## submit results for all tool calls in step
+                        self.stream = self.submit_tool_call(tool_call_results)
+                        print("TOOL CALL RESUTS FINISHED")
+                        continue
+
+                    elif event_type == "thread.run.step.completed":
+                        delta_count = 0
+
+                        step_details = event.data.step_details
+                        step_type = step_details.type
+
+                        # skip response for mesage completion
+                        if step_type == "message_creation":
+                            continue
+
+                        try:
+                            function = step_details.tool_calls[0].function
+                        except Exception as e:
+                            print(f"Error: thread.run.step.completed: {e}")
+                            continue
+                        step_id = event.data.id
+                        content = {
+                            "step_id": step_id,
+                            "function_name": function.name,
+                            "function_args": function.arguments,
+                            "function_output": function.output,
+                            "event": event_type,
+                        }
+
+                        fusion_call = {
+                            "run_status": "in_progress",
+                            "event": event_type,
+                            "content": content
+                        }
+
+                    elif event_type == "thread.run.completed":
+                        print("THREAD.RUN.COMPLETED")
+                        #print(event.data)
+
+                        fusion_call = {
+                            "run_status": "thread.run.completed",
+                            "response_type": "message",
+                            "event": event_type,
+                            "text": message_text
+                        }
+
+
+                    if fusion_call != None:
+                        conn.send(json.dumps(fusion_call))
+
+
+
     def start_server(self):
-        # run on local host, Fusion client must connect to this address
+        # start run on local host, Fusion client must connect to this address
         address = ('localhost', 6000) # family is deduced to be 'AF_INET'
 
+        # Multiprocess server
         with Listener(address, authkey=b'fusion260') as listener:
+            while True:
+                try:
+                    print(f"WAITING FOR FUSION 360 TO CONNECT...")
+                    # Fusion 360 Add-In connect here
+                    with listener.accept() as conn:
+                        print('CONNECTION ACCEPTED FROM', listener.last_accepted)
+                        self.run(conn)
 
-            with listener.accept() as conn:
-                print('CONNECTION ACCEPTED FROM', listener.last_accepted)
+                except Exception as e:
+                    print(f"ERROR: {e} {traceback.format_exc()}")
+                    print(f"{traceback.format_exc()}")
 
-                i = 0
-                while True:
-                    print(f"{i} WAITING FOR USER COMMAND...")
-                    # wait for message from user
-                    message_raw = conn.recv()
-                    message = json.loads(message_raw)
-                    message_type = message["message_type"]
+                    print(f"\nPENDING TOOL CALLS: {self.pending_tool_calls}")
+                    print(f"RETRYING CONNECTION...")
+                    time.sleep(1)
 
-                    print(f" MESSAGE RECIEVED: {message_raw}")
 
-                    if message_type == "thread_update":
-                        message_text = message["content"]
 
-                    # update Assistant meta data
-                    elif message_type == "tool_update":
-                        tools = message["content"]
-                        self.update_tools(tools)
-                        continue
 
-                    # start audio recording
-                    elif message_type == "start_record":
-                        # stop_record handled in self.start_record poll loop
-                        audio_text = self.start_record(conn)
-                        fusion_call = { "content": audio_text }
-                        conn.send(json.dumps(fusion_call))
-                        continue
-
-                    if self.thread_started == False:
-                        self.start_thread()
-
-
-                    # add message to thread
-                    self.add_message(message_text)
-
-                    # once message(s) are added, run
-                    self.stream = self.create_run()
-
-                    event_type = ""
-                    message_text = ""
-
-                    delta_count = 0
-
-                    thread_start = 0
-                    while event_type != "thread.run.completed":
-                        print(f"THREAD START")
-                        thread_start +=1
-
-                        if thread_start > 20:
-                            return
-
-                        for event in self.stream:
-                            event_type = event.event
-                            print(event_type)
-                            #print(event.data)
-                            #print("------")
-                            thread_start = 0
-
-                            data = event.data
-
-                            if event_type == "thread.run.created":
-
-                                # set run id for tool call result calls
-                                self.run = event.data
-                                self.run_id = event.data.id
-
-                                content = {
-                                    "run_id": self.run_id,
-                                };
-
-                                fusion_call = {
-                                    "run_status": "in_progress",
-                                    "event": event_type,
-                                    "content": content
-                                }
-                                conn.send(json.dumps(fusion_call))
-
-
-                            elif event_type == "thread.message.created":
-                                #print(event)
-
-                                content = {
-                                    "message_id": data.id,
-                                    "run_id": data.run_id,
-                                    "event": event_type,
-                                };
-
-                                fusion_call = {
-                                    "run_status": "in_progress",
-                                    "event": event_type,
-                                    "content": content
-                                }
-
-                                conn.send(json.dumps(fusion_call))
-
-                            elif event_type == "thread.run.step.created":
-                                step_type = data.type
-
-                                step_details = data.step_details
-
-                                content = {
-                                    "step_id": data.id,
-                                    "run_id": data.run_id,
-                                    "status": data.status,
-                                    "step_type": step_type,
-                                    "event": event_type,
-                                };
-                                fusion_call = {
-                                    "run_status": "in_progress",
-                                    "event": event_type,
-                                    "content": content
-                                }
-                                conn.send(json.dumps(fusion_call))
-
-
-                            elif event_type == "thread.run.step.in_progress":
-                                pass
-
-
-                            elif event_type == "thread.message.delta":
-                                delta_text = event.data.delta.content[0].text.value
-                                message_id = event.data.id
-
-                                content = {
-                                    "message_id": message_id,
-                                    "message": delta_text,
-                                    "event": event_type,
-                                }
-
-                                fusion_call = {
-                                    "run_status": "in_progress",
-                                    "event": event_type,
-                                    "content": content
-                                }
-                                conn.send(json.dumps(fusion_call))
-
-
-                            elif event_type == "thread.run.step.delta":
-
-                                try:
-                                    #print(event.data.delta.step_details)
-                                    function = event.data.delta.step_details.tool_calls[0].function
-
-                                    # tool call is not None on first delta  
-                                    tool_call_id = event.data.delta.step_details.tool_calls[0].id
-
-                                    tool_call_len = len(event.data.delta.step_details.tool_calls)
-
-                                    if tool_call_len != 1:
-                                        print( event.data.delta.step_details.tool_calls)
-                                        print("CHECK TOOL CALL LEN\n\n\n\n\n")
-                                        return
-
-                                except Exception as e:
-                                    print(e)
-                                    continue
-
-                                step_id = event.data.id
-
-                                #tool_call_id = event.data.id
-
-                                content = {
-                                    "step_id": step_id,
-                                    "tool_call_id": tool_call_id,
-                                    "function_name": function.name,
-                                    "function_args": function.arguments,
-                                    "function_output": function.output,
-                                    "event": event_type,
-                                }
-
-                                fusion_call = {
-                                    "run_status": "in_progress",
-                                    "event": event_type,
-                                    "content": content
-                                }
-
-                                delta_count +=1
-                                #if delta_count < 500:
-                                conn.send(json.dumps(fusion_call))
-
-                            elif event_type == "thread.message.completed":
-                                content = event.data.content
-                                delta_count = 0
-                                conn.send(json.dumps(fusion_call))
-
-                            elif event_type == "thread.run.requires_action":
-                                print("THREAD.RUN.REQUIRES_ACTION")
-
-                                tool_calls = event.data.required_action.submit_tool_outputs.tool_calls
-
-                                # return data for all tool calls in a step
-                                tool_call_results = []
-                                for tool_call in tool_calls:
-
-                                    tool_call_id = tool_call.id
-                                    function_name = tool_call.function.name
-                                    function_args = tool_call.function.arguments
-
-                                    if function_name == None:
-                                        continue
-                                    print(f"    CALL TOOL: {function_name}, {function_args}")
-
-                                    fusion_call = {
-                                        "run_status": self.run.status,
-                                        "response_type": "tool_call",
-                                        "event": event_type,
-                                        "tool_call_id": tool_call_id,
-                                        "function_name": function_name,
-                                        "function_args": function_args,
-                                    }
-
-                                    conn.send(json.dumps(fusion_call))
-                                    # Fusion360 function results
-                                    function_result = conn.recv()
-
-                                    tool_call_results.append({
-                                        "tool_call_id" : tool_call.id,
-                                        "output": function_result
-                                    })
-                                    print(f"    FUNC RESULTS: {function_result}")
-
-                                ## submit results for all tool calls in step
-                                self.stream = self.submit_tool_call(tool_call_results)
-                                print("TOOL CALL RESUTS FINISHED")
-
-                            elif event_type == "thread.run.step.completed":
-                                delta_count = 0
-
-                                step_details = event.data.step_details
-                                step_type = step_details.type
-
-                                # skip response for mesage completion
-                                if step_type == "message_creation":
-                                    continue
-
-                                try:
-                                    function = step_details.tool_calls[0].function
-                                except Exception as e:
-                                    print(f"Error: thread.run.step.completed: {e}")
-                                    continue
-
-                                step_id = event.data.id
-
-                                content = {
-                                    "step_id": step_id,
-                                    "function_name": function.name,
-                                    "function_args": function.arguments,
-                                    "function_output": function.output,
-                                    "event": event_type,
-                                }
-
-                                fusion_call = {
-                                    "run_status": "in_progress",
-                                    "event": event_type,
-                                    "content": content
-                                }
-
-                                conn.send(json.dumps(fusion_call))
-
-
-                            elif event_type == "thread.run.completed":
-                                print("THREAD.RUN.COMPLETED")
-                                #print(event.data)
-
-                                fusion_call = {
-                                    "run_status": "thread.run.completed",
-                                    "response_type": "message",
-                                    "event": event_type,
-                                    "text": message_text
-                                }
-
-                                conn.send(json.dumps(fusion_call))
 
 
     def add_message(self, message_text: str):

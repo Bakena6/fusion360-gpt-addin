@@ -73,9 +73,8 @@ class ToolCollection:
         setting_val = settings_dict.get("setting_val")
 
         current_val = getattr(cls, setting_name, None)
-
         setattr(ToolCollection, setting_name, setting_val)
-        print(f"{setting_name} set from {current_val} => {setting_val}")
+        print(f"fusion: {setting_name}:  {current_val} => {setting_val}")
 
     def print_results(self, results):
 

@@ -31,7 +31,6 @@ print(f"RELOADED: {__name__.split("%2F")[-1]}")
 
 
 class MockServer:
-
     """
     test Fusion side code without OpenAI API call
 
@@ -102,44 +101,29 @@ class GptClient:
         self.user_messages = []
 
 
-    def start_record(self):
-        message = {
-            "message_type": "start_record",
-            "content": None
-        }
-        message = json.dumps(message)
+    def update_settings(self, settings_dict):
+        """
+        update state settings from js/html interface
+        """
+        input_type = settings_dict["input_type"]
+        setting_name = settings_dict["setting_name"]
+        setting_val = settings_dict["setting_val"]
 
-        if self.connected == False:
-            self.connect()
+        client_settings = ["instructions_name", "model_name"]
+        if setting_name in client_settings:
+            current_val = getattr(self, setting_name, None)
+            setattr(self, setting_name, setting_val)
+            print(f"client: {setting_name}:  {current_val} => {setting_val}")
+        else:
+            self.fusion_itf.set_class_attr({"setting_name": setting_name, "setting_val": setting_val})
 
-        message_confirmation = self.conn.send(message)
-        print(f"START RECORD: message sent,  waiting for result...")
-        start_confirm = self.conn.recv()
-        print(f"{start_confirm}")
 
 
-    def stop_record(self):
-
-        message = {
-            "message_type": "stop_record",
-            "content": None
-        }
-
-        message = json.dumps(message)
-        if self.connected == False:
-            print("connect")
-            self.connect()
-
-        # start message
-        self.conn.send(message)
-        print(f"END RECORD:  waiting for result...")
-
-        # audio transcription
-        audio_text = self.conn.recv()
-        audio_text = json.loads(audio_text)
-
-        return audio_text
-
+    def get_tools(self):
+        """
+        return tool to js from fusion interface
+        """
+        return self.fusion_itf.get_tools()
 
     def reload_modules(self):
         #importlib.reload(fusion_interface)
@@ -158,24 +142,8 @@ class GptClient:
         self.palette = self.ui.palettes.itemById(self.PALETTE_ID)
         importlib.reload(fusion_interface)
         self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
+
         print("fusion_interface reloded")
-
-
-    def connect(self):
-        """
-        connect to assistant manager class on seperate process
-        """
-
-        if self.use_mock_server == True:
-            self.conn = self.mock_server
-            self.connected = True;
-            return
-
-        address = ('localhost', 6000)
-        self.conn = Client(address, authkey=b'fusion260')
-
-        self.connected = True;
-        #print(self.conn)
 
     def sendToBrowser(self, function_name, data):
         """send event data to js"""
@@ -183,31 +151,6 @@ class GptClient:
         json_data = json.dumps(data)
         # create run output section in html
         self.palette.sendInfoToHTML(function_name, json_data)
-
-    def resize_palette(self):
-        self.palette.setSize(400, 900)
-
-    def upload_tools(self):
-        """
-        upload tools to assistant
-        """
-
-        tools = self.fusion_itf.get_docstr()
-
-        message = {
-            "message_type": "tool_update",
-            "content": tools
-        }
-
-        message = json.dumps(message)
-
-        if self.connected == False:
-            self.connect()
-
-        print(f"conn closed: {self.conn.closed}")
-        message_confirmation = self.conn.send(message)
-        print(f"TOOLS SENT,  waiting for result...")
-
 
     def playback(self):
         """run recorded calls"""
@@ -228,8 +171,193 @@ class GptClient:
         self.record_calls = True
 
 
+    # TODO 
+    def resize_palette(self):
+        self.palette.setSize(900, 900)
+
+    ### ====== server calls ====== ###
+    def connect(self):
+        """
+        connect to assistant manager class on seperate process
+        """
+        if self.use_mock_server == True:
+            self.conn = self.mock_server
+            self.connected = True;
+            return
+
+        address = ('localhost', 6000)
+        self.conn = Client(address, authkey=b'fusion260')
+
+        self.connected = True;
+
+    # TODO use regulare message format 
+    def start_record(self):
+        message = {
+            "message_type": "start_record",
+            "content": None
+        }
+        #message = {
+        #    "message_type": "function_call",
+        #    "function_name": "update_tools",
+        #    "function_args": tools
+        #}
+
+        message = json.dumps(message)
+
+        if self.connected == False:
+            self.connect()
+
+        message_confirmation = self.conn.send(message)
+        print(f"START RECORD: message sent,  waiting for result...")
+        start_confirm = self.conn.recv()
+        print(f"{start_confirm}")
+
+    def stop_record(self):
+        message = {
+            "message_type": "stop_record",
+            "content": None
+        }
+
+        message = json.dumps(message)
+        if self.connected == False:
+            print("connect")
+            self.connect()
+
+        # start message
+        self.conn.send(message)
+        print(f"END RECORD:  waiting for result...")
+
+        # audio transcription
+        audio_text = self.conn.recv()
+        audio_text = json.loads(audio_text)
+        audio_text = {"audio_text": audio_text["content"]}
+
+        return audio_text
+
+    def upload_tools(self):
+        """
+        upload tools to assistant
+        """
+        tools = self.fusion_itf.get_docstr()
+
+        message = {
+            "message_type": "function_call",
+            "function_name": "update_tools",
+            "function_args": tools
+        }
+
+        message = json.dumps(message)
+        if self.connected == False:
+            self.connect()
+
+        #print(f"conn closed: {self.conn.closed}")
+        message_confirmation = self.conn.send(message)
+        print(f"TOOLS SENT,  waiting for result...")
+
+        tool_upload_response = self.conn.recv()
+        tool_upload_response = json.loads(tool_upload_response)
+        return tool_upload_response 
+
+    def upload_model_settings(self):
+        """
+        upload tools to assistant
+        """
+        model_name = self.model_name
+        tools = self.fusion_itf.get_docstr()
+        instructions_path = os.path.join("system_instructions",self.instructions_name)
+
+        model_settings = {
+            "model_name": model_name,
+            "tools": tools,
+            "instructions_path": instructions_path
+        }
+
+        message = {
+            "message_type": "function_call",
+            "function_name": "update_settings",
+            "function_args": {"model_settings": model_settings}
+        }
+
+        message = json.dumps(message)
+        if self.connected == False:
+            self.connect()
+
+        #print(f"conn closed: {self.conn.closed}")
+        message_confirmation = self.conn.send(message)
+        print(f"SETTINGS SENT,  waiting for result...")
+
+        settings_response = self.conn.recv()
+        settings_response = json.loads(settings_response)
+        print(settings_response)
+        return settings_response
+
+
+    def get_system_instructions(self):
+        """
+        get available system_instructions
+        """
+
+        message = {
+            "message_type": "function_call",
+            "function_name": "get_available_system_instructions"
+        }
+        message = json.dumps(message)
+
+        if self.connected == False:
+            self.connect()
+
+        message_confirmation = self.conn.send(message)
+
+        print(f"REQUEST SENT,  waiting for result...")
+        instructions = self.conn.recv()
+        instructions = json.loads(instructions)
+        return instructions 
+
+    def get_models(self):
+        """
+        get available models
+        """
+        message = {
+            "message_type": "function_call",
+            "function_name": "get_available_models",
+        }
+        message = json.dumps(message)
+        if self.connected == False:
+            self.connect()
+
+        message_confirmation = self.conn.send(message)
+
+        print(f"REQUEST SENT,  waiting for result...")
+        models = self.conn.recv()
+        models = json.loads(models)
+
+        filtered_models = []
+        exclude = [
+            "tts",
+            "text-embedding",
+            "babbage",
+            "davinci",
+            "dall-e", "audio",
+            "omni-moderation",
+            "whisper"
+        ]
+
+        for m in models:
+
+            if any([t in m for t in exclude]):
+                continue
+
+            filtered_models.append(m)
+
+        models = sorted(filtered_models)
+
+        return models
+
     def send_message(self, message):
         """send message to process server"""
+
+        if message == "":
+            return 
 
         if self.connected == False:
             self.connect()

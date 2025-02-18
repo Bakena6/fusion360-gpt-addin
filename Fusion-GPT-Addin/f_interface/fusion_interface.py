@@ -94,10 +94,6 @@ class FusionInterface:
     def update_settings(self, settings_dict ):
         ToolCollection.update(settings_dict)
 
-
-
-
-
     def get_tools(self):
         """
         creates list fusion interface functions
@@ -151,7 +147,6 @@ class FusionInterface:
                     methods[class_name][attr_name] = param_dict
 
         return methods
-
 
     def get_docstr(self):
         """

@@ -47,8 +47,8 @@ PALETTE_URL = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resource
 PALETTE_URL = PALETTE_URL.replace('\\', '/')
 
 # Set a default docking behavior for the palette
-PALETTE_DOCKING = adsk.core.PaletteDockingStates.PaletteDockStateRight
-#PALETTE_DOCKING = adsk.core.PaletteDockingStates.PaletteDockStateFloating
+#PALETTE_DOCKING = adsk.core.PaletteDockingStates.PaletteDockStateRight
+PALETTE_DOCKING = adsk.core.PaletteDockingStates.PaletteDockStateFloating
 
 #CMD_NAME = os.path.basename(os.path.dirname(__file__))
 CMD_NAME = "Prompt Window"
@@ -173,6 +173,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
 
     server_itf.reload_interface()
 
+
 # Use this to handle a user closing your palette.
 def palette_closed(args: adsk.core.UserInterfaceGeneralEventArgs):
     # General logging for debug.
@@ -197,43 +198,57 @@ def palette_navigating(args: adsk.core.NavigationEventArgs):
 
 def palette_incoming(html_args: adsk.core.HTMLEventArgs):
     """
-    handles events sent from javascript in palette
+    handles events sent from Javascript in palette
     """
 
     # read message sent from browser input javascript function
     message_data = json.loads(html_args.data)
     message_action = html_args.action
 
-    #importlib.reload(gpt_client)
-    # connects to Assistant Interface running on external process
-    #server_itf = gpt_client.GptClient(fusion_itf)
-
     if message_action == "error":
         print(message_data)
 
+    # passes calls from js/html to the server_itf class
+    # call server interface functions, initiated from js
+    elif message_action == "function_call":
+        # server_itf function name
+        function_name = message_data.get("function_name")
+        function_args = message_data.get("function_args", {})
+        return_data = {}
 
-    # upload function/ prompt to assistant
-    elif message_action == "cb_change":
-        server_itf.fusion_itf.set_class_attr(message_data)
+        if function_name is None:
+            print(f"Error: Entry.py: No function name passed")
 
-    elif message_action == "reload_modules":
+        # check if server_itf has function
+        elif hasattr(server_itf, function_name) == True:
+
+            # server_itf function to call
+            function = getattr(server_itf, function_name)
+            if callable(function) == True:
+                print(f"Calling: {function_name}")
+                return_data = function(**function_args)
+            else:
+                print(f"Error: {function_name} not callable")
+                return_data = {}
+        else:
+            print(f"Error: server_itf has no attr: {function_name}")
+            return_data = {}
+
+        html_args.returnData = json.dumps(return_data)
+
+
+    #elif message_action == "stop_record":
+    #    audio_text = server_itf.stop_record()
+    #    #audio_text = {"audio_text": audio_text["content"]}
+    #    html_args.returnData = json.dumps(audio_text)
+    #elif message_action == "start_record":
+    #    server_itf.start_record()
+    #    html_args.returnData = ""
+
+    elif message_action == "reset_all":
         server_itf.reload_modules()
-        html_args.returnData = ""
-
-    elif message_action == "reload_fusion_intf":
-        #server_itf.reload_interface()
         server_itf.reload_fusion_intf()
         html_args.returnData = ""
-
-
-    # upload function/ prompt to assistant
-    elif message_action == "upload_tools":
-        server_itf.upload_tools()
-
-    elif message_action == "submit_prompt":
-        prompt_text = message_data['promptText']
-        if prompt_text != "":
-            server_itf.send_message(prompt_text)
 
     elif message_action == "execute_tool_call":
         #server_itf.reload_interface()
@@ -248,55 +263,24 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
         if isinstance(function_args, str) == False:
             function_args = json.dumps(function_args)
 
-        #print(f"function_name: {type(function_name)}")
-        #print(f"function_args: {type(function_args)}")
-        #print(f"tool_call_id: {type(tool_call_id)}")
-
         # call function through the server interface class
         server_itf.call_function(function_name, function_args, tool_call_id)
-
+        html_args.returnData = ""
+    else:
         html_args.returnData = ""
 
 
-    # playback tool calls without OpenAI API aalls 
-    elif message_action == "playback":
-        server_itf.playback()
-        html_args.returnData = ""
-
-    elif message_action == "resize":
-        server_itf.resize_palette()
-        html_args.returnData = ""
-
-    elif message_action == "start_record":
-        server_itf.start_record()
-        html_args.returnData = ""
-
-    elif message_action == "stop_record":
-        audio_text = server_itf.stop_record()
-        #audio_text = {"audio_text": audio_text["content"]}
-        html_args.returnData = json.dumps(audio_text)
-
-    elif message_action == "get_tools":
-        """
-        get available tools, display in window
-        """
-        methods = server_itf.fusion_itf.get_tools()
-        html_args.returnData = json.dumps(methods)
-
-    elif message_action == "reconnect":
-        server_itf.connect()
-        html_args.returnData = ""
-
-    elif message_action == "reset_all":
-        server_itf.reload_modules()
-        server_itf.reload_fusion_intf()
-        html_args.returnData = ""
 
 
 
 
 # This function will be called when the user completes the command.
 def command_destroy(args: adsk.core.CommandEventArgs):
+
+    #palettes = ui.palettes
+    #palette = palettes.itemById(PALETTE_ID)
+    #palette.sendInfoToHTML("load_initial_settings", json.dumps({"1": 1}))
+
     futil.log(f'{CMD_NAME} Command Destroy Event')
     global local_handlers
     local_handlers = []

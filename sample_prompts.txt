@@ -44,3 +44,18 @@ Hello, Please create a Truncated octahedron in the current design. Create a comp
 
 
 
+# Hardware 
+Create a standard M8x50mm Socket Head Screw. Add a small fillet to the vertical edges and a small chamfer to horizontal edges. You should put this component in another component called M8-Hardware. 
+
+
+# NEMA 17
+Hello, I would like to create a mounting plate for a NEMA 17 stepper motor.  
+
+Isogrid
+Hello, I would like to create a section of Isogrid, that will be 3d printed. The section should be arranged as a hexagon with an approximate width of 100mm. It will contain 24 total triangular cutout sections and 7 total intersection points. After creating the component, you should start with a sketch on the xy plane. Think deeply about the best way for you to accomplish this. 
+
+
+
+
+
+

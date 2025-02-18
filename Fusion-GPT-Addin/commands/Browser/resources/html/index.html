@@ -51,12 +51,7 @@
         <textarea spellcheck="true" id="promptTextInput" placeholder="Enter your text here" rows="4"></textarea>
 
 
-
        <div id=submitRow class="button-row">
-
-          <button type="button" onclick="control.reconnect()">Reconnect</button>
-
-          <button type="button" class="control-button" onclick="control.uploadTools()">Upload Tools</button>
 
           <button id=recordButton type="button" onclick="record()">Start Record</button>
           <button id="submitButton" type="button" class="control-button" onclick="thread.submitPrompt()">Submit</button>
@@ -64,19 +59,18 @@
       </div>
         <!-- end button row-->
 
+        <div class="input-row">
 
-      <div class="input-row">
-
-        <label for="showSettings">Settings:</label>
-        <input type="checkbox" id="showSettings" class="settingsCb" name="showSettings" checked />
+          <label for="showSettings">Settings:</label>
+          <input type="checkbox" id="showSettings" name="showSettings" class="setting-cb setting-input"  checked />
 
           <label for="showRuns">Show Runs:</label>
-          <input type="checkbox" id="showRuns" class="cb"  name="showRuns" checked />
+          <input type="checkbox" id="showRuns" name="show_runs" class="setting-cb setting-input"  checked />
           <label for="showSteps">Show Steps:</label>
-          <input type="checkbox" id="showSteps" class="cb"  name="showSteps" checked />
+          <input type="checkbox" id="showSteps" name="show_steps" class="setting-cb setting-input"   checked />
 
           <label for="showResults">Show Results:</label>
-          <input type="checkbox" id="showResults" class="cb"  name="showResults" checked />
+          <input type="checkbox" id="showResults" name="show_results" class="setting-cb setting-input" checked />
 
         </div>
         <!-- end input row-->
@@ -84,16 +78,46 @@
 
       <div id=settingsContainer>
 
+
+        <div id=modelSettings class="button-row">
+          <button type="button" onclick="control.reconnect()">Reconnect</button>
+
+          <button type="button" onclick="control.getModels()">Get Models</button>
+
+           <label for="modelsList">Model:</label>
+           <select id="modelsList" name="model_name" class="setting-text setting-input">
+              <option value="o3-mini">o3-mini</option>
+              <option value="o1">o1</option>
+              <option value="gpt-4o">gpt-4o</option>
+              <option value="gpt-4">gpt-4</option>
+              <option value="gpt-4 turbo">gpt-4 turbo</option>
+           </select> 
+
+          <button type="button" onclick="control.getInstructions()">Get Instructions</button>
+           <label for="instructionsList">Sys Instruction:</label>
+           <select id="instructionsList" name="instructions_name" class="setting-text setting-input">
+              <option value="system_instructions.txt">system_instructions.txt</option>
+           </select> 
+
+
+          <button type="button" class="control-button" onclick="control.uploadPrompt()">Upload Prompt</button>
+          <button type="button" class="control-button" onclick="control.uploadTools()">Upload Tools</button>
+
+          <button type="button" class="control-button" onclick="control.uploadModelSettings()">Upload Model Settings</button>
+
+
+        </div>
+
+
+
         <div class="button-row">
           <!--
             <button type="button" onclick="reconnect()">Reconnect</button>
           -->
-
           <button type="button" onclick="control.reloadModules()">Reload Modules</button>
           <button type="button" onclick="control.reloadFusionIntf()">Reload Fusion Intf</button>
           <button type="button" onclick="control.clearOutputs()">Clear Outputs</button>
           <button type="button" onclick="control.playback()">Playback</button>
-
           <button type="button" onclick="control.resize()">Resize</button>
           <button type="button" onclick="reloadStyle()">ReloadStyle</button>
           <button type="button" onclick="control.resetAll()">Reset</button>
@@ -103,20 +127,19 @@
         <!-- end button row-->
 
         <div class="input-row">
-          <label for="log_results">Log Results:</label>
-          <input type="checkbox" id="log_results" class="settingCb" name="logResults" checked />
+          <label for="logResults">Log Results:</label>
+          <input type="checkbox" id="logResults" name="log_results" class="setting-cb setting-input"  checked />
 
-          <label for="log_errors">Log Errors:</label>
-          <input type="checkbox" id="log_errors" class="settingCb"  name="logErrors" checked />
+          <label for="logErrors">Log Errors:</label>
+          <input type="checkbox" id="logErrors" name="log_errors" class="setting-cb setting-input"   checked />
 
           <label for="submitOnEnter">Submit on Enter:</label>
-          <input type="checkbox" id="submitOnEnter" class="cb"  name="submitOnEnter" checked />
+          <input type="checkbox" id="submitOnEnter" name="submitOnEnter" class="setting-cb setting-input"   checked />
 
           <label for="Text Size">Text Size:</label>
-          <input type="number" value=20 id="textSizeInput" class="textSizeInput" name="textSize" />
+          <input type="number" value=20 id="textSizeInput" name="textSize" class="setting-number setting-input" />
 
         </div>
-
 
 
 

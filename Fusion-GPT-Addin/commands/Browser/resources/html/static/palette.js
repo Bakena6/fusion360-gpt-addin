@@ -16,19 +16,16 @@ class Thread {
     };
 
     connect() {
-        const args = {  };
-        adsk.fusionSendData("connect", JSON.stringify(args))
+        const args = { function_name: "connect"};
+        adsk.fusionSendData("function_call", JSON.stringify(args))
             .then((result) =>{ }); // end then
     } //end connect
 
     createThread() {
-
         // text area
         let promptTextArea = document.getElementById('promptTextInput');
-
         // user prompt text
         let promptTextValue = promptTextArea.value;
-
         const args = { promptText: promptTextValue };
         
         // Send the data to Fusion as a JSON string. The return value is a Promise.
@@ -43,25 +40,23 @@ class Thread {
     };
 
     submitPrompt() {
-
         this.scrollToBottom();   
-        
         // user input text
         var value = promptTextInput.value;
 
-        const args = { promptText: value };
-        // Send the data to Fusion as a JSON string. The return value is a Promise.
-        adsk.fusionSendData("submit_prompt", JSON.stringify(args))
-            .then((result) =>{
-                //var response = JSON.parse(result);
-            }); // end then
+        const args = {
+            function_name: "send_message", 
+            function_args: {message: value} 
+        };
+        adsk.fusionSendData("function_call", JSON.stringify(args))
+            .then((result) =>{ }); // end then
 
     } // end submit prompot
 
-    /*
-     * run created event
-     */
 
+    /*
+    * run created event
+    */
     toggleSectionVis(event, elementId){
 
         let button = event.target;
@@ -446,23 +441,68 @@ class Control{
         //this.createToolElements();
         this.tools = [];
 
-        this.connectInputs();
 
         setWindowHeight();
 
+        //window.addEventListener('load', (event) => { })
+
+       this.stateValues();
+
     }; // end constructor
 
-    connectInputs(){
 
-        //debugCb = document.getElementById('debugCb');
+     send_setting_val(element){
 
-        window.addEventListener("resize", (event) => {setWindowHeight()});
 
-        const settingCbs = document.querySelectorAll('.settingCb');
-        settingCbs.forEach(cb => {
-            cb.addEventListener("change", (cb_event) => this.send_cp_val(cb_event));
+        const function_args = {
+            "input_type": element.type,
+            "setting_id": element.id,
+            "setting_name": element.name,
+        }
+        if (element.type == "checkbox"){
+            function_args["setting_val"] = element.checked;
+        } else{
+            function_args["setting_val"] = element.value;
+        };
+
+        console.log(function_args)
+
+        const args = {
+            "function_name": "update_settings",
+            "function_args": {settings_dict: function_args},
+        };
+
+        adsk.fusionSendData("function_call", JSON.stringify(args))
+            .then((result) =>{ });
+    };
+
+    getSettings(){
+        const settingInputs = document.querySelectorAll('.setting-input');
+
+        settingInputs.forEach(input => {
+            console.log(input.id, input.value );
+            this.send_setting_val(input);
+
         }); // end for each
 
+    }
+
+
+    stateValues(){
+        
+        //debugCb = document.getElementById('debugCb');
+        window.addEventListener("resize", (event) => {setWindowHeight()});
+
+        const settingInputs = document.querySelectorAll('.setting-input');
+
+        settingInputs.forEach(input => {
+            console.log(input.id, input.value );
+
+            //this.send_setting_val(input);
+
+            input.addEventListener("change", (event) => this.send_setting_val(event.target));
+
+        }); // end for each
 
 
         // change prompt text size
@@ -478,35 +518,28 @@ class Control{
             this.submitOnEnter = event.target.checked;
         });
         
-        // settings container
-        const showSettingsInput = document.getElementById('showSettings');
-        showSettingsInput.addEventListener("change", (event) => {
-            let elementId = "settingsContainer";
-            this.showHideElement(elementId)
-            setWindowHeight();
-        });
 
-        // runs
-        const showRunsInput = document.getElementById('showRuns');
-        showRunsInput.addEventListener("change", (event) => {
-            let className = "response-container";
-            this.showHideClass(className, event.target.checked);
+        // checkbox input an associeated element to hide
+        const displayToggleElements = [
+            {id: "showSettings", toggleElement: "#settingsContainer"},
+            {id: "showRuns", toggleElement: ".response-container"},
+            {id: "showSteps", toggleElement: ".tool-container"},
+            {id: "showResults", toggleElement: ".function-results" },
+        ];
+        //
+        // checkboxes that toggle element display visibility
+        displayToggleElements.forEach(input => {
+            console.log(input.id, input.toggleElement );
 
-        });
+            // checkbox input
+            const inputElement = document.getElementById(input.id);
 
-        // steps
-        const showStepsInput = document.getElementById('showSteps');
-        showStepsInput.addEventListener("change", (event) => {
-            let className = "tool-container";
-            this.showHideClass(className, event.target.checked);
-        });
+            inputElement.addEventListener("change", (event) => {
+                this.showHideElement(input.toggleElement, event.target.checked)
+                setWindowHeight();
+            });
 
-        // results
-        const showResultsInput = document.getElementById('showResults');
-        showResultsInput.addEventListener("change", (event) => {
-            let className = "function-results";
-            this.showHideClass(className, event.target.checked);
-        });
+        }); // end for each
 
 
         // submit prompt on ender
@@ -521,13 +554,40 @@ class Control{
 
     }; // end connect inputs
 
-     playback(){
 
-        const args = { };
-        adsk.fusionSendData("playback", JSON.stringify(args))
+    /*
+    * show hide all elements in a class
+    */
+    showHideElement(elementSelector, vis){
+        let elements = document.querySelectorAll(`${elementSelector}`);
+        console.log(elements.length);
+
+        elements.forEach(e => {
+            if (vis == true) {
+                e.style.display = "block"; 
+            } else {
+                e.style.display = "none"; 
+            }
+        }) // end for each
+    }; // end showHideElement
+
+
+
+
+    /*
+     * #TODO probably find better name
+     * server interface functions
+     * =================================
+     */
+
+    /*
+     * playback API call/response
+     */
+     playback(){
+        const args = {function_name: "playback" };
+        adsk.fusionSendData("function_call", JSON.stringify(args))
             .then((result) =>{ });
         this.outputContainer.innerHTML = "";
-
     };
 
      clearOutputs(){
@@ -535,19 +595,126 @@ class Control{
 
     };
 
+    reloadModules(){
+        const args = {function_name: "reload_modules" };
+        // include current checkbox settings
+        adsk.fusionSendData("function_call", JSON.stringify(args))
+            .then((result) =>{ this.get_current_cb_val(); }); // end then
+    }; // end reload modules
 
-     send_cp_val(cb_event){
-        const args = {
-            "setting_name": cb_event.target.id,
-            "setting_val": cb_event.target.checked
-        };
-        adsk.fusionSendData("cb_change", JSON.stringify(args))
+    resize(){
+        const args = {function_name: "resize_palette" };
+        adsk.fusionSendData("function_call", JSON.stringify(args))
+            .then((result) =>{ }); // end then
+    };
+
+    reconnect(){
+        const args = {function_name: "connect" };
+        adsk.fusionSendData("function_call", JSON.stringify(args))
+            .then((result) =>{ }); // end then
+    }; // end reconnect
+
+    reloadFusionIntf(){
+        const args = {function_name: "reload_fusion_intf" };
+        adsk.fusionSendData("function_call", JSON.stringify(args))
+            .then((result) =>{ 
+                this.get_current_cb_val();
+            }); // end then
+    };
+
+    uploadTools() {
+        const args = {function_name: "upload_tools" };
+        adsk.fusionSendData("function_call", JSON.stringify(args))
             .then((result) =>{ });
+    } // end uploadTools
+
+    uploadModelSettings() {
+        this.getSettings();
+        const args = {function_name: "upload_model_settings" };
+        adsk.fusionSendData("function_call", JSON.stringify(args))
+            .then((result) =>{ });
+    } // end uploadTools
+
+    /*
+     * list availible Models
+     */
+    getModels(){
+        const args = {function_name: "get_models" };
+        adsk.fusionSendData("function_call", JSON.stringify(args))
+            .then((str_results) =>{ 
+                const results = JSON.parse(str_results);
+                const modelsList = document.getElementById("modelsList");
+                modelsList.innerHTML = "";
+                results.forEach(option => {
+                    const newOption = document.createElement('option');
+                    newOption.value = option;
+                    newOption.text = option;
+                    modelsList.add(newOption);
+                });// end foreach
+            });
+    };
+
+    /*
+     * list availible Models
+     */
+    getInstructions(){
+        const args = {function_name: "get_system_instructions"};
+        adsk.fusionSendData("function_call", JSON.stringify(args))
+            .then((str_results) =>{ 
+                const results = JSON.parse(str_results);
+                const instructionsList = document.getElementById("instructionsList");
+                instructionsList.innerHTML = "";
+                results.forEach(option => {
+                    const newOption = document.createElement('option');
+                    newOption.value = option;
+                    newOption.text = option;
+                    instructionsList.add(newOption);
+                });// end foreach
+            });
     };
 
 
+    resetAll(){
+        const args = { };
+        this.outputContainer.innerHTML = ""
+        this.toolTestContainer.innerHTML = ""
+        adsk.fusionSendData("reset_all", JSON.stringify(args))
+            .then((result) =>{ }); // end then
+    };
 
 
+    record(){
+
+        let recordButton = document.getElementById('recordButton');
+        recordButton.style.backgroundColor = "gray";
+
+        if ( recordButton.textContent == "Start Record"){
+            const args = {function_name: "start_record" };
+            adsk.fusionSendData("call_function", JSON.stringify(args)).then((result) =>{ 
+                recordButton.style.backgroundColor = "red";
+                recordButton.textContent = "Recording";
+            });
+
+
+        } else {
+
+            recordButton.textContent = "Transcribing...";
+            const args = {function_name: "stop_record" };
+            // Send the data to Fusion as a JSON string. The return value is a Promise.
+            adsk.fusionSendData("call_function", JSON.stringify(args))
+                .then((result) =>{ 
+                    recordButton.style.backgroundColor = "green";
+                    recordButton.textContent = "Start Record";
+                    let response = JSON.parse(result);
+                    let audio_text = response["content"];
+                    var promptTextInput = document.getElementById('promptTextInput');
+                    promptTextInput.value = promptTextInput.value + " " + audio_text;
+
+                });
+
+
+        }; // end else
+    }; // end start record
 
      async toggleTools() {
          if (this.tools.length == 0){
@@ -560,7 +727,7 @@ class Control{
 
     /*
      * change tab
-    * */
+     */
     changeTab(tabIndex){
 
         let tabs  = document.querySelectorAll(".content-tab");
@@ -592,54 +759,15 @@ class Control{
     }; // end showHideElement
 
 
-    /*
-    * show hide all elements in a class
-    */
-    showHideClass(className, vis){
 
-        let elements = document.querySelectorAll(`.${className}`);
-        console.log(elements.length);
-
-        elements.forEach(e => {
-
-            if (vis == true) {
-                e.style.display = "block"; 
-            } else {
-                e.style.display = "none"; 
-            }
-
-        })
-
-    }; // end showHideClass
-
-    showHideElement(elementId){
-
-        let element = document.getElementById(elementId);
-        if (element.style.display === "none") {
-            element.style.display = "block"; 
-        } else {
-            element.style.display = "none"; 
-        }
-
-    }; // end showHideElement
-
-
-     uploadTools() {
-        const args = { };
-        // Send the data to Fusion as a JSON string. The return value is a Promise.
-        adsk.fusionSendData("upload_tools", JSON.stringify(args))
-            .then((result) =>{ }); // end then
-    } // end uploadTools
 
     /*
     * get availible tool call from Python class
     */
      async getTools() {
 
-        const args = {  };
-
-         var result = await adsk.fusionSendData("get_tools", JSON.stringify(args));
-
+         const args = {function_name: "get_tools"};
+         var result = await adsk.fusionSendData("function_call", JSON.stringify(args));
          var resultJson = await JSON.parse(result);
 
         return resultJson;
@@ -647,9 +775,7 @@ class Control{
     } // end reload
 
     get_current_cb_val(){
-
         const settingCbs = document.querySelectorAll('.settingCb');
-
         settingCbs.forEach(cb => {
             const args = {
                 "setting_name": cb.id,
@@ -661,45 +787,6 @@ class Control{
 
     };// end get_current_cb
 
-    resize(){
-        const args = { };
-        // include current checkbox settings
-        adsk.fusionSendData("resize", JSON.stringify(args))
-            .then((result) =>{ }); // end then
-    };
-
-    reloadModules(){
-        const args = { };
-        // include current checkbox settings
-        adsk.fusionSendData("reload_modules", JSON.stringify(args))
-            .then((result) =>{ 
-                this.get_current_cb_val();
-            }); // end then
-    };
-
-    reloadFusionIntf(){
-        const args = { };
-        // include current checkbox settings
-        adsk.fusionSendData("reload_fusion_intf", JSON.stringify(args))
-            .then((result) =>{ 
-                this.get_current_cb_val();
-            }); // end then
-    };
-
-    resetAll(){
-        const args = { };
-        this.outputContainer.innerHTML = ""
-        this.toolTestContainer.innerHTML = ""
-        adsk.fusionSendData("reset_all", JSON.stringify(args)) .then((result) =>{ }); // end then
-    };
-
-    reconnect(){
-        const args = { };
-        // Send the data to Fusion as a JSON string. The return value is a Promise.
-        adsk.fusionSendData("reconnect", JSON.stringify(args))
-            .then((result) =>{ }); // end then
-    }; // end reconnect
-
     createToolElements() {
         let toolTestContainer = document.getElementById('toolTestContainer');
         toolTestContainer.innerHTML = "";
@@ -707,7 +794,6 @@ class Control{
         // class name, methods
 
         for (const [c_name, methods] of Object.entries(this.tools)) {
-
 
             // methods
             // top class container
@@ -823,12 +909,7 @@ class Control{
 
                     inputContainer.appendChild(paramInput);
                     autoResizeTextarea(paramInput);
-
-
                 };
-
-
-
 
                 //responseDiv.className = 'message-response'; // Add class for styling
                 toolRow.appendChild(functionButton);
@@ -851,42 +932,6 @@ class Control{
 
     } // end getTools
 
-    record(){
-        let recordButton = document.getElementById('recordButton');
-        recordButton.style.backgroundColor = "gray";
-        if ( recordButton.textContent == "Start Record"){
-            const args = {  };
-            adsk.fusionSendData("start_record", JSON.stringify(args)).then((result) =>{ 
-
-                recordButton.style.backgroundColor = "red";
-                recordButton.textContent = "Recording";
-
-            });
-
-
-
-        } else {
-
-            recordButton.textContent = "Transcribing...";
-            const args = {  };
-            // Send the data to Fusion as a JSON string. The return value is a Promise.
-            adsk.fusionSendData("stop_record", JSON.stringify(args))
-                .then((result) =>{ 
-
-                    recordButton.style.backgroundColor = "green";
-                    recordButton.textContent = "Start Record";
-
-                    let response = JSON.parse(result);
-                    let audio_text = response["content"];
-
-                    var promptTextInput = document.getElementById('promptTextInput');
-                    promptTextInput.value = promptTextInput.value + " " + audio_text;
-
-                });
-
-
-        }; // end else
-    }; // end start record
 
     resizeInput(input) {
         input.style.width = (5 +input.value.length) + "ch"; // Adjust multiplier for better spacing
@@ -904,6 +949,15 @@ class Control{
 
 let thread;
 let control;
+
+//document.addEventListener("DOMContentLoaded", (event) => {
+//
+//    thread = new Thread();
+//    control = new Control(thread);
+//
+//});
+
+
 window.addEventListener('load', (event) => { 
     thread = new Thread();
     control = new Control(thread);
@@ -921,10 +975,14 @@ function reloadStyle() {
 }
 
 
+
+
 window.fusionJavaScriptHandler = {
 
     handle: function (action, messageString) {
 
+
+        //console.log(action);
         try {
             // Message is sent from the add-in as a JSON string.
             const messageData = JSON.parse(messageString);
@@ -949,6 +1007,12 @@ window.fusionJavaScriptHandler = {
 
             } else if (action === "toolCallResponse") {
                 thread.toolCallResponse(messageData);
+
+            } else if (action === "load_initial_settings") {
+                console.log("load init");
+                control.stateValues();
+                
+            // TODO print all errors to browser console
             } else if (action === "print") {
                 console.log(messageData);
 
