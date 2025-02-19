@@ -178,38 +178,6 @@ class Assistant:
         model_ids = [m.id for m in models]
         return model_ids
 
-    def update_tools(self, tools):
-        """
-        update assistant tools, and initial prompt instructions
-        """
-
-        # base assistant prompt
-        with open(self.system_instructions_path) as f:
-            instructions = f.read()
-            instructions = instructions.strip()
-
-        # functions
-        tools = json.loads(tools)
-        updated_tools = []
-        for index, tool in enumerate(tools):
-            updated_tools.append({"type": "function", "function": tool})
-            print(f"{index}: {tool['name']}")
-        try:
-            updated_assistant = client.beta.assistants.update(
-                self.assistant_id,
-                tools=updated_tools,
-                #model=model_name,
-                instructions=instructions,
-                response_format="auto"
-            )
-            return "Success:"
-
-        except Exception as e:
-            for index, tool in enumerate(tools):
-                print(f"{index}: {tool['name']}")
-            print(f"ERROR: {e}")
-            return "Error: {e}"
-
 
     def update_settings(self, model_settings):
         """
@@ -222,6 +190,7 @@ class Assistant:
         model_name = model_settings["model_name"]
         instructions_path = model_settings["instructions_path"]
         tools = model_settings["tools"]
+        reasoning_effort = model_settings["reasoning_effort"]
 
         # base assistant prompt
         with open(instructions_path) as f:
@@ -240,7 +209,8 @@ class Assistant:
                 model=model_name,
                 instructions=instructions,
                 tools=updated_tools,
-                response_format="auto"
+                reasoning_effort=reasoning_effort,
+                response_format="auto",
             )
 
             return {
@@ -576,23 +546,23 @@ class Assistant:
         # start run on local host, Fusion client must connect to this address
         address = ('localhost', 6000) # family is deduced to be 'AF_INET'
 
-        # Multiprocess server
-        with Listener(address, authkey=b'fusion260') as listener:
-            while True:
-                try:
+        while True:
+            try:
+                # Multiprocess server
+                with Listener(address, authkey=b'fusion260') as listener:
                     print(f"WAITING FOR FUSION 360 TO CONNECT...")
                     # Fusion 360 Add-In connect here
                     with listener.accept() as conn:
                         print('CONNECTION ACCEPTED FROM', listener.last_accepted)
                         self.run(conn)
 
-                except Exception as e:
-                    print(f"ERROR: {e} {traceback.format_exc()}")
-                    print(f"{traceback.format_exc()}")
+            except Exception as e:
+                print(f"ERROR: {e} {traceback.format_exc()}")
+                print(f"{traceback.format_exc()}")
 
-                    print(f"\nPENDING TOOL CALLS: {self.pending_tool_calls}")
-                    print(f"RETRYING CONNECTION...")
-                    time.sleep(1)
+                print(f"\nPENDING TOOL CALLS: {self.pending_tool_calls}")
+                print(f"RETRYING CONNECTION...")
+                time.sleep(1)
 
 
 

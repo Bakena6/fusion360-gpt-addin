@@ -109,7 +109,7 @@ class GptClient:
         setting_name = settings_dict["setting_name"]
         setting_val = settings_dict["setting_val"]
 
-        client_settings = ["instructions_name", "model_name"]
+        client_settings = ["instructions_name", "model_name", "reasoning_effort"]
         if setting_name in client_settings:
             current_val = getattr(self, setting_name, None)
             setattr(self, setting_name, setting_val)
@@ -176,19 +176,45 @@ class GptClient:
         self.palette.setSize(900, 900)
 
     ### ====== server calls ====== ###
+
+
     def connect(self):
         """
         connect to assistant manager class on seperate process
         """
+
         if self.use_mock_server == True:
             self.conn = self.mock_server
             self.connected = True;
             return
+        else:
+            try:
+                address = ('localhost', 6000)
+                self.conn = Client(address, authkey=b'fusion260')
+            except Exception as e:
+                message = {"error": "connection_error"}
+                self.palette.sendInfoToHTML("connection_error", json.dumps(message))
+                return None
 
-        address = ('localhost', 6000)
-        self.conn = Client(address, authkey=b'fusion260')
+            self.connected = True;
+            print(f"RECONNECTED")
+            return True
 
-        self.connected = True;
+
+    def send_msg(self, message):
+
+        if self.connected == False:
+            self.connect()
+
+        try:
+            self.conn.send(message)
+        except Exception as e:
+            self.connect()
+            self.conn.send(message)
+
+
+        return True
+
 
     # TODO use regulare message format 
     def start_record(self):
@@ -196,18 +222,9 @@ class GptClient:
             "message_type": "start_record",
             "content": None
         }
-        #message = {
-        #    "message_type": "function_call",
-        #    "function_name": "update_tools",
-        #    "function_args": tools
-        #}
-
         message = json.dumps(message)
 
-        if self.connected == False:
-            self.connect()
-
-        message_confirmation = self.conn.send(message)
+        message_confirmation = self.send_msg(message)
         print(f"START RECORD: message sent,  waiting for result...")
         start_confirm = self.conn.recv()
         print(f"{start_confirm}")
@@ -219,12 +236,9 @@ class GptClient:
         }
 
         message = json.dumps(message)
-        if self.connected == False:
-            print("connect")
-            self.connect()
 
         # start message
-        self.conn.send(message)
+        self.send_msg(message)
         print(f"END RECORD:  waiting for result...")
 
         # audio transcription
@@ -234,42 +248,20 @@ class GptClient:
 
         return audio_text
 
-    def upload_tools(self):
-        """
-        upload tools to assistant
-        """
-        tools = self.fusion_itf.get_docstr()
-
-        message = {
-            "message_type": "function_call",
-            "function_name": "update_tools",
-            "function_args": tools
-        }
-
-        message = json.dumps(message)
-        if self.connected == False:
-            self.connect()
-
-        #print(f"conn closed: {self.conn.closed}")
-        message_confirmation = self.conn.send(message)
-        print(f"TOOLS SENT,  waiting for result...")
-
-        tool_upload_response = self.conn.recv()
-        tool_upload_response = json.loads(tool_upload_response)
-        return tool_upload_response 
-
     def upload_model_settings(self):
         """
         upload tools to assistant
         """
         model_name = self.model_name
+        reasoning_effort = self.reasoning_effort
         tools = self.fusion_itf.get_docstr()
         instructions_path = os.path.join("system_instructions",self.instructions_name)
 
         model_settings = {
             "model_name": model_name,
             "tools": tools,
-            "instructions_path": instructions_path
+            "instructions_path": instructions_path,
+            "reasoning_effort": reasoning_effort
         }
 
         message = {
@@ -279,11 +271,9 @@ class GptClient:
         }
 
         message = json.dumps(message)
-        if self.connected == False:
-            self.connect()
+        #if self.connected == False:
 
-        #print(f"conn closed: {self.conn.closed}")
-        message_confirmation = self.conn.send(message)
+        message_confirmation = self.send_msg(message)
         print(f"SETTINGS SENT,  waiting for result...")
 
         settings_response = self.conn.recv()
@@ -302,11 +292,7 @@ class GptClient:
             "function_name": "get_available_system_instructions"
         }
         message = json.dumps(message)
-
-        if self.connected == False:
-            self.connect()
-
-        message_confirmation = self.conn.send(message)
+        message_confirmation = self.send_msg(message)
 
         print(f"REQUEST SENT,  waiting for result...")
         instructions = self.conn.recv()
@@ -322,10 +308,8 @@ class GptClient:
             "function_name": "get_available_models",
         }
         message = json.dumps(message)
-        if self.connected == False:
-            self.connect()
 
-        message_confirmation = self.conn.send(message)
+        message_confirmation = self.send_msg(message)
 
         print(f"REQUEST SENT,  waiting for result...")
         models = self.conn.recv()
@@ -359,16 +343,13 @@ class GptClient:
         if message == "":
             return 
 
-        if self.connected == False:
-            self.connect()
-
         if self.record_calls == True:
             self.user_messages.append(message)
 
         message = {"message_type": "thread_update", "content": message}
         message = json.dumps(message)
 
-        message_confirmation = self.conn.send(message)
+        message_confirmation = self.send_msg(message)
         print(f"MESSAGE SENT,  waiting for result...")
 
         # continue to run as long thread is open
@@ -416,12 +397,12 @@ class GptClient:
                 function_args = api_result["function_args"]
 
                 function_result = self.call_function(function_name, function_args, tool_call_id)
+                adsk.doEvents()
 
                 message = {"message_type": "thread_update", "content": function_result}
                 message = json.dumps(message)
 
-                adsk.doEvents()
-                self.conn.send(function_result)
+                self.send_msg(function_result)
 
             # thread complete break loop
             if run_status == "thread.run.completed":
@@ -437,14 +418,6 @@ class GptClient:
         called from Assistants API
         calls function passed from Assistants API
         """
-        #print(f"function_name: {type(function_name)}, {function_name}")
-        #print(f"function_args: {type(function_args)}, {function_args}")
-        #print(f"tool_call_id: {type(tool_call_id)}, {tool_call_id}")
-
-
-        # TODO make this better
-        #if function_args == "":
-        #    function_args = None
 
         if function_args != None:
             function_args = json.loads(function_args)
@@ -460,7 +433,7 @@ class GptClient:
             else:
                 result = function(**function_args)
         else:
-            result = ""
+            result = json.dumps({"error": "No function called '{function_name}'"})
 
         # send function response to js/html
         if tool_call_id != None:

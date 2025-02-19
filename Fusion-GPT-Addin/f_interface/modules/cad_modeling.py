@@ -225,7 +225,6 @@ class ModifyObjects(ToolCollection):
 
             try:
                 mirror_feature = mirror_feats.add(mirror_input)
-
                 return f"Success: Mirrored body '{body_to_mirror.name}' in component '{targetComponent.name}'"
 
             except Exception as e:
@@ -235,9 +234,6 @@ class ModifyObjects(ToolCollection):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 class CreateObjects(ToolCollection):
-
-
-
 
     def _get_operation_obj(self, operation_type):
 
@@ -259,8 +255,6 @@ class CreateObjects(ToolCollection):
         return operation_obj, errors
 
 
-
-
     @ToolCollection.tool_call
     def extrude_profiles(
         self,
@@ -270,7 +264,6 @@ class CreateObjects(ToolCollection):
         start_extent: float = 0.0,
         taper_angle: float = 0.0
     ) -> str:
-
         """
         {
             "name": "extrude_profiles",
@@ -670,8 +663,14 @@ class CreateObjects(ToolCollection):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
+
     @ToolCollection.tool_call
-    def copy_component_as_new(self, source_component_name: str="comp1", target_parent_component_name: str="comp_container", new_component_name: str="new_comp_1") -> str:
+    def copy_component_as_new(
+        self,
+        source_component_entity_token: str="",
+        parent_component_entity_token: str="",
+        new_component_name: str="new_comp_1") -> str:
+
         """
             {
                 "name": "copy_component_as_new",
@@ -679,20 +678,20 @@ class CreateObjects(ToolCollection):
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "source_component_name": {
+                        "source_component_entity_token": {
                             "type": "string",
-                            "description": "The name of the existing Fusion 360 component to be copied."
+                            "description": "Entity token representing the existing Fusion 360 component to be copied."
                         },
-                        "target_parent_component_name": {
+                        "parent_component_entity_token": {
                             "type": "string",
-                            "description": "The name of the component that will serve as the parent for the newly copied component."
+                            "description": "Entity token representing parent component for the newly copied component."
                         },
                         "new_component_name": {
                             "type": "string",
                             "description": "The desired name for the newly created component copy."
                         }
                     },
-                    "required": ["source_component_name", "target_parent_component_name", "new_component_name"],
+                    "required": ["source_component_entity_token", "parent_component_entity_token", "new_component_name"],
                     "returns": {
                         "type": "string",
                         "description": "A message indicating whether the independent copy was successfully created and named."
@@ -708,46 +707,58 @@ class CreateObjects(ToolCollection):
             if not design:
                 return "Error: No active Fusion 360 design found."
 
-            sourceComp, errors = self._find_component_by_name(source_component_name)
+            # Find the target component by name (assuming you have a helper method).
+            sourceComp = self.get_hash_obj(source_component_entity_token)
             if not sourceComp:
-                return errors
+                return f"Error: No source component found for entityToken: '{source_component_entity_token}'"
+            source_component_name = sourceComp.name
 
-            targetParentComp, errors = self._find_component_by_name(target_parent_component_name)
-            if not targetParentComp:
-
-                return errors
+            # Find the target component by name (assuming you have a helper method).
+            parentComp = self.get_hash_obj(parent_component_entity_token)
+            if not parentComp:
+                return f"Error: No parent component found for entityToken: '{parent_component_entity_token}'"
+            parent_component_name = parentComp.name
 
             # Create a new, independent copy of the source component
             transform = adsk.core.Matrix3D.create()  # Identity transform
-            new_occurrence = targetParentComp.occurrences.addNewComponentCopy(sourceComp, transform)
+            new_occurrence = parentComp.occurrences.addNewComponentCopy(sourceComp, transform)
             new_comp = new_occurrence.component
 
             # Rename the newly created component
             new_comp.name = new_component_name
+            new_comp_entity_token = self.set_obj_hash(new_comp)
+            new_occ_entity_token = self.set_obj_hash(new_occurrence)
 
-            return f'Successfully created a new, independent copy of "{source_component_name}into "{target_parent_component_name}" named "{new_component_name}".'
+            return f"Success: Created a new, independent copy of '{source_component_name}' into '{parent_component_name}' named '{new_component_name}'. The new component entityToken is '{new_comp_entity_token}', and the new occurrence entityToken is '{new_occ_entity_token}'."
+
+
         except Exception as e:
-            return f'Error: Failed to copy "{source_component_name}" as a new component into "{target_parent_component_name}":\n{e}'
+            return f"Error: Failed to copy component with token '{source_component_entity_token}' as a new component:\n{e}"
 
     @ToolCollection.tool_call
-    def copy_component(self, source_component_name: str, target_parent_component_name: str) -> str:
+    def copy_occurrence(
+        self,
+        source_component_entity_token: str="",
+        parent_component_entity_token: str=""
+    ) -> str:
+
         """
             {
-                "name": "copy_component",
+                "name": "copy_occurrence",
                 "description": "Creates a new occurrence of an existing component inside another parent component. This effectively 'copies' the geometry by referencing the same underlying component in a new location.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "source_component_name": {
+                        "source_component_entity_token": {
                             "type": "string",
-                            "description": "The name of the existing Fusion 360 component to be copied."
+                            "description": "The entityToken representing the existing Fusion 360 component to be copied."
                         },
-                        "target_parent_component_name": {
+                        "parent_component_entity_token": {
                             "type": "string",
-                            "description": "The name of the component that will serve as the parent for the new copy."
+                            "description": "The entityToken representing the parent component for the new copy."
                         }
                     },
-                    "required": ["source_component_name", "target_parent_component_name"],
+                    "required": ["source_component_entity_token", "parent_component_entity_token"],
                     "returns": {
                         "type": "string",
                         "description": "A message indicating whether the copy (new occurrence) was successfully created."
@@ -765,26 +776,29 @@ class CreateObjects(ToolCollection):
 
             # Locate the source component using a helper method (assumed to exist in your environment)
 
-            sourceComp, errors = self._find_component_by_name(source_component_name)
-            if not sourceComp:
-                return errors
 
-            targetParentComp, errors = self._find_component_by_name(target_parent_component_name)
-            if not targetParentComp:
-                return errors
+            # Find the target component by name (assuming you have a helper method).
+            sourceComp = self.get_hash_obj(source_component_entity_token)
+            if not sourceComp:
+                return f"Error: No source component found for entityToken: '{source_component_entity_token}'"
+            source_component_name = sourceComp.name
+
+            # Find the target component by name (assuming you have a helper method).
+            parentComp = self.get_hash_obj(parent_component_entity_token)
+            if not parentComp:
+                return f"Error: No parent component found for entityToken: '{parent_component_entity_token}'"
+            parent_component_name = parentComp.name
 
             # Create a new occurrence of the source component in the target parent component
             transform = adsk.core.Matrix3D.create()  # Identity transform (no rotation, no translation)
-            new_occurrence = targetParentComp.occurrences.addExistingComponent(sourceComp, transform)
+            new_occurrence = parentComp.occurrences.addExistingComponent(sourceComp, transform)
 
-            # (Optional) Rename the new occurrence if you want a distinct name
-            # new_occurrence.name = source_component_name + "_copy"
+            new_occ_entity_token = self.set_obj_hash(new_occurrence)
 
-            return f'Successfully copied "{source_component_name}" into "{target_parent_component_name}".'
+            return f"Success: copied '{source_component_name}' into '{parent_component_name}'. The new occurrence's entityToken is '{new_occ_entity_token}'"
 
         except Exception as e:
-            return f'Error: Failed to copy "{source_component_name}" into "{target_parent_component_name}":\n{e}'
-
+            return f"Error: Failed to copy component with token '{source_component_entity_token}' as a new component:\n{e}"
 
 
     @ToolCollection.tool_call

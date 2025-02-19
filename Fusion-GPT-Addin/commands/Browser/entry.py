@@ -149,29 +149,45 @@ def command_execute(args: adsk.core.CommandEventArgs):
     palettes = ui.palettes
     palette = palettes.itemById(PALETTE_ID)
 
+    palette_width = 1000
+    palette_height = 1000
+
     if palette is None:
-        palette = palettes.add(
+        #palette = palettes.add2(
+        palette = palettes.add2(
             id=PALETTE_ID,
             name=PALETTE_NAME,
             htmlFileURL=PALETTE_URL,
             isVisible=True,
             showCloseButton=True,
             isResizable=True,
-            width=1400,
-            height=800,
-            useNewWebBrowser=True
+            width=palette_width,
+            height=palette_height
         )
+
         futil.add_handler(palette.closed, palette_closed)
         futil.add_handler(palette.navigatingURL, palette_navigating)
         futil.add_handler(palette.incomingFromHTML, palette_incoming)
         futil.log(f'{CMD_NAME}: Created a new palette: ID = {palette.id}, Name = {palette.name}')
 
-    if palette.dockingState == adsk.core.PaletteDockingStates.PaletteDockStateFloating:
-        palette.dockingState = PALETTE_DOCKING
-
     palette.isVisible = True
 
+    PALETTE_DOCKING = adsk.core.PaletteDockingStates.PaletteDockStateFloating
+    palette.dockingState = PALETTE_DOCKING
+
+    screen_width = app.activeViewport.width
+    screen_height = app.activeViewport.height
+
+    left = (screen_width - palette_width)-5
+    top = +120
+
+    palette.left = left
+    palette.top = top
+
+
     server_itf.reload_interface()
+
+
 
 
 # Use this to handle a user closing your palette.
@@ -182,7 +198,7 @@ def palette_closed(args: adsk.core.UserInterfaceGeneralEventArgs):
 # Use this to handle a user navigating to a new page in your palette.
 def palette_navigating(args: adsk.core.NavigationEventArgs):
     # General logging for debug.
-    futil.log(f'{CMD_NAME}: Palette navigating event.')
+    #futil.log(f'{CMD_NAME}: Palette navigating event.')
 
     # Get the URL the user is navigating to:
     url = args.navigationURL

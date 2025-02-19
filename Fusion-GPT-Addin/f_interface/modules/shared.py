@@ -55,6 +55,15 @@ class ToolCollection:
 
             results = func(self, *args, **kwds)
 
+            if isinstance(results, str):
+                try:
+                    json.loads(results)
+                except Exception as e:
+                    results = json.dumps({"results": results})
+
+            #if isinstance(results, dict):
+            #    results = json.dumps(results)
+
             if getattr(ToolCollection, "log_results") == True:
                 self.print_results(results)
 
@@ -452,6 +461,12 @@ class ToolCollection:
 
         entity_attrs = dir(entity)
 
+
+
+
+
+
+        #sys.sizeof
         # if token_string passed in
         if token_str !=  None:
             token_str = str(token_str)

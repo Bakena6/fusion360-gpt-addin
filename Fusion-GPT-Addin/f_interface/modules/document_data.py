@@ -1454,7 +1454,7 @@ class GetStateData(ToolCollection):
                         "entityToken": appearance_hash_token,
                         #"id": lib_appearance.id,
                         #"appearanceType": lib_appearance.objectType,
-                        "source": library.name,
+                        #"source": library.name,
 
                     }
 
@@ -2014,7 +2014,6 @@ class SetStateData(ToolCollection):
             })
 
 
-
     @ToolCollection.tool_call
     def call_entity_methods(self, calls_list: list = [
                    { "entityToken": "", "method_path": "", "arguments": [] }
@@ -2237,8 +2236,6 @@ class SetStateData(ToolCollection):
 
             design = adsk.fusion.Design.cast(product)
 
-
-
             app_libraries = app.materialLibraries
             app_library = app_libraries.itemByName("Fusion Appearance Library")
 
@@ -2289,7 +2286,7 @@ class SetStateData(ToolCollection):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
-    #@ToolCollection.tool_call
+    @ToolCollection.tool_call
     def move_occurrence(self,
                        entity_token: str = "",
                        move_position: list = [1.0, 1.0, 0.0]) -> str:
@@ -2349,30 +2346,30 @@ class SetStateData(ToolCollection):
             occurrence_name = targetOccurrence.name
 
             # Create a transform with the translation [x_val, y_val, z_val].
-            transform = adsk.core.Matrix3D.create()
+            transform = targetOccurrence.transform2 #adsk.core.Matrix3D.create()
+
             translation = adsk.core.Vector3D.create(x_val, y_val, z_val)
+
             transform.translation = translation
 
             try:
                 targetOccurrence.timelineObject.rollTo(False)
                 targetOccurrence.initialTransform = transform
-                #occ.transform = transform
 
             except Exception as e:
                 return f"Error: Could not transform occurrence '{occurrence_name}': token ({entity_token}). Reason: {e}"
 
+
             timeline = design.timeline
             timeline.moveToEnd()
 
-
-            return (f"Success: Moved occurrence '{occurrence_name}' ({entity_token}) to "
-                    # TODO
-                    f"[{x_val}, {y_val}, {z_val}] cm")
+            return f"Success: Moved occurrence '{occurrence_name}' ({entity_token}) to '[{x_val}, {y_val}, {z_val}] cm')"
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    #@ToolCollection.tool_call
+
+    @ToolCollection.tool_call
     def reorient_occurrence(self, entity_token: str = "", axis: list = [0, 0, 1], target_vector: list = [1, 0, 0]) -> str:
         """
         {
@@ -2430,13 +2427,8 @@ class SetStateData(ToolCollection):
             fromVector = adsk.core.Vector3D.create(axis[0], axis[1], axis[2])
             toVector = adsk.core.Vector3D.create(target_vector[0], target_vector[1], target_vector[2])
 
-            # Create a transformation matrix and set it to rotate from the 'fromVector' to the 'toVector'
-            transform = adsk.core.Matrix3D.create()
-            success = transform.setToRotateTo(fromVector, toVector)
-            if not success:
-                return "Error: Could not compute rotation transform using setToRotateTo."
-
             targetOccurrence = self.get_hash_obj(entity_token)
+
             if not targetOccurrence:
                 return f"Error: No occurrence found for entity_token '{entity_token}'"
             if not isinstance(targetOccurrence, adsk.fusion.Occurrence):
@@ -2444,17 +2436,32 @@ class SetStateData(ToolCollection):
 
             occurrence_name = targetOccurrence.name
 
+            # Create a transformation matrix and set it to rotate from the 'fromVector' to the 'toVector'
+            #transform = adsk.core.Matrix3D.create()
+            transform = targetOccurrence.transform2
+            start_translation = targetOccurrence.transform2.translation
+
+            success = transform.setToRotateTo(fromVector, toVector)
+
+            transform.translation = start_translation
+
+            if not success:
+                return "Error: Could not compute rotation transform using setToRotateTo."
+
             try:
                 targetOccurrence.timelineObject.rollTo(False)
                 targetOccurrence.initialTransform = transform
+                #targetOccurrence.transform2 = transform
+                #targetOccurrence.transform2.translation = start_translation
+
             except Exception as e:
                 return f"Error: Could not reorient occurrence '{occurrence_name}' ({entity_token}). Reason: {e}"
 
             timeline = design.timeline
             timeline.moveToEnd()
 
-            return (f"Success: Reoriented occurrence '{occurrence_name}' ({entity_token}) such that the axis {axis} is rotated "
-                    f"to align with {target_vector}.")
+            return f"Success: Reoriented occurrence '{occurrence_name}' ({entity_token}) such that the axis {axis} is rotated to align with {target_vector}."
+
         except Exception as e:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 

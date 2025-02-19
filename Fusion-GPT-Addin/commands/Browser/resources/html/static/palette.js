@@ -459,10 +459,16 @@ class Control{
             "setting_id": element.id,
             "setting_name": element.name,
         }
+
         if (element.type == "checkbox"){
             function_args["setting_val"] = element.checked;
         } else{
             function_args["setting_val"] = element.value;
+        };
+
+
+        if (element.value == "None"){
+            function_args["setting_val"] = null;
         };
 
         console.log(function_args)
@@ -497,9 +503,7 @@ class Control{
 
         settingInputs.forEach(input => {
             console.log(input.id, input.value );
-
             //this.send_setting_val(input);
-
             input.addEventListener("change", (event) => this.send_setting_val(event.target));
 
         }); // end for each
@@ -740,7 +744,7 @@ class Control{
 
             if (i == tabIndex) {
                 element.style.display = "block"; 
-                buttonElement.style.backgroundColor = "#262626"; 
+                buttonElement.style.backgroundColor = "#1B1212"; 
                 buttonElement.style.color = "magenta"; 
                 this.toggleTools();
 
@@ -790,8 +794,6 @@ class Control{
     createToolElements() {
         let toolTestContainer = document.getElementById('toolTestContainer');
         toolTestContainer.innerHTML = "";
-        //let response = 
-        // class name, methods
 
         for (const [c_name, methods] of Object.entries(this.tools)) {
 
@@ -884,7 +886,6 @@ class Control{
 
                     paramInput.style.backgroundColor=paramColor;
 
-
                     const paramDefault = param_info.default_val;
                     paramInput.id = `${m_name}__${param_name}`;
                     paramInput.name = `${param_name}`;
@@ -944,9 +945,6 @@ class Control{
 
 
 
-
-
-
 let thread;
 let control;
 
@@ -957,6 +955,12 @@ let control;
 //
 //});
 
+function connectionError(){
+    promptTextArea = document.getElementById('promptTextInput');
+    promptTextArea.textContent = "ERROR: MAKE SURE 'connection.py' IS RUNNING";
+};
+
+
 
 window.addEventListener('load', (event) => { 
     thread = new Thread();
@@ -966,6 +970,8 @@ window.addEventListener('load', (event) => {
 
 // reload css for debugging
 function reloadStyle() {
+    console.log("reload style");
+
   const links = document.querySelectorAll('link[rel="stylesheet"]');
   links.forEach(link => {
     const href = link.href;
@@ -981,8 +987,6 @@ window.fusionJavaScriptHandler = {
 
     handle: function (action, messageString) {
 
-
-        //console.log(action);
         try {
             // Message is sent from the add-in as a JSON string.
             const messageData = JSON.parse(messageString);
@@ -1006,11 +1010,11 @@ window.fusionJavaScriptHandler = {
                 thread.stepDelta(messageData);
 
             } else if (action === "toolCallResponse") {
+                console.log(messageData);
                 thread.toolCallResponse(messageData);
 
-            } else if (action === "load_initial_settings") {
-                console.log("load init");
-                control.stateValues();
+            } else if (action === "connection_error") {
+                connectionError();
                 
             // TODO print all errors to browser console
             } else if (action === "print") {

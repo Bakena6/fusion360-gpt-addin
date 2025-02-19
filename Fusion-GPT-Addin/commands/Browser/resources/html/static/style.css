@@ -24,7 +24,7 @@
 /* 
  * global font styles
  */
-textarea, button, input, span, div, label {
+textarea, button, input, span, div, label, select{
     font-family: 'SF Mono', Consolas, 'Roboto Mono', 'Source Code Pro', Monaco, monospace;
 
 
@@ -123,11 +123,6 @@ div, span{
     padding-top: 10px;
     padding-bottom: 10px;
 }
-#submitRow{
-    float: right;
-    padding-right: 20px;
-}
-
 
 .content-section{
     background-color:	#1B1212;
@@ -138,13 +133,9 @@ div, span{
 
 
 
-
-
-
 /* 
  * =========== tabs ===========
  */
-
 
 .tab-button {
 
@@ -166,6 +157,11 @@ div, span{
 
 }
 
+#tabButton0{
+    background-color:	#1B1212; /*background black*/
+    color: magenta;
+
+}
 
 
 
@@ -404,48 +400,110 @@ div, span{
 
 
 
-.input-row {
-    display: flex;        /* Use Flexbox to arrange buttons in a row */
-    justify-content: flex-start; /* Align buttons to the start of the container */
-    margin-bottom: 15px; /* Space between the textarea and the button row */
-    gap: 0px;
-}
-.input-row label{
-    margin-left: 2px; 
-    margin-right: 2px; 
-}
-
-.input-row input{
-    margin-left: 0px; 
-    margin-right: 20px; 
-}
-
-
-.button-row {
-    display: flex;        /* Use Flexbox to arrange buttons in a row */
-    justify-content: flex-start; /* Align buttons to the start of the container */
-    margin-bottom: 15px; /* Space between the textarea and the button row */
-    gap: 10px;            /* Space between the buttons */
-}
-
-.button-row button {
-    padding-top: 6px;
-    padding-bottom: 6px;
-    padding-right: 5px;
-    padding-left: 5px;
-
-    border: 3px solid cyan;
-    border-radius: 5px;
-    font-size: 14px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-}
 
 #submitButton{
     border: 3px solid magenta;
     padding-right: 10px;
     padding-left: 10px;
 }
+
+#submitRow{
+
+    box-sizing: border-box;
+    width: 100%;
+    display: flex;
+    justify-content: space-between; /* Pushes left and right groups apart */
+
+    padding-right: 20px;
+
+}
+
+
+
+#submitRow button{
+    padding-top: 2px;
+    padding-bottom: 2px;
+    padding-right: 5px;
+    padding-left: 5px;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.left-group, .right-group {
+    display: flex;
+    gap: 10px; /* Adds spacing between input elements */
+}
+
+.right-group {
+    margin-left: auto; /* Moves right-group to the right */
+    margin-right: 10px;
+}
+
+
+
+.setting-row {
+    display: flex;        /* Use Flexbox to arrange buttons in a row */
+    justify-content: flex-start; /* Align buttons to the start of the container */
+    margin-bottom: 10px; /* Space between the textarea and the button row */
+    gap: 5px;
+    border: 1px solid cyan;
+}
+
+.setting-row label{
+    margin-left: 2px; 
+    margin-right: 2px; 
+}
+.setting-row input{
+    margin-left: 0px; 
+    margin-right: 20px; 
+}
+
+.setting-row button{
+    margin-right: 20px; 
+    padding-top: 2px;
+    padding-bottom: 2px;
+    padding-right: 5px;
+    padding-left: 5px;
+    border-radius: 5px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.select-container{
+    width: auto;
+    display: block;
+    max-width: 250px;
+
+}
+
+.select-container select{
+    display: block;
+    min-height: 30px;
+    min-width: 130px;
+    width: 100%;
+    font-size: 14px;
+    border-radius: 5px;
+
+}
+
+.select-container button{
+    width: 100%;
+    margin: 0px;
+}
+
+
+
+
+.submit-button-row {
+    display: flex;        /* Use Flexbox to arrange buttons in a row */
+    justify-content: flex-start; /* Align buttons to the start of the container */
+    margin-bottom: 15px; /* Space between the textarea and the button row */
+    gap: 10px;            /* Space between the buttons */
+}
+
 
 
 
@@ -511,7 +569,7 @@ div, span{
     justify-content: space-between;
     align-items: center;
     color: yellow;
-    border: 2px solid white;
+    border: 1px solid white;
     background-color: purple;
     border-radius: 5px;
     padding: 5px;
