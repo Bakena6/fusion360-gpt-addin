@@ -126,10 +126,11 @@ class GptClient:
         return self.fusion_itf.get_tools()
 
     def reload_modules(self):
-        #importlib.reload(fusion_interface)
+        importlib.reload(fusion_interface)
         self.fusion_itf._reload_modules()
         self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
         print("Modules Reloaded")
+
 
     def reload_fusion_intf(self):
         importlib.reload(fusion_interface)

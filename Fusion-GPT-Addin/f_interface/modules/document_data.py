@@ -273,19 +273,20 @@ class GetStateData(ToolCollection):
                 return self.set_obj_hash(obj)  # or your equivalent method
 
 
-            def gather_occurrence_structure(occ: adsk.fusion.Occurrence) -> dict:
+            def gather_occurrence_structure(occ: adsk.fusion.Occurrence, level=0) -> dict:
                 """
                 Recursively gather info about a single occurrence, including
                 all bodies, sketches, joints, joint origins, and child occurrences.
                 """
                 comp = occ.component
+                #print(level)
 
                 # 1) Bodies
                 bodies_info = []
                 for b in comp.bRepBodies:
                     bodies_info.append({
                         "name": b.name,
-                        "entityToken": get_token(b)
+                        "token": get_token(b)
                     })
 
                 # 2) Sketches
@@ -293,7 +294,7 @@ class GetStateData(ToolCollection):
                 for sk in comp.sketches:
                     sketches_info.append({
                         "name": sk.name,
-                        "entityToken": get_token(sk)
+                        "token": get_token(sk)
                     })
 
                 # 3) Joints
@@ -303,7 +304,7 @@ class GetStateData(ToolCollection):
                     # j.name is often blank, so you may store j.occurrenceOne / j.occurrenceTwo, etc.
                     joints_info.append({
                         "name": j.name,
-                        "entityToken": get_token(j)
+                        "token": get_token(j)
                     })
 
                 # 4) Joint Origins
@@ -311,20 +312,20 @@ class GetStateData(ToolCollection):
                 for jo in comp.jointOrigins:
                     joint_origins_info.append({
                         "name": jo.name,
-                        "entityToken": get_token(jo)
+                        "token": get_token(jo)
                     })
 
                 # 5) Child occurrences
                 children_info = []
                 for child_occ in occ.childOccurrences:
-                    children_info.append(gather_occurrence_structure(child_occ))
+                    children_info.append(gather_occurrence_structure(child_occ, level-1))
 
 
                 # Build this occurrence's node in the tree
                 return_dict =  {
                     "occurrenceName": occ.name,
                     "occurrenceToken": get_token(occ),
-                    "componentName": comp.name,
+                    #"componentName": comp.name,
                     "componentToken": get_token(comp),
                     "bodies": bodies_info,
                     "sketches": sketches_info,
@@ -351,7 +352,7 @@ class GetStateData(ToolCollection):
             # Gather top-level occurrences from the root component
             occurrences_info = []
             for occ in root_comp.occurrences:
-                occurrences_info.append(gather_occurrence_structure(occ))
+                occurrences_info.append(gather_occurrence_structure(occ, 0))
 
             # Additionally, gather bodies/sketches/joints/joint origins directly in root (if any)
             root_bodies = []
@@ -1085,7 +1086,7 @@ class GetStateData(ToolCollection):
         except Exception as e:
             return None
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def get_design_as_json(self, attributes_list=[]) -> str:
         """
             {
@@ -1162,18 +1163,18 @@ class GetStateData(ToolCollection):
                         # body, joint, sketch etc
                         objectArray = getattr(occ, object_name)
                     except Exception as e:
-                        print(f"  Error 1: <{object_name}> {e}")
                         try:
                             root_comp = design.rootComponent
                             objectArray = getattr(root_comp, object_name)
                             print(f"  {object_name} found in root comp!")
                         except Exception as e:
+                            print(f"  Error 1: <{object_name}> {e}")
                             print(f" Error 2: {object_name} {e}\n{traceback.format_exc()}")
                             continue
 
 
                     object_type_dict ={
-                        "entityToken": self.set_obj_hash(objectArray, f"{index}_{object_name}"),
+                        "entityToken": self.set_obj_hash(objectArray, occ),
                         "items": []
                     }
                     for obj in objectArray:
@@ -1185,7 +1186,6 @@ class GetStateData(ToolCollection):
 
                     if occ_dict.get(object_name) == None:
                         occ_dict[object_name] = object_type_dict
-
 
 
             if occ == None:
@@ -1209,7 +1209,7 @@ class GetStateData(ToolCollection):
         # Build a dictionary that holds the entire design structure
         design_data = {
             "rootComponent_name": design.rootComponent.name,
-            "components": self._get_all_components(),
+           # "components": self._get_all_components(),
             "occurrences": get_component_data(None, design.rootComponent).get("occurrences", None)
         }
 
@@ -1466,7 +1466,7 @@ class GetStateData(ToolCollection):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def get_sketch_profiles(self, entity_token: str = "") -> str:
         """
         {
@@ -1544,7 +1544,7 @@ class GetStateData(ToolCollection):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    @ToolCollection.tool_call
+    #@ToolCollection.tool_call
     def get_sketch_curves(self, entity_token: str = "") -> str:
         """
         {
@@ -1723,95 +1723,391 @@ class GetStateData(ToolCollection):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
-    #@ToolCollection.tool_call
-    def _get_object_data(self, object_path :list= ["comp1"], attributes_list:list=[""]) -> str:
+
+    def document_objects(self, object_type) -> dict:
         """
-            {
-                "name": "get_object_data",
-                "description": "Gets Object attributes in the Fusion 360 design. The first element if object_path must be the name of a component, any following elements must be methods/atributes. The second_argument attributes_list is used to limit the response to only teh specifed attributs, this is just to save data. If attributes_list is set to [], the all attributes for the object will be returned. Some object attributes are methods the return more object, you pass theese to object path with the same syntax for calling a function. For example [comp1, sketches, item(0)], would return the first sketch represented as a JSON object. Another example: [comp3, bRepBodies.itemByName(Body1), volume] would return the volume of  body1 (bRepBody) in comp3 (component). This function allows you to query every possible element in the design by working your way through objects.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "object_path": {
-                            "type": "array",
-                            "items": { "type": "string" },
-                            "description": "Object path array; the first element must by the name of a component. Any following elements will be interpreted as attributes of the component."
-                        },
+        {
+          "name": "search_document_objects",
+          "description": "SQL like query to get dats from the Fusion 360 objects in the document",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query_string": {
+                "type": "string",
+                "description": "SQL like query string."
+              }
+            },
+            "required": ["query_string"],
+          "returns": {
+            "type": "string",
+            "description": "A JSON like object containing matching data"
+          },
+          }
 
-                        "attributes_list": {
-                            "type": "array",
-                            "items": { "type": "string" },
-                            "description": "List of attributes whose values will be returned, when the first element is set to an empty string, all elements will be returned."
-                        }
+        }
+        """
+        app = adsk.core.Application.get()
+        if not app:
+            return "Error: Fusion 360 is not running."
 
-                    },
+        product = app.activeProduct
+        if not product or not isinstance(product, adsk.fusion.Design):
+            return "Error: No active Fusion 360 design found."
 
-                    "required": ["get_object_data", "attributes_list"],
+        design = adsk.fusion.Design.cast(product)
+        root_comp = design.rootComponent
 
-                    "returns": {
-                        "type": "string",
-                        "description": "A JSON-encoded string containing attributes/methods for the object"
-                    }
-                }
+        design_attrs = [
+            "allParameters",
+            "userParameters"
+            "allComponents",
+        ]
+
+        component_attrs = [ "sketches" ]
+        occurrence_attrs = [ "bRepBodies" ]
+
+        # components
+        all_components = design.allComponents
+
+        # occurrences
+        all_occurrences = root_comp.allOccurrences
+
+        all_bodies_list = []
+        for occ in all_occurrences:
+            all_bodies_list += occ.bRepBodies
+
+        allBRepBodies = adsk.core.ObjectCollection.createWithArray(all_bodies_list)
+
+
+        all_sketches_list = []
+        all_joints_list = []
+        all_joint_origins_list = []
+
+        for comp in all_components:
+            all_sketches_list += comp.sketches
+            all_joints_list += comp.joints
+            all_joint_origins_list += comp.jointOrigins
+        allSketches = adsk.core.ObjectCollection.createWithArray(all_sketches_list)
+        allJoints = adsk.core.ObjectCollection.createWithArray(all_joints_list)
+        allJointOrigins = adsk.core.ObjectCollection.createWithArray(all_joint_origins_list)
+
+        all_sketch_curves = []
+        for sketch in allSketches:
+            all_sketch_curves += sketch.sketchCurves
+        allSketchCurves = adsk.core.ObjectCollection.createWithArray(all_sketch_curves)
+
+
+        object_dict = {
+            "Parameter": design.allParameters,
+            "Joint": allJoints,
+            "JointOrigin": allJointOrigins,
+            "Occurrence": root_comp.allOccurrences,
+            "Component": all_components,
+            "BRepBody": allBRepBodies,
+            "Sketch":  allSketches,
+            "SketchCurve": allSketchCurves
+        }
+
+        #for k,v in object_dict.items():
+        #    print(f"{k}: {v.count}")
+
+        return object_dict[object_type]
+
+
+
+    @ToolCollection.tool_call
+    def query_design_sql(self, query_string: str = "SELECT name,entityToken FROM Occurrence WHERE name LIKE 'screw'") -> str:
+        """
+        {
+          "name": "query_design_sql",
+          "description": "Executes a naive, SQL-like query on the current Fusion 360 design. Supports minimal SELECT ... FROM ... WHERE ... LIMIT ... OFFSET ... for the following object: [Occurrence, Component, BRepBody, Sketch, Joint, JointOrigin, SketchLine]. Supports . syntax to access sub attributes.Examples:\
+        SELECT name,entityToken FROM Component\
+        Return the name an entityTokens for all components in the design\
+        SELECT appearance.name,entityToken FROM Occurrence WHERE appearance.name LIKE 'Aluminum'\
+        returns the name of the appearance object for all Occurrence objects whose appearance name contains the string 'Aluminum'\
+        SELECT parentComponent.name,parentComponent.entityToken FROM BRepBody WHERE appearance.name LIKE 'Steel' LIMIT 5\
+        returns the parent Component name and entity token for the first 5 BRepBody objects whose appearance contains the string steel.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query_string": {
+                "type": "string",
+                "description": "A simplified SQL-like query, e.g. SELECT name, entityToken FROM Occurrence WHERE name LIKE 'screw'"
+              }
+            },
+            "required": ["query_string"],
+            "returns": {
+              "type": "string",
+              "description": "JSON array with the requested attributes of matching objects or an error message"
             }
+          }
+        }
         """
-
         try:
+            if not query_string or not isinstance(query_string, str):
+                return "Error: query_string must be a non-empty string."
+
             app = adsk.core.Application.get()
-            ui = app.userInterface
-            design = adsk.fusion.Design.cast(app.activeProduct)
+            if not app:
+                return "Error: Fusion 360 is not running."
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
 
-            component_name = object_path[0]
-            targetObject, errors = self._find_component_by_name(component_name)
+            design = adsk.fusion.Design.cast(product)
 
-            if not targetObject:
-                # if results, add error to return list
-                return "Error"
+            # -------------------------------------------------------------------
+            # 1) Naively parse the SQL-like string
+            #    We'll handle something like:
+            #    "SELECT name,entityToken FROM Occurrence WHERE name LIKE '%screw%'"
+            #    or
+            #    "SELECT name,entityToken FROM Occurrence WHERE name = 'Screw001'"
+            # -------------------------------------------------------------------
+            # This is extremely naive. We look for:
+            #  SELECT (attributes) FROM (objectType) WHERE (attributeName) (LIKE or =) ...
+            # We'll do a basic regex or string splits.
 
-            for attr_name in object_path[1:]:
+            pattern = (
+                r"(?i)^\s*SELECT\s+(?P<attributes>[\w\s,\.]+)\s+"      # attributes (e.g. "name, entityToken")
+                r"FROM\s+(?P<objectType>\w+)"                          # e.g. "Occurrence"
+                r"(?:\s+WHERE\s+(?P<attrName>[\w\.]+)\s+(?P<operator>LIKE|=)\s+'?(?P<value>[^']*)'?)?"
+                r"(?:\s+LIMIT\s+(?P<limit>\d+))?"                      # optional LIMIT
+                r"(?:\s+OFFSET\s+(?P<offset>\d+))?"                    # optional OFFSET
+                r"\s*$"
+            )
+            match = re.match(pattern, query_string.strip())
+            if not match:
+                return json.dumps({
+                    "error": "Query parsing failed. Expected a format like: SELECT x,y FROM Occurrence WHERE name LIKE '%val%'"
+                })
 
-                if "(" in  attr_name:
-                    attr_name, args = self._parse_function_call(attr_name)
-                    targetObject = getattr(targetObject, attr_name)(*args)
+            attributes_str = match.group("attributes").strip()
+            object_type    = match.group("objectType").strip()
+
+            attr_name = match.group("attrName")
+            if attr_name:
+                attr_name.strip()
+
+            operator = match.group("operator")
+            if operator:
+                operator.upper()
+
+            value_str = match.group("value")
+            if value_str:
+                value_str.strip()
+
+            limit = match.group("limit")
+            if limit:
+                limit = int(limit.strip())
+            else:
+                limit = -1
+
+            offset = match.group("offset")
+            if offset:
+                offset = int(offset.strip())
+            else:
+                offset = 0
+
+
+            # Split attributes by comma
+            attribute_list = [a.strip() for a in attributes_str.split(",")]
+
+            # example:
+            # attribute_list = ["name", "entityToken"]
+            # object_type = "Occurrence"
+            # attr_name = "name"
+            # operator = "LIKE" or "="
+            # value_str = "%screw%" or "someExactName"
+
+            # -------------------------------------------------------------------
+            # 3) Filter by the WHERE condition
+            #    We'll interpret operator = or LIKE
+            #    We'll gather the attribute from the object (e.g. 'name') or do a fallback
+            # -------------------------------------------------------------------
+            # We do a small helper to retrieve an attribute from an occurrence
+
+            def get_obj_attr(obj, attr: str):
+                # For demonstration, we handle typical attributes like "name", "entityToken", ...
+                # If we want a direct token, we do self.get_obj_token(occ).
+                # If we want to handle others, you can do "component.name" etc.
+                if attr.lower() == "entitytoken":
+                    # use your hashing system
+                    return self.set_obj_hash(obj)
                 else:
-                    targetObject = getattr(targetObject, attr_name)
+                    # fallback: attempt python built-in attribute
+                    #return getattr(occ, attr, "")
+                    val, errors = self.get_sub_attr(obj, attr)
+                    #if val
 
-            return_dict = {
-                "objectPath": object_path,
-                "objectVal": str(targetObject)
-            }
+                    return val
 
+            # Build a filter function
+            def matches_condition(obj) -> bool:
 
-            if len(attributes_list) ==1 and (attributes_list[0] == ""):
-                attributes_list = dir(targetObject)
-                attributes_list = [a for a in attributes_list if a[0] != "_"]
+                val = str(get_obj_attr(obj, attr_name))
 
-            for attr in attributes_list:
+                if operator == "=":
+                    return (val == value_str)
+                elif operator == "LIKE":
+                    # interpret wildcard with simple python substring or regex approach
+                    # e.g. "SomeName" LIKE '%foo%' => "foo" in "SomeName"
+                    # If user used % at start or end, we do a substring approach
+                    # We'll do a naive approach:
+                    pattern_text = value_str
+                    # replace leading/trailing % with zero or more chars
+                    # e.g. "foo%" => "foo.*"
+                    # or just do a simplistic approach: remove quotes, do substring ignoring the % signs
+                    # This is naive. We'll do the python approach:
+                    # If "foo" is between % => we do substring. If no %, we do exact? We'll do a small approach:
+                    # We'll replace all % with .*
+                    wild_re = re.escape(pattern_text).replace(r'\%', '.*')
+                    # Then do a full re match
+                    # but let's do a search ignoring boundaries
+                    if re.search(wild_re, val, re.IGNORECASE):
+                        return True
+                    else:
+                        return False
+                else:
+                    return False
 
-                try:
+            target_objects = self.document_objects(object_type)
 
-                    if hasattr(targetObject, attr) == False:
-                        return_dict[attr]: f"object has not attribute: {attr}"
-                        continue
+            # handle for no filter condition
+            if operator:
+                # Filter the list
+                filtered_objects = [o for o in target_objects if matches_condition(o)]
+            else:
+                filtered_objects = target_objects
 
-                    attr_val = getattr(targetObject, attr, None)
+            # -------------------------------------------------------------------
+            # 4) Build the results: we only select the attributes from attribute_list
+            # -------------------------------------------------------------------
+            results_data = []
+            for obj in filtered_objects:
+                row = {}
+                for attr in attribute_list:
+                    row[attr] = str(get_obj_attr(obj, attr))
+                results_data.append(row)
 
-                    attr_type = str(attr_val.__class__.__name__)
-                    return_dict[attr] = {"type": attr_type, "val": str(attr_val) }
+            # filter for offset and limit
+            results_data = results_data[offset:limit+offset]
 
-                    if attr == "itemByName":
-                        item_names = [i.name for i in targetObject]
-                        return_dict[attr]["itemNames"] = item_names
-
-                except Exception as e:
-                    #print(f"Error: {e}")
-                    continue
-
-            return json.dumps(return_dict)
+            return json.dumps(results_data)
 
         except:
-            return f'Error: Failed to get/set component info:\n{traceback.format_exc()}'
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
+
+
+    #@ToolCollection.tool_call
+    def list_all_occurrences(self) -> str:
+        """
+        {
+          "name": "list_all_occurrences",
+          "description": "Retrieves all components in the current design and returns their basic information in a JSON array.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+            },
+            "required": []
+          },
+          "returns": {
+            "type": "string",
+            "description": "A JSON array of component info. Each item may include componentName and isRoot."
+          }
+        }
+        """
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # design.allComponents returns a collection of every component in the design
+            all_occs = design.rootComponent.allOccurrences
+            occ_list = []
+
+            for occ in all_occs:
+                # Basic info about each component
+
+                token = self.set_obj_hash(occ)
+
+                occ_data = {
+                    "tame": occ.name,
+                    "token": token,
+                    "fullPathName": occ.fullPathName,
+                }
+
+
+                occ_list.append(occ_data)
+
+
+
+            print(f"occ_list: {len(occ_list)}")
+            print(f"key_list: {len(self.ent_dict.keys())}")
+
+            return json.dumps(occ_list, indent=2)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+    #@ToolCollection.tool_call
+    def list_all_components(self) -> str:
+        """
+        {
+          "name": "list_all_components",
+          "description": "Retrieves all components in the current design and returns their basic information in a JSON array.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+            },
+            "required": []
+          },
+          "returns": {
+            "type": "string",
+            "description": "A JSON array of component info. Each item may include componentName"
+          }
+        }
+        """
+        try:
+            app = adsk.core.Application.get()
+            if not app:
+                return "Error: Fusion 360 is not running."
+
+            product = app.activeProduct
+            if not product or not isinstance(product, adsk.fusion.Design):
+                return "Error: No active Fusion 360 design found."
+
+            design = adsk.fusion.Design.cast(product)
+
+            # design.allComponents returns a collection of every component in the design
+            all_comps = design.allComponents
+            comp_list = []
+
+            for comp in all_comps:
+                # Basic info about each component
+
+                token = self.set_obj_hash(comp)
+                comp_data = {
+                    "tame": comp.name,
+                    "token": token,
+                }
+                comp_list.append(comp_data)
+
+            print(f"comp_list: {len(comp_list)}")
+            print(f"key_list: {len(self.ent_dict.keys())}")
+
+            return json.dumps(comp_list, indent=2)
+
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
 class SetStateData(ToolCollection):
@@ -2464,6 +2760,12 @@ class SetStateData(ToolCollection):
 
         except Exception as e:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
+
+
+
+
+
+
 
 
 

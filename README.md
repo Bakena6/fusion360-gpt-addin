@@ -46,7 +46,6 @@
     3. We need to set up the Assistant's, System Instructions, Model, Tool (functions). S
 
 
-
 # Structure
 ```
 ├── Fusion-GPT-Addin

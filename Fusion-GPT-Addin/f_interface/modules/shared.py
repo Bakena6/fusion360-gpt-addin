@@ -338,7 +338,9 @@ class ToolCollection:
         errors = None
 
         processed_path = f"{target_entity.__class__.__name__}"
-        # work down throug attrs
+
+        # work down through attrs
+        n_attrs = len(attr_parts)
         for index, attr_str in enumerate(attr_parts):
 
             # alwas check has attr in cas attr exists but is None
@@ -362,8 +364,14 @@ class ToolCollection:
             processed_path += f".{attr_str}"
 
             # set the target entity to the attr, assumes the attr is an object
-            # when not last iteration
-            target_entity = attr
+            if index < n_attrs-1:
+                # when not last iteration
+                target_entity = attr
+
+
+        # if object is entity token, make sure we store object reference
+        if attr_str == "entityToken":
+            attr = self.set_obj_hash(target_entity)
 
         return attr, errors
 
@@ -451,7 +459,22 @@ class ToolCollection:
         return results
 
 
-    def set_obj_hash(self, entity: object, token_str: str= None, length=5):
+
+    def get_comp_str(self, entity):
+
+        # unique id str, not unique when copied
+        id_str = getattr(entity, "id", None)
+        ent_tok_str = getattr(entity, "entityToken", None)
+        # parent cod/element name
+        parent_name = entity.parentDesign.parentDocument.name
+        token_str = f"{id_str}_{ent_tok_str}_{parent_name}"
+
+        return token_str
+
+
+
+
+    def set_obj_hash(self, entity: object, ref_occ: str= None, length=5):
         """
         adds a fusion360 to the hash:object dict
         """
@@ -462,60 +485,62 @@ class ToolCollection:
         entity_attrs = dir(entity)
 
 
+        token_str = None
+        entity_type = entity.__class__.__name__
 
+        if isinstance(entity, adsk.fusion.Component):
+            token_str = self.get_comp_str(entity)
 
+        elif isinstance(entity, adsk.fusion.Occurrence):
+            token_str = getattr(entity, "entityToken", None)
 
+        elif isinstance(entity, adsk.fusion.BRepBodies):
 
-        #sys.sizeof
-        # if token_string passed in
-        if token_str !=  None:
-            token_str = str(token_str)
-        else:
+            if ref_occ != None:
+                comp_token_str = self.get_comp_str(ref_occ.component)
+                token_str = f"{entity_type}_{comp_token_str}_{ref_occ.name}"
 
-            token_str = None
-            entity_type = entity.__class__.__name__
-
-            if isinstance(entity, adsk.fusion.Component):
-
-                try:
-                    token_str = getattr(entity, "entityToken", None)
-                except Exception as e:
-                    print(e)
-
-                if token_str == None:
-                    token_str = getattr(entity, "name", None)
-
-                # TODO check for incomplete token by number of "/" not len
-                elif len(token_str) < len("-/v4BAAEAAwAAAAAAAAAAAAAA"):
-                    token_str += getattr(entity, "id", None)
-
-
-            elif hasattr(entity, "entityToken") == True:
-                token_str = getattr(entity, "entityToken", None)
-
-            elif hasattr(entity, "name") == True:
-                token_str = getattr(entity, "name", None)
+            elif entity.count != 0:
+                body_0_parent_comp = entity.item(0).parentComponent
+                parent_comp_token_str = self.get_comp_str(body_0_parent_comp)
+                token_str = f"{entity_type}_{parent_comp_token_str}"
             else:
-                token_str = f"{entity_type}_{id(entity_type)}"
-                pass
+                token_str = f"{entity_type}_{id(entity)}"
 
-            if token_str == None:
-                print(f"NO TOKEN STRING")
-                print(entity)
-                print(dir(entity))
-                raise Exception("Token Is None")
+        elif hasattr(entity, "entityToken") == True:
+            token_str = getattr(entity, "entityToken", None)
+
+        elif hasattr(entity, "name") == True:
+            token_str = getattr(entity, "name", None)
+        else:
+            token_str = f"{entity_type}_{id(entity_type)}"
+            pass
+
+        if token_str == None:
+            print(f"NO TOKEN STRING")
+            print(entity)
+            print(dir(entity))
+            raise Exception("Token Is None")
 
 
         hash_val = self._hash_string_to_fixed_length(str(token_str), length)
         hash_val = f"{hash_val}"
+
         # check token exists
         existing_entity = self.ent_dict.get(hash_val)
         if existing_entity:
 
             # if token refers to different entities
             if existing_entity != entity:
+                print("---")
 
                 print_string = f"Token exists: {hash_val}, token_str: {token_str}"
+
+                spacing = " " *  10
+
+                e0_id = id(existing_entity)
+                e1_id = id(entity)
+
 
                 for n, v in {"prev": existing_entity, "new ": entity }.items():
 
@@ -526,6 +551,8 @@ class ToolCollection:
                     print_string += f"\n {n}: {class_name}, {ent_name}"
 
                 print(print_string)
+                print(f"  e0: {e0_id}, {existing_entity}")
+                print(f"  e1: {e1_id}, {entity}")
                 #print(entity.isLinked)
                 #raise Exception(f"Token error")
 

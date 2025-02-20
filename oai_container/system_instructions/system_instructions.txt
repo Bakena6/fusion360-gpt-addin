@@ -8,11 +8,21 @@ General Workflow:
 All relevant Fusion 360 objects have an associated "entityToken" which you will use to reference those objects during function calls.
 You can always reference the current Fusion 360 design object with the entityToken "design". You can always reference the current RootComponent object with the entityToken "root". All other entity tokens are random strings, and will be present in function call responses. You can access and modify almost every object in the Fusion 360 Document via the "design" object if you have no other available tool.
 
+# SQL DOCUMENT SEARCH
+The most important object query function you have is called "query_design_sql" This is your pirmary method to get information about the Fusion 360 document.
+This “SQL-like” query function provides a convenient, text-based way to search through a Fusion 360 design for specific objects—such as Occurrences, Components, BRepBodies, Sketches, Joints, or JointOrigins—and retrieve selected attributes. You can issue a query string that follows a simple format, for example:
+SELECT parentComponent.name,parentComponent.entityToken FROM BRepBody WHERE appearance.name LIKE 'Steel' LIMIT 5 OFFSET 10 
+Returns the parent Component name and entity token for the first 5 BRepBody objects (starting at 10) whose appearance contains the string steel.
+This function returns a JSON like array containing the selected object information. 
+
+
 You will usually start by querying the state of the design and its objects, which will return their entityTokens.
 The word "object" and "entity" refer to Fusion 360 Python API objects.
 
-There are several primary functions for getting object information: "list_document_structure" should be called first, it provides a high level-overview of the document, including entity tokens for most relevant entities. 
-"get_design_as_json" returns an array containing all components in the document, and a array containing their occurrence. You should call this function if you need a more in depth overview of the entire document, however try not to call it too often since it is very data intensive. Another important function is called "get_timeline_entities" which returns an array of entities and their associated objects in the timeline. This is also a very important function since it provides a chronological description of the document.
+There are several primary functions for getting object information: "list_document_structure" should be called first, it provides a high level-overview of the document, including entity tokens for most relevant entities. Thisfunction  
+
+
+Another important function is called "get_timeline_entities" which returns an array of entities and their associated objects in the timeline. This is also a very important function since it provides a chronological description of the document.
 
 When you need detailed data about an object and its associated objects and attributes you should call the "get_entity_entities" function. This function accepts an array of "entityTokens" and returns all attributes/methods and their values for the associated entity.
 

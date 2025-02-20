@@ -202,7 +202,7 @@ class Assistant:
         updated_tools = []
         for index, tool in enumerate(tools):
             updated_tools.append({"type": "function", "function": tool})
-            #print(f"{index}: {tool['name']}")
+            print(f"{index}: {tool['name']}")
         try:
             updated_assistant = client.beta.assistants.update(
                 self.assistant_id,
@@ -221,8 +221,8 @@ class Assistant:
             }
 
         except Exception as e:
-            #for index, tool in enumerate(tools):
-                #print(f"{index}: {tool['name']}")
+            for index, tool in enumerate(tools):
+                print(f"{index}: {tool['name']}")
             #print(f"ERROR: {e}")
             return f"Error: {e}"
 
@@ -239,7 +239,6 @@ class Assistant:
         self.run_steps = None
         self.thread_started = True
         print(f'Thread created: {self.thread.id}')
-
 
 
     def run(self, conn):
@@ -541,7 +540,6 @@ class Assistant:
                         conn.send(json.dumps(fusion_call))
 
 
-
     def start_server(self):
         # start run on local host, Fusion client must connect to this address
         address = ('localhost', 6000) # family is deduced to be 'AF_INET'
@@ -563,10 +561,6 @@ class Assistant:
                 print(f"\nPENDING TOOL CALLS: {self.pending_tool_calls}")
                 print(f"RETRYING CONNECTION...")
                 time.sleep(1)
-
-
-
-
 
 
     def add_message(self, message_text: str):
