@@ -308,9 +308,11 @@ div, span{
 .function-input-container textarea{
     box-sizing: border-box; /* includes padding/ border in content width*/
     vertical-align: middle;
-    text-align: center;
+    text-align: left;
+    font-size:18px;
     margin-left: 4px;
     margin-right: 4px;
+    padding-left: 5px;
     height: auto;
     min-height: 30px;
     min-width: 50px;
@@ -446,9 +448,8 @@ div, span{
 .setting-row {
     display: flex;        /* Use Flexbox to arrange buttons in a row */
     justify-content: flex-start; /* Align buttons to the start of the container */
-    margin-bottom: 10px; /* Space between the textarea and the button row */
+    margin-bottom: 5px; /* Space between the textarea and the button row */
     gap: 5px;
-    border: 1px solid cyan;
 }
 
 .setting-row label{

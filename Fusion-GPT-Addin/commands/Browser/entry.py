@@ -271,6 +271,7 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
         function_name = message_data["function_name"]
         function_args = message_data["function_args"]
 
+
         # tool call id should only be present if the user calls the
         # function from an existing thread call
         tool_call_id = message_data.get("tool_call_id")

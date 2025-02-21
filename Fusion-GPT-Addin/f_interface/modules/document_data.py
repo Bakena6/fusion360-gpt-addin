@@ -29,6 +29,608 @@ def print(string):
     futil.log(str(string))
 print(f"RELOADED: {__name__.split("%2F")[-1]}")
 
+class SQL(ToolCollection):
+
+    def __init__(self, ent_dict):
+        super().__init__(ent_dict)
+
+
+
+        self.SQL_PATTERN = re.compile(
+            r"(?i)^\s*"
+            r"(?:"
+
+            # ----------------------------------
+            # 1) SELECT statement
+            # ----------------------------------
+            r"SELECT\s+(?P<attributes>[\w\s,\.]+)\s+"
+            r"FROM\s+(?P<objectType>\w+)"
+            r"(?:\s+WHERE\s+(?P<selectWhere>"
+              # Each condition: <attrName> [NOT ] (LIKE|=) ( 'someString' | number | boolean )
+              # e.g. "name NOT LIKE 'gear'", "value = 10", "isLightBulbOn = true"
+              r"(?:[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))"
+              r"(?:\s+(?:AND|OR)\s+[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))*"
+            r"))?"
+            r"(?:\s+LIMIT\s+(?P<limit>\d+))?"
+            r"(?:\s+OFFSET\s+(?P<offset>\d+))?"
+
+            r"|"
+
+            # ----------------------------------
+            # 2) UPDATE statement
+            # ----------------------------------
+            r"UPDATE\s+(?P<updateObjectType>\w+)"
+            # setClause with a lazy capture up to WHERE|LIMIT|OFFSET|end,
+            # but in that clause each assignment must accept numeric or string or boolean
+            r"\s+SET\s+(?P<setClause>[\w\s,=.'%\-\(\)\:\+0-9\.truefalse]+?(?=\s+(?:WHERE|LIMIT|OFFSET)|$))"
+            r"(?:\s+WHERE\s+(?P<updateWhere>"
+              r"(?:[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))"
+              r"(?:\s+(?:AND|OR)\s+[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))*"
+            r"))?"
+            r"(?:\s+LIMIT\s+(?P<updateLimit>\d+))?"
+            r"(?:\s+OFFSET\s+(?P<updateOffset>\d+))?"
+
+            r")\s*$"
+        )
+
+
+
+        # Sub-pattern for each single condition in the WHERE clause, e.g.:
+        self.CONDITION_PATTERN = re.compile(
+            r"(?i)^\s*"
+            r"([\w\.]+)\s+(?P<maybeNot>NOT\s+)?(?P<baseOp>LIKE|=)\s+"
+            r"(?:'(?P<strVal>[^']*)'|(?P<numVal>[+-]?\d+(?:\.\d+)?)(?![^'])|(?P<boolVal>true|false))"
+            r"\s*$"
+        )
+
+        self.ASSIGN_RE = re.compile(
+            r"(?i)^\s*"
+            r"([\w\.]+)\s*=\s*"    # captures the attribute name (with optional dots)
+            r"(?:"
+                r"'(?P<strVal>[^']*)'"                # single-quoted string
+                r"|(?P<numVal>[+-]?\d+(?:\.\d+)?)"    # integer or float
+                r"|(?P<boolVal>true|false)"           # boolean
+            r")"
+            r"\s*$"
+        )
+
+
+
+    def document_objects(self) -> dict:
+        """
+        {
+          "name": "search_document_objects",
+          "description": "SQL like query to get dats from the Fusion 360 objects in the document",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query_string": {
+                "type": "string",
+                "description": "SQL like query string."
+              }
+            },
+            "required": ["query_string"],
+          "returns": {
+            "type": "string",
+            "description": "A JSON like object containing matching data"
+          },
+          }
+
+        }
+        """
+        app = adsk.core.Application.get()
+        if not app:
+            return "Error: Fusion 360 is not running."
+
+        product = app.activeProduct
+        if not product or not isinstance(product, adsk.fusion.Design):
+            return "Error: No active Fusion 360 design found."
+
+        design = adsk.fusion.Design.cast(product)
+        root_comp = design.rootComponent
+
+        design_attrs = [
+            "allParameters",
+            "userParameters"
+            "allComponents",
+        ]
+
+        component_attrs = [ "sketches" ]
+        occurrence_attrs = [ "bRepBodies" ]
+
+        # components
+        all_components = design.allComponents
+
+        # occurrences
+        all_occurrences = root_comp.allOccurrences
+
+        all_bodies_list = []
+        for occ in all_occurrences:
+            all_bodies_list += occ.bRepBodies
+
+        allBRepBodies = adsk.core.ObjectCollection.createWithArray(all_bodies_list)
+
+        all_sketches_list = []
+        all_joints_list = []
+        all_joint_origins_list = []
+
+        for comp in all_components:
+            all_sketches_list += comp.sketches
+            all_joints_list += comp.joints
+            all_joint_origins_list += comp.jointOrigins
+        allSketches = adsk.core.ObjectCollection.createWithArray(all_sketches_list)
+        allJoints = adsk.core.ObjectCollection.createWithArray(all_joints_list)
+        allJointOrigins = adsk.core.ObjectCollection.createWithArray(all_joint_origins_list)
+
+        all_sketch_curves = []
+        for sketch in allSketches:
+            all_sketch_curves += sketch.sketchCurves
+        allSketchCurves = adsk.core.ObjectCollection.createWithArray(all_sketch_curves)
+
+        #design.userParameters
+        object_dict = {
+            "Parameter": design.allParameters,
+            "Joint": allJoints,
+            "JointOrigin": allJointOrigins,
+            "Occurrence": root_comp.allOccurrences,
+            "Component": all_components,
+            "BRepBody": allBRepBodies,
+            "Sketch":  allSketches,
+            "SketchCurve": allSketchCurves
+        }
+
+        #for k,v in object_dict.items():
+        #    print(f"{k}: {v.count}")
+
+        return object_dict
+
+
+
+
+    def parse_where_conditions(self, where_str: str):
+        """
+        Splits 'where_str' on AND/OR, returning a list of condition dicts:
+        [ { 'attrName': '...', 'operator': 'NOT LIKE', 'value': 'foo', 'logicOpBefore': None|'AND'|'OR' }, ... ]
+        """
+        if not where_str:
+            return []
+
+        tokens = re.split(r"(?i)\s+(AND|OR)\s+", where_str.strip())
+        print(tokens)
+        conditions = []
+
+        # parse the first condition
+        first_cond = self.parse_single_condition(tokens[0])
+        if first_cond:
+            first_cond["logicOpBefore"] = None
+            conditions.append(first_cond)
+
+        i = 1
+        while i < len(tokens) - 1:
+            logic_op = tokens[i].upper()
+            cond_text = tokens[i+1]
+            c = self.parse_single_condition(cond_text)
+            if c:
+                c["logicOpBefore"] = logic_op
+                conditions.append(c)
+            i += 2
+
+        return conditions
+
+    def parse_set_clause(self, clause: str):
+        """
+        Parses something like:
+            name='Housing', value=10, appearance.name='Steel', isLightBulbOn=true
+        into a list of dicts:
+            [
+              {"attrName": "name", "value": "Housing"},
+              {"attrName": "value", "value": 10},
+              {"attrName": "appearance.name", "value": "Steel"},
+              {"attrName": "isLightBulbOn", "value": True}
+            ]
+        If any assignment is unrecognized, returns {"error": "..."}.
+        """
+        parts = [p.strip() for p in clause.split(',')]
+        out = []
+        for p in parts:
+            m = self.ASSIGN_RE.match(p)
+            if not m:
+                return {"error": f"Unrecognized assignment: {p}"}
+
+            attr_name = m.group(1)           # e.g. "name", "appearance.name"
+            str_val   = m.group("strVal")    # matched if the user wrote e.g. 'Steel'
+            num_val   = m.group("numVal")    # matched if the user wrote a numeric literal
+            bool_val  = m.group("boolVal")   # matched if the user wrote true/false
+
+            # Convert the captured group to the correct Python type
+            if str_val is not None:
+                final_val = str_val
+            elif num_val is not None:
+                # interpret as float or int
+                if '.' in num_val:
+                    final_val = float(num_val)
+                else:
+                    final_val = int(num_val)
+            elif bool_val is not None:
+                # case-insensitive => "true", "false"
+                final_val = (bool_val.lower() == "true")
+            else:
+                # should not happen, but just in case
+                final_val = None
+
+            out.append({"attrName": attr_name, "value": final_val})
+
+        return out
+
+
+
+    def parse_single_condition(self, cond_text: str):
+        m = self.CONDITION_PATTERN.match(cond_text.strip())
+        if not m:
+            return None
+
+        attr_name = m.group(1)
+        maybe_not = m.group("maybeNot")
+        base_op   = m.group("baseOp").upper()
+        str_val   = m.group("strVal")
+        num_val   = m.group("numVal")
+        bool_val  = m.group("boolVal")
+        print(bool_val)
+
+        # If maybe_not is present => operator = "NOT <base_op>", e.g. "NOT LIKE", "NOT ="
+        if maybe_not:
+            operator = (maybe_not.strip() + " " + base_op).upper()
+        else:
+            operator = base_op
+
+        # Determine final value
+        if str_val is not None:
+            # It's a string
+            value = str_val
+        elif num_val is not None:
+            # interpret as int or float
+            if '.' in num_val:
+                value = float(num_val)
+            else:
+                value = int(num_val)
+        elif bool_val is not None:
+            # interpret as Python bool
+            # ignoring case because of (?i) => the actual matched text might be "TRUE", "False" ...
+            value = (bool_val.lower() == "true")
+        else:
+            value = None
+
+        return {
+            "attrName": attr_name,
+            "operator": operator,
+            "value": value
+        }
+
+
+
+
+
+    def match_object_against_conditions(self, obj, conditions):
+        """
+        Checks whether 'obj' satisfies the list of 'conditions', each of which is
+        a dict with:
+          {
+            "attrName": str,             # e.g. "name" or "appearance.name"
+            "operator": str,             # e.g. "LIKE", "NOT LIKE", "=", or "NOT ="
+            "value": str,                # e.g. "%gear%"
+            "logicOpBefore": str|None    # "AND", "OR", or None for the first condition
+          }
+
+        The function returns True if 'obj' meets the entire set of conditions
+        when chained by AND/OR logic in the specified order, or False otherwise.
+
+        """
+        def condition_matches(obj, cond):
+            """
+            E.g. cond might be:
+              { "attrName": "name", "operator": "LIKE", "value": "%gear%" }
+            or
+              { "attrName": "name", "operator": "NOT LIKE", "value": "_oot" }
+            We'll interpret % as multi-char, _ as single-char wildcard in a naive manner.
+            """
+
+            operator = cond["operator"].upper()
+            value = cond["value"]
+
+            attr_val, errors = self.get_sub_attr(obj, cond["attrName"])
+            val, errors = self.get_sub_attr(obj, attr_name)
+            if errors:
+                return errors
+
+            if operator == "LIKE":
+                return do_like_compare(attr_val, value, negate=False)
+            elif operator == "NOT LIKE":
+                return do_like_compare(attr_val, value, negate=True)
+            elif operator == "=":
+                return (attr_val == str(value))
+            elif operator == "NOT =":
+                return (attr_val != str(value))
+            else:
+                return False
+
+
+        def do_like_compare(actual_str, pattern_str, negate=False):
+            """
+            Interprets pattern_str as having '%' for multi-char wildcard and '_' for single-char wildcard.
+            We'll convert them to python regex equivalents:
+               % -> .*
+               _ -> .
+            Then do a case-insensitive search. If 'negate' is True, we invert the result.
+            """
+
+            # Step 1) Escape everything so we match literally except for the wildcards we'll replace
+            escaped = re.escape(str(pattern_str))
+
+            # Step 2) Replace the escaped versions of '%' and '_' with the desired regex pattern.
+            # Because re.escape('%') => '\%', re.escape('_') => '\_'
+            # so we find those sequences in 'escaped' and replace them with .*, .
+            # e.g. "gear\%" => "gear.*"
+            # e.g. "foo\_" => "foo."
+            # We do the replacements in that order so we don't inadvertently re-replace something.
+            #print(escaped)
+            escaped = escaped.replace(r'%', '.*')
+            escaped = escaped.replace(r'_', '.')
+            #print(escaped)
+
+            # We'll do a full search ignoring case
+            match_found = bool(re.search(escaped, actual_str, re.IGNORECASE))
+            return (not match_found) if negate else match_found
+
+        # We'll iterate conditions in order, combining them with AND/OR logic
+        overall_result = None
+
+        for i, cond in enumerate(conditions):
+
+            attr_name = cond["attrName"]
+
+            val, errors = self.get_sub_attr(obj, attr_name)
+            if errors != None:
+                return None, errors
+
+            cRes = condition_matches(obj, cond)
+
+            if i == 0:
+                # first condition => just set overall_result to cRes
+                overall_result = cRes
+            else:
+                logic_op = cond.get("logicOpBefore", "AND").upper()
+                if logic_op == "AND":
+                    overall_result = overall_result and cRes
+                elif logic_op == "OR":
+                    overall_result = overall_result or cRes
+                else:
+                    # if somehow we get an unknown operator, fallback to AND
+                    overall_result = overall_result and cRes
+
+        # If no conditions, default to True (no filter)
+        if overall_result is None:
+            return True, None
+
+        return overall_result, None
+
+    def apply_assignments(self, obj, assignments):
+        updated_something = False
+
+        BOOL_MAP = {
+            "true": True,
+            "false": False,
+            "1": True,
+            "0": False
+        }
+
+        details = {}
+        for assign in assignments:
+            attr_name = assign["attrName"]
+            new_val = assign["value"]
+
+            if isinstance(new_val, str):
+                # check if lower-cased value is in BOOL_MAP
+                val_lower = new_val.lower()
+                if val_lower in BOOL_MAP:
+                    new_val = BOOL_MAP[val_lower]  # a Python bool
+                else:
+                    # fallback to the raw string if not recognized
+                    new_val = new_val
+
+            # We'll do a naive approach:
+            # If 'attr_name' has a dot, e.g. "appearance.name", we handle sub-attribute
+            # We'll get the sub-object except the last part, then set the last part via setattr if possible.
+            parts = attr_name.split(".")
+
+            #print()
+
+            if len(parts) == 1:
+                # direct attribute
+                try:
+                    setattr(obj, parts[0], new_val)
+                    details[attr_name] = f"Set to {new_val}"
+                    updated_something =True
+                except Exception as e:
+                    details[attr_name] = f"Error: {str(e)}"
+            else:
+                # sub-attribute
+                # e.g. "appearance.name" => first get obj.appearance, then set .name
+                cur_obj = obj
+                for p in parts[:-1]:
+                    if not hasattr(cur_obj, p):
+                        details[attr_name] = "Error: sub-attribute not found."
+                        break
+                    cur_obj = getattr(cur_obj, p)
+                    if cur_obj is None:
+                        details[attr_name] = "Error: sub-attribute is None."
+                        break
+                else:
+                    # now we set the last part
+                    final_part = parts[-1]
+                    try:
+                        setattr(cur_obj, final_part, new_val)
+                        details[attr_name] = f"Set to {new_val}"
+                        updated_something = True
+                    except Exception as e:
+                        details[attr_name] = f"Error: {str(e)}"
+
+        return {
+            "updated": updated_something,
+            "details": details
+        }
+
+
+
+
+    @ToolCollection.tool_call
+    def run_sql_query(self, query_str: str = "SELECT name,entityToken FROM Occurrence WHERE name LIKE 'screw'") -> str:
+        """
+            {
+              "name": "run_sql_query",
+              "description": "Executes a naive, SQL-like query on the current Fusion 360 design. Supports standard SQL syntax: SELECT, UPDATE, SET, FROM, WHERE, AND, OR, LIKE, LIMIT, OFFSET, for the following object: [Occurrence, Component, BRepBody, Sketch, Joint, JointOrigin, SketchLine]. Supports . syntax to access sub attributes.Examples:\
+            SELECT name,entityToken FROM Component\
+            Return the name an entityTokens for all components in the design\
+            SELECT appearance.name,entityToken FROM Occurrence WHERE appearance.name LIKE '%Aluminum%'\
+            returns the name of the appearance object for all Occurrence objects whose appearance name contains the string 'Aluminum'",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "query_str": {
+                    "type": "string",
+                    "description": "A simplified SQL-like query, e.g. SELECT name, entityToken FROM Occurrence WHERE name LIKE 'screw'"
+                  }
+                },
+                "required": ["query_string"],
+                "returns": {
+                  "type": "string",
+                  "description": "JSON array with the requested attributes of matching objects or an error message"
+                }
+              }
+            }
+        """
+
+        try:
+            if not query_str or not isinstance(query_str, str):
+                return json.dumps({"error": "query_str must be a non-empty string"})
+
+            # 1) Match against the big pattern
+            match = self.SQL_PATTERN.match(query_str.strip())
+            if not match:
+                return json.dumps({"error": "Invalid or unsupported SQL query"})
+
+            # Distinguish SELECT vs. UPDATE
+            # SELECT target object
+            object_type = match.group("objectType")
+            if object_type:
+                statement_type = "SELECT"
+                attributes_str = match.group("attributes")  # for SELECT
+                where_str = match.group("selectWhere")
+                limit_str = match.group("limit")
+                offset_str = match.group("offset")
+            else:
+                # UPDATE target object
+                statement_type = "UPDATE"
+                object_type = match.group("updateObjectType")  # for UPDATE
+                set_clause_str = match.group("setClause")
+                where_str = match.group("updateWhere")
+                limit_str = match.group("updateLimit")
+                offset_str = match.group("updateOffset")
+
+            print(f"where_str {where_str}")
+
+
+            limit_val = int(limit_str) if limit_str else None
+            offset_val = int(offset_str) if offset_str else None
+
+            # parse conditions in update_where_str => a list of condition dict
+            conditions = self.parse_where_conditions(where_str)
+
+            # gather objects of type update_object_type
+            doc_objs = self.document_objects()
+            all_objs = doc_objs.get(object_type, None)
+            # validate object_type
+            if all_objs is None:
+                return f"Error: '{object_type}' is not a valid object type, valid objects are: {list(doc_objs.keys())} "
+
+            # filter objects them
+            filtered_objs = []
+            for o in all_objs:
+
+                match, errors = self.match_object_against_conditions(o, conditions)
+                if errors != None:
+                    return errors
+
+                if match == True:
+                    filtered_objs.append(o)
+
+
+            # apply offset/limit
+            if offset_val:
+                if offset_val < len(filtered_objs):
+                    filtered_objs = filtered_objs[offset_val:]
+                else:
+                    filtered_objs = []
+            if limit_val and limit_val < len(filtered_objs):
+                filtered_objs = filtered_objs[:limit_val]
+
+
+            return_dict = {
+                "statementType": statement_type,
+                "objectType": object_type,
+            }
+
+            # If we have update_object_type => it's an UPDATE statement
+            # otherwise, we treat it as SELECT
+            if statement_type == "UPDATE":
+                # 2) We parse the setClause into assignments: e.g. "name='Gear', appearance.name='Steel'"
+                assignments = self.parse_set_clause(set_clause_str)
+
+                if "error" in assignments:
+                    return json.dumps({"error": f"Error in SET clause: {assignments['error']}"})
+
+                # 6) apply assignments
+                updated_count = 0
+                assignment_results = {}
+                for obj in filtered_objs:
+                    # we apply the set of assignments
+                    update_result = self.apply_assignments(obj, assignments)
+                    if update_result["updated"]:
+                        updated_count += 1
+                    assignment_results[self.set_obj_hash(obj)] = update_result["details"]
+
+                return_dict.update( {
+                    "foundCount": len(filtered_objs),
+                    "updatedCount": updated_count,
+                    #"assignmentDetails": assignment_results
+                })
+
+
+            else:
+                # SELECT statement
+                # parse the attributes
+                attribute_list = [a.strip() for a in attributes_str.split(",")]
+
+                # build result
+                # for each object, we gather the requested attributes
+                results = []
+                for obj in filtered_objs:
+                    row_data = {}
+                    for attr in attribute_list:
+                        val, errors = self.get_sub_attr(obj, attr)
+                        row_data[attr] = val
+
+                    results.append(row_data)
+
+                return_dict.update({
+                    "count": len(results),
+                    "results": results
+                })
+
+
+            return json.dumps(return_dict)
+
+        except:
+            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
 class GetStateData(ToolCollection):
@@ -426,32 +1028,8 @@ class GetStateData(ToolCollection):
         return json.dumps(results)
 
 
-    #@ToolCollection.tool_call
-    def test_object_data(self, obj_token: str=""):
-        """
-        {
-            "name": "test_object_data",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                },
-                "required": [],
-                "returns": {
-                    "type": "string",
-                    "description": "A JSON representation of the entire document's structure, including entity tokens if available."
-                }
 
-            }
-        }
-        """
-
-        response_obj = self.get_hash_obj(obj_token)
-        resp_list = self.object_creation_response(response_obj)
-
-        return json.dumps(resp_list)
-
-
-    def _get_recursive(self, entity, levels, total_levels):
+    def __get_recursive(self, entity, levels, total_levels):
         app = adsk.core.Application.get()
         if not app:
             return "Error: Fusion 360 is not running."
@@ -578,7 +1156,7 @@ class GetStateData(ToolCollection):
 
 
     #@ToolCollection.tool_call
-    def get_recursive(self, entity_token: str="", levels: int=1):
+    def __get_recursive(self, entity_token: str="", levels: int=1):
 
         """
         {
@@ -614,7 +1192,7 @@ class GetStateData(ToolCollection):
         # get locally stored ent
         entity = self.get_hash_obj(entity_token)
 
-        #if entity 
+            #if entity 
         #design = adsk.fusion.Design.cast(product)
         #root_comp = design.rootComponent
 
@@ -847,8 +1425,8 @@ class GetStateData(ToolCollection):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
-    @ToolCollection.tool_call
-    def get_entity_entities(self, entity_token_list: str=[], sub_entity_names: str=[]) -> str:
+    #@ToolCollection.tool_call
+    def __get_entity_entities(self, entity_token_list: str=[], sub_entity_names: str=[]) -> str:
         """
             {
               "name": "get_entity_entities",
@@ -1087,7 +1665,7 @@ class GetStateData(ToolCollection):
             return None
 
     #@ToolCollection.tool_call
-    def get_design_as_json(self, attributes_list=[]) -> str:
+    def __get_design_as_json(self, attributes_list=[]) -> str:
         """
             {
               "name": "get_design_as_json",
@@ -1724,283 +2302,9 @@ class GetStateData(ToolCollection):
 
 
 
-    def document_objects(self, object_type) -> dict:
-        """
-        {
-          "name": "search_document_objects",
-          "description": "SQL like query to get dats from the Fusion 360 objects in the document",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "query_string": {
-                "type": "string",
-                "description": "SQL like query string."
-              }
-            },
-            "required": ["query_string"],
-          "returns": {
-            "type": "string",
-            "description": "A JSON like object containing matching data"
-          },
-          }
-
-        }
-        """
-        app = adsk.core.Application.get()
-        if not app:
-            return "Error: Fusion 360 is not running."
-
-        product = app.activeProduct
-        if not product or not isinstance(product, adsk.fusion.Design):
-            return "Error: No active Fusion 360 design found."
-
-        design = adsk.fusion.Design.cast(product)
-        root_comp = design.rootComponent
-
-        design_attrs = [
-            "allParameters",
-            "userParameters"
-            "allComponents",
-        ]
-
-        component_attrs = [ "sketches" ]
-        occurrence_attrs = [ "bRepBodies" ]
-
-        # components
-        all_components = design.allComponents
-
-        # occurrences
-        all_occurrences = root_comp.allOccurrences
-
-        all_bodies_list = []
-        for occ in all_occurrences:
-            all_bodies_list += occ.bRepBodies
-
-        allBRepBodies = adsk.core.ObjectCollection.createWithArray(all_bodies_list)
-
-
-        all_sketches_list = []
-        all_joints_list = []
-        all_joint_origins_list = []
-
-        for comp in all_components:
-            all_sketches_list += comp.sketches
-            all_joints_list += comp.joints
-            all_joint_origins_list += comp.jointOrigins
-        allSketches = adsk.core.ObjectCollection.createWithArray(all_sketches_list)
-        allJoints = adsk.core.ObjectCollection.createWithArray(all_joints_list)
-        allJointOrigins = adsk.core.ObjectCollection.createWithArray(all_joint_origins_list)
-
-        all_sketch_curves = []
-        for sketch in allSketches:
-            all_sketch_curves += sketch.sketchCurves
-        allSketchCurves = adsk.core.ObjectCollection.createWithArray(all_sketch_curves)
-
-
-        object_dict = {
-            "Parameter": design.allParameters,
-            "Joint": allJoints,
-            "JointOrigin": allJointOrigins,
-            "Occurrence": root_comp.allOccurrences,
-            "Component": all_components,
-            "BRepBody": allBRepBodies,
-            "Sketch":  allSketches,
-            "SketchCurve": allSketchCurves
-        }
-
-        #for k,v in object_dict.items():
-        #    print(f"{k}: {v.count}")
-
-        return object_dict[object_type]
-
-
-
-    @ToolCollection.tool_call
-    def query_design_sql(self, query_string: str = "SELECT name,entityToken FROM Occurrence WHERE name LIKE 'screw'") -> str:
-        """
-        {
-          "name": "query_design_sql",
-          "description": "Executes a naive, SQL-like query on the current Fusion 360 design. Supports minimal SELECT ... FROM ... WHERE ... LIMIT ... OFFSET ... for the following object: [Occurrence, Component, BRepBody, Sketch, Joint, JointOrigin, SketchLine]. Supports . syntax to access sub attributes.Examples:\
-        SELECT name,entityToken FROM Component\
-        Return the name an entityTokens for all components in the design\
-        SELECT appearance.name,entityToken FROM Occurrence WHERE appearance.name LIKE 'Aluminum'\
-        returns the name of the appearance object for all Occurrence objects whose appearance name contains the string 'Aluminum'\
-        SELECT parentComponent.name,parentComponent.entityToken FROM BRepBody WHERE appearance.name LIKE 'Steel' LIMIT 5\
-        returns the parent Component name and entity token for the first 5 BRepBody objects whose appearance contains the string steel.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "query_string": {
-                "type": "string",
-                "description": "A simplified SQL-like query, e.g. SELECT name, entityToken FROM Occurrence WHERE name LIKE 'screw'"
-              }
-            },
-            "required": ["query_string"],
-            "returns": {
-              "type": "string",
-              "description": "JSON array with the requested attributes of matching objects or an error message"
-            }
-          }
-        }
-        """
-        try:
-            if not query_string or not isinstance(query_string, str):
-                return "Error: query_string must be a non-empty string."
-
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            # -------------------------------------------------------------------
-            # 1) Naively parse the SQL-like string
-            #    We'll handle something like:
-            #    "SELECT name,entityToken FROM Occurrence WHERE name LIKE '%screw%'"
-            #    or
-            #    "SELECT name,entityToken FROM Occurrence WHERE name = 'Screw001'"
-            # -------------------------------------------------------------------
-            # This is extremely naive. We look for:
-            #  SELECT (attributes) FROM (objectType) WHERE (attributeName) (LIKE or =) ...
-            # We'll do a basic regex or string splits.
-
-            pattern = (
-                r"(?i)^\s*SELECT\s+(?P<attributes>[\w\s,\.]+)\s+"      # attributes (e.g. "name, entityToken")
-                r"FROM\s+(?P<objectType>\w+)"                          # e.g. "Occurrence"
-                r"(?:\s+WHERE\s+(?P<attrName>[\w\.]+)\s+(?P<operator>LIKE|=)\s+'?(?P<value>[^']*)'?)?"
-                r"(?:\s+LIMIT\s+(?P<limit>\d+))?"                      # optional LIMIT
-                r"(?:\s+OFFSET\s+(?P<offset>\d+))?"                    # optional OFFSET
-                r"\s*$"
-            )
-            match = re.match(pattern, query_string.strip())
-            if not match:
-                return json.dumps({
-                    "error": "Query parsing failed. Expected a format like: SELECT x,y FROM Occurrence WHERE name LIKE '%val%'"
-                })
-
-            attributes_str = match.group("attributes").strip()
-            object_type    = match.group("objectType").strip()
-
-            attr_name = match.group("attrName")
-            if attr_name:
-                attr_name.strip()
-
-            operator = match.group("operator")
-            if operator:
-                operator.upper()
-
-            value_str = match.group("value")
-            if value_str:
-                value_str.strip()
-
-            limit = match.group("limit")
-            if limit:
-                limit = int(limit.strip())
-            else:
-                limit = -1
-
-            offset = match.group("offset")
-            if offset:
-                offset = int(offset.strip())
-            else:
-                offset = 0
-
-
-            # Split attributes by comma
-            attribute_list = [a.strip() for a in attributes_str.split(",")]
-
-            # example:
-            # attribute_list = ["name", "entityToken"]
-            # object_type = "Occurrence"
-            # attr_name = "name"
-            # operator = "LIKE" or "="
-            # value_str = "%screw%" or "someExactName"
-
-            # -------------------------------------------------------------------
-            # 3) Filter by the WHERE condition
-            #    We'll interpret operator = or LIKE
-            #    We'll gather the attribute from the object (e.g. 'name') or do a fallback
-            # -------------------------------------------------------------------
-            # We do a small helper to retrieve an attribute from an occurrence
-
-            def get_obj_attr(obj, attr: str):
-                # For demonstration, we handle typical attributes like "name", "entityToken", ...
-                # If we want a direct token, we do self.get_obj_token(occ).
-                # If we want to handle others, you can do "component.name" etc.
-                if attr.lower() == "entitytoken":
-                    # use your hashing system
-                    return self.set_obj_hash(obj)
-                else:
-                    # fallback: attempt python built-in attribute
-                    #return getattr(occ, attr, "")
-                    val, errors = self.get_sub_attr(obj, attr)
-                    #if val
-
-                    return val
-
-            # Build a filter function
-            def matches_condition(obj) -> bool:
-
-                val = str(get_obj_attr(obj, attr_name))
-
-                if operator == "=":
-                    return (val == value_str)
-                elif operator == "LIKE":
-                    # interpret wildcard with simple python substring or regex approach
-                    # e.g. "SomeName" LIKE '%foo%' => "foo" in "SomeName"
-                    # If user used % at start or end, we do a substring approach
-                    # We'll do a naive approach:
-                    pattern_text = value_str
-                    # replace leading/trailing % with zero or more chars
-                    # e.g. "foo%" => "foo.*"
-                    # or just do a simplistic approach: remove quotes, do substring ignoring the % signs
-                    # This is naive. We'll do the python approach:
-                    # If "foo" is between % => we do substring. If no %, we do exact? We'll do a small approach:
-                    # We'll replace all % with .*
-                    wild_re = re.escape(pattern_text).replace(r'\%', '.*')
-                    # Then do a full re match
-                    # but let's do a search ignoring boundaries
-                    if re.search(wild_re, val, re.IGNORECASE):
-                        return True
-                    else:
-                        return False
-                else:
-                    return False
-
-            target_objects = self.document_objects(object_type)
-
-            # handle for no filter condition
-            if operator:
-                # Filter the list
-                filtered_objects = [o for o in target_objects if matches_condition(o)]
-            else:
-                filtered_objects = target_objects
-
-            # -------------------------------------------------------------------
-            # 4) Build the results: we only select the attributes from attribute_list
-            # -------------------------------------------------------------------
-            results_data = []
-            for obj in filtered_objects:
-                row = {}
-                for attr in attribute_list:
-                    row[attr] = str(get_obj_attr(obj, attr))
-                results_data.append(row)
-
-            # filter for offset and limit
-            results_data = results_data[offset:limit+offset]
-
-            return json.dumps(results_data)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-
 
     #@ToolCollection.tool_call
-    def list_all_occurrences(self) -> str:
+    def __list_all_occurrences(self) -> str:
         """
         {
           "name": "list_all_occurrences",
@@ -2058,7 +2362,7 @@ class GetStateData(ToolCollection):
 
 
     #@ToolCollection.tool_call
-    def list_all_components(self) -> str:
+    def __list_all_components(self) -> str:
         """
         {
           "name": "list_all_components",
@@ -2112,8 +2416,8 @@ class GetStateData(ToolCollection):
 
 class SetStateData(ToolCollection):
 
-    @ToolCollection.tool_call
-    def set_entity_values(self,
+    #@ToolCollection.tool_call
+    def __set_entity_values(self,
                          entity_token_list: list = [],
                          attribute_name: str = "isLightBulbOn",
                          attribute_value=True) -> str:

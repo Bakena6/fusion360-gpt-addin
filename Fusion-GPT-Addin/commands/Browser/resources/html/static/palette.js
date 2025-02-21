@@ -906,7 +906,7 @@ class Control{
                     }
 
 
-                    paramInput.addEventListener("click", () => autoResizeTextarea(paramInput));
+                    //paramInput.addEventListener("click", () => autoResizeTextarea(paramInput));
 
                     inputContainer.appendChild(paramInput);
                     autoResizeTextarea(paramInput);

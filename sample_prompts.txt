@@ -76,10 +76,11 @@ Hello, I would like to create a section of Isogrid, that will be 3d printed. The
 Please create a Gyroelongated triangular cupola. You should create each face by drawing the vertices with sketchLine objects. Remember all sketch geometry is 3d. The Gyroelongated triangular cupola should be about 100m tall. Begin by creating a component and sketch.
 
 
-# hardware isolation
+# OLD hardware isolation
 Hello, Please hide every occurrence other than fastening hardware or their container occurrences? Fastening hardware includes all occurrences that contain words like M4, M5, M6, M8, screw, bolt, washer, nut, and hardware. Hardware containers usually have the phrase "hardware-container" in the name, and all bodies inside should be visible. Make sure you don't hide a hardware occurrence's ancestor occurrence, since they may be nested many levels deep. You should only hide the actual body in a occurrence, not the occurrence itself. All top level occurrences, and any occurrence that is an assembly or container should remain visible. Also, Hardware will never be made out of aluminum, and all plates should be hidden.
 
 
 
-
+# hardware isolation
+I would like to set all bodies relating to hardware visible, specificly: hardware, screws, bolts, nuts, washers, etc... Also components with the terms Thread, or M8 show be included. Can you first query the names of all the components. Then run a query that make all bodies visible whose parent component name includes relevent hardware related terms
 

@@ -34,7 +34,6 @@ class ToolCollection:
     """
 
 
-
     # store references to fusion object based on id
     log_results = True
     log_errors = True
@@ -72,6 +71,10 @@ class ToolCollection:
         return wrapper
 
 
+    def __init__(self, ent_dict):
+        self.methods = self._get_methods()
+        self.ent_dict = ent_dict
+
     def log_print(self, output):
         print(output)
 
@@ -97,9 +100,6 @@ class ToolCollection:
 
         print(formatted_results)
 
-    def __init__(self, ent_dict):
-        self.methods = self._get_methods()
-        self.ent_dict = ent_dict
 
     def _get_methods(self):
         """
@@ -290,7 +290,7 @@ class ToolCollection:
 
             # We'll gather results in a dictionary
             result_data = {
-                "objectType": str(obj.__class__),
+        #        "objectType": str(obj.__class__.__name__),
                 "attributes": [],
                 "methods": []
             }
@@ -347,12 +347,13 @@ class ToolCollection:
             attr_exists = hasattr(target_entity, attr_str)
 
             if attr_exists == False:
-
+                # successfully accessed attributes
+                #processed_path += f".{attr_str}"
                 errors = ""
                 error_msg = f"Object '{processed_path}' of class '{target_entity.__class__.__name__}' has no attribute/method '{attr_str}'"
-                avail_attrs = f"'{target_entity.__class__.__name__}' has the following attributes: {self.describe_object(target_entity)}"
+                avail_attrs = f"'{target_entity.__class__.__name__}' has the following attributes/methods: {self.describe_object(target_entity)}"
                 entity_info = f"Object information: {target_entity.__doc__}"
-                errors += f"Error: {error_msg}\n {avail_attrs}\n {entity_info}"
+                errors += f"Error: {error_msg}. {avail_attrs} {entity_info}".strip()
                 attr = None
                 break
 
@@ -569,10 +570,6 @@ class ToolCollection:
         """
 
         return self.ent_dict.get(hash_val)
-
-
-
-
 
 
 

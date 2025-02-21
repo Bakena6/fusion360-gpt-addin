@@ -67,6 +67,7 @@ class FusionInterface:
 
         # method collections
         self.submodules = [
+            document_data.SQL(ent_dict),
             document_data.GetStateData(ent_dict),
             document_data.SetStateData(ent_dict),
             transient_objects.TransientObjects(ent_dict),

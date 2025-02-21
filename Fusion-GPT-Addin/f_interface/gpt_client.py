@@ -421,7 +421,7 @@ class GptClient:
         """
 
         if function_args != None:
-            function_args = json.loads(function_args)
+            function_args = json.loads(validate_and_repair_json(function_args))
 
         print(f"CALL FUNCTION: {function_name}, {function_args}, {tool_call_id}")
 
@@ -434,7 +434,7 @@ class GptClient:
             else:
                 result = function(**function_args)
         else:
-            result = json.dumps({"error": "No function called '{function_name}'"})
+            result = json.dumps({"error": f"Function '{function_name}' not callable"})
 
         # send function response to js/html
         if tool_call_id != None:
@@ -456,4 +456,128 @@ class GptClient:
 
 
 
+
+def validate_and_repair_json(json_str: str) -> str:
+    """
+    Tries to load the given json_str as JSON. If it fails due to structural errors
+    like extra/missing brackets/braces, applies simple heuristics to fix them.
+    Returns a *string* containing valid JSON or raises ValueError if it can't fix.
+
+    NOTE: This function is minimal and won't fix all possible JSON issues, but
+    it demonstrates how to handle common bracket or brace mismatches. 
+    More advanced or specialized logic may be needed for complicated errors.
+    """
+
+    # 1) First, try a direct json.loads
+    try:
+        parsed = json.loads(json_str)
+        # If no exception, it was valid
+        return json.dumps(parsed, indent=2)
+    except json.JSONDecodeError:
+        pass  # We'll attempt repairs below
+
+    # We'll store the original for fallback
+    original_str = json_str
+
+    # Heuristic approach:
+    # a) Balanced brackets/braces: We'll try to count braces/brackets.
+    # b) Fix trailing commas, if present. 
+    # c) Fix unquoted keys, if any. (This is optional or advanced.)
+
+    # a) Attempt bracket/brace balancing
+    repaired = basic_bracket_repair(json_str)
+
+    # b) Attempt removing trailing commas
+    repaired = remove_trailing_commas(repaired)
+
+    # c) Possibly try other heuristics (like ensuring top-level braces if it looks like an object)
+    repaired = ensure_top_level_braces_if_needed(repaired)
+
+    # 2) Try again
+    try:
+        parsed = json.loads(repaired)
+        return json.dumps(parsed, indent=2)
+    except json.JSONDecodeError as e:
+        # If we still fail, we can either raise or fallback
+        raise ValueError(f"Could not repair JSON. Original error: {str(e)}\n"
+                         f"Original:\n{original_str}\n\nAttempted Repair:\n{repaired}")
+
+
+def basic_bracket_repair(s: str) -> str:
+    """
+    Attempt to fix counts of square brackets [] or curly braces {} if they differ by 1.
+    We'll do minimal attempts like:
+      - If we have one more '{' than '}', we append '}' at the end.
+      - If we have one more '}' than '{', we remove the last '}' or the first if found extra.
+    Similarly for brackets.
+    """
+    opens_curly  = s.count('{')
+    closes_curly = s.count('}')
+    if opens_curly == closes_curly + 1:
+        # We have one extra '{' => add a '}' at the end
+        s += '}'
+    elif closes_curly == opens_curly + 1:
+        # We have one extra '}' => remove the last one
+        # (this might cause issues if the extra is in the middle, but it's a guess)
+        idx = s.rfind('}')
+        if idx != -1:
+            s = s[:idx] + s[idx+1:]
+
+    opens_square  = s.count('[')
+    closes_square = s.count(']')
+    if opens_square == closes_square + 1:
+        s += ']'
+    elif closes_square == opens_square + 1:
+        idx = s.rfind(']')
+        if idx != -1:
+            s = s[:idx] + s[idx+1:]
+
+    return s
+
+
+def remove_trailing_commas(s: str) -> str:
+    """
+    Removes commas that appear right before a closing bracket or brace or end of string.
+    E.g. "...,}" => "...}" or "...,]" => "...]". This helps fix some JSON errors.
+    """
+    # Regex to find a comma followed by optional whitespace + a closing brace/bracket 
+    # or end of string
+    pattern = re.compile(r",\s*(?=[}\]])")
+    s = pattern.sub("", s)
+    return s
+
+
+def ensure_top_level_braces_if_needed(s: str) -> str:
+    """
+    If the string doesn't parse as JSON but looks like it's missing top-level
+    braces for an object, we might wrap it. This is guesswork and optional.
+    For example, if we see it starts with some key but no braces, we do { ... }.
+    We'll do a naive check: if it doesn't start with [ or {, let's try wrapping with braces.
+    """
+    st = s.strip()
+    if not st.startswith("{") and not st.startswith("["):
+        # Maybe we wrap it in braces
+        # e.g. "key: val, ..." => we do "{ key: val, ... }"
+        # But we'd need quotes for "key", so this is advanced. We'll keep it minimal.
+        s = "{" + s + "}"
+    return s
+
+
+def example_usage():
+    bad_json = """
+    {
+      "name": "example",
+      "values": [
+        1,
+        2
+      "flag": true,
+    }
+    """  # missing comma, bracket mismatch
+
+    try:
+        fixed = validate_and_repair_json(bad_json)
+        print("Fixed JSON:")
+        print(fixed)
+    except ValueError as e:
+        print("Could not fix JSON:", str(e))
 
