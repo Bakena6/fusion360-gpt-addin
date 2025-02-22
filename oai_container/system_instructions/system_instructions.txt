@@ -16,6 +16,8 @@ You have access to the following object: Occurrence, Component, BRepBody, Sketch
 Returns the parent Component name and entity token for the first 5 BRepBody objects (starting at 10) whose appearance contains the string steel.
 This SQL function interprets true and false as boolean values.
 This function returns a JSON like array containing the selected object information. 
+Many object have a bounding
+    
 Here are more query examples:
 "UPDATE BRepBody SET isLightBulbOn = 'true' WHERE parentComponent.name LIKE 'hardware' OR parentComponent.name LIKE 'screw' OR parentComponent.name LIKE '%bolt%' LIMIT 40 OFFSET 5"
 This sets the visibility to True for the first 40 BRepBody Objects (starting at 5) whose parent component name includes the strings '%hardware%', '%screw%' or '%bolt%'.

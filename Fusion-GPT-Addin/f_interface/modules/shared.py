@@ -296,7 +296,7 @@ class ToolCollection:
             }
 
             # Use inspect.getmembers(...) to get all members
-            all_members = inspect.getmembers(obj)
+            all_members = inspect.getmembers(obj.__class__)
 
             # For each (name, value) pair, decide if it's a property or method
             for name, value in all_members:
@@ -316,6 +316,60 @@ class ToolCollection:
 
         except Exception as e:
             return json.dumps({"error": str(e)})
+
+    def set_sub_attr(self, entity: object, attr_path: str, new_val) -> tuple:
+        """
+        accepts an entity and attribute path, returns the bottom level method
+        """
+
+        # seperater between attribute levels
+        delimeter = "."
+        # if single attribute name passed
+        if delimeter not in attr_path:
+            attr_parts = [attr_path]
+        else:
+            attr_parts = attr_path.split(delimeter)
+        # updateed each iteration
+        target_entity = entity
+        # return vals
+        errors = None
+
+        processed_path = f"{target_entity.__class__.__name__}"
+
+        # work down through attrs
+        n_attrs = len(attr_parts)
+        for index, attr_str in enumerate(attr_parts):
+
+            # alwas check has attr in cas attr exists but is None
+            attr_exists = hasattr(target_entity, attr_str)
+
+            if attr_exists == False:
+                # successfully accessed attributes
+                #processed_path += f".{attr_str}"
+                errors = ""
+                error_msg = f"Object '{processed_path}' of class '{target_entity.__class__.__name__}' has no attribute/method '{attr_str}'"
+                avail_attrs = f"'{target_entity.__class__.__name__}' has the following attributes/methods: {self.describe_object(target_entity)}"
+
+                entity_info = f"Object information: {target_entity.__doc__}"
+                errors += f"Error: {error_msg}. {avail_attrs} {entity_info}".strip()
+                attr = None
+                break
+
+            attr = getattr(target_entity, attr_str)
+            if attr is None:
+                break
+
+            # successfully accessed attributes
+            processed_path += f".{attr_str}"
+            # set the target entity to the attr, assumes the attr is an object
+            if index < n_attrs-1:
+                # when not last iteration
+                target_entity = attr
+
+        attr_set = setattr(target_entity, attr_str, new_val)
+
+        return attr_set, errors
+
 
     def get_sub_attr(self, entity: object, attr_path: str) -> tuple:
         """
@@ -352,6 +406,7 @@ class ToolCollection:
                 errors = ""
                 error_msg = f"Object '{processed_path}' of class '{target_entity.__class__.__name__}' has no attribute/method '{attr_str}'"
                 avail_attrs = f"'{target_entity.__class__.__name__}' has the following attributes/methods: {self.describe_object(target_entity)}"
+
                 entity_info = f"Object information: {target_entity.__doc__}"
                 errors += f"Error: {error_msg}. {avail_attrs} {entity_info}".strip()
                 attr = None
@@ -363,16 +418,15 @@ class ToolCollection:
 
             # successfully accessed attributes
             processed_path += f".{attr_str}"
-
             # set the target entity to the attr, assumes the attr is an object
             if index < n_attrs-1:
                 # when not last iteration
                 target_entity = attr
 
-
         # if object is entity token, make sure we store object reference
-        if attr_str == "entityToken":
+        if attr_str == "entityToken" or attr_str == "id":
             attr = self.set_obj_hash(target_entity)
+
 
         return attr, errors
 
@@ -474,7 +528,6 @@ class ToolCollection:
 
 
 
-
     def set_obj_hash(self, entity: object, ref_occ: str= None, length=5):
         """
         adds a fusion360 to the hash:object dict
@@ -484,7 +537,6 @@ class ToolCollection:
             raise Exception
 
         entity_attrs = dir(entity)
-
 
         token_str = None
         entity_type = entity.__class__.__name__
@@ -510,6 +562,10 @@ class ToolCollection:
 
         elif hasattr(entity, "entityToken") == True:
             token_str = getattr(entity, "entityToken", None)
+
+        elif hasattr(entity, "id") == True:
+            token_str = getattr(entity, "id", None)
+            #setattr(entity, "entityToken", "abc" )
 
         elif hasattr(entity, "name") == True:
             token_str = getattr(entity, "name", None)

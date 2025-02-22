@@ -1,4 +1,3 @@
-# document data
 import inspect
 import adsk.core
 import adsk.fusion
@@ -24,6 +23,7 @@ from ...lib import fusion360utils as futil
 # send info to html palette
 from .shared import ToolCollection
 
+
 def print(string):
     """redefine print for fusion env"""
     futil.log(str(string))
@@ -36,33 +36,75 @@ class SQL(ToolCollection):
 
 
 
+        #self.SQL_PATTERN = re.compile(
+        #    r"(?i)^\s*"
+        #    r"(?:"
+
+        #    # ----------------------------------
+        #    # 1) SELECT statement
+        #    # ----------------------------------
+        #    r"SELECT\s+(?P<attributes>[\w\s,\.]+)\s+"
+        #    r"FROM\s+(?P<objectType>\w+)"
+        #    r"(?:\s+WHERE\s+(?P<selectWhere>"
+        #      # Each condition: <attrName> [NOT ] (LIKE|=) ( 'someString' | number | boolean )
+        #      # e.g. "name NOT LIKE 'gear'", "value = 10", "isLightBulbOn = true"
+        #      r"(?:[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))"
+        #      r"(?:\s+(?:AND|OR)\s+[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))*"
+        #    r"))?"
+        #    r"(?:\s+LIMIT\s+(?P<limit>\d+))?"
+        #    r"(?:\s+OFFSET\s+(?P<offset>\d+))?"
+
+        #    r"|"
+
+        #    # ----------------------------------
+        #    # 2) UPDATE statement
+        #    # ----------------------------------
+        #    r"UPDATE\s+(?P<updateObjectType>\w+)"
+        #    # setClause with a lazy capture up to WHERE|LIMIT|OFFSET|end,
+        #    # but in that clause each assignment must accept numeric or string or boolean
+        #    r"\s+SET\s+(?P<setClause>[\w\s,=.'%\-\(\)\:\+0-9\.truefalse]+?(?=\s+(?:WHERE|LIMIT|OFFSET)|$))"
+        #    r"(?:\s+WHERE\s+(?P<updateWhere>"
+        #      r"(?:[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))"
+        #      r"(?:\s+(?:AND|OR)\s+[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))*"
+        #    r"))?"
+        #    r"(?:\s+LIMIT\s+(?P<updateLimit>\d+))?"
+        #    r"(?:\s+OFFSET\s+(?P<updateOffset>\d+))?"
+
+        #    r")\s*$"
+        #)
+
+
         self.SQL_PATTERN = re.compile(
             r"(?i)^\s*"
             r"(?:"
-
-            # ----------------------------------
+            # ----------------------------------------------------------------
             # 1) SELECT statement
-            # ----------------------------------
+            # ----------------------------------------------------------------
             r"SELECT\s+(?P<attributes>[\w\s,\.]+)\s+"
             r"FROM\s+(?P<objectType>\w+)"
+            # optional WHERE
             r"(?:\s+WHERE\s+(?P<selectWhere>"
-              # Each condition: <attrName> [NOT ] (LIKE|=) ( 'someString' | number | boolean )
-              # e.g. "name NOT LIKE 'gear'", "value = 10", "isLightBulbOn = true"
               r"(?:[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))"
               r"(?:\s+(?:AND|OR)\s+[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))*"
             r"))?"
+            # optional ORDER BY ...
+            r"(?:\s+ORDER\s+BY\s+(?P<orderAttr>[\w\.]+)"
+            r"(?:\s+(?P<orderDir>ASC|DESC))?"
+            r")?"
+            # optional LIMIT
             r"(?:\s+LIMIT\s+(?P<limit>\d+))?"
+            # optional OFFSET
             r"(?:\s+OFFSET\s+(?P<offset>\d+))?"
 
             r"|"
 
-            # ----------------------------------
+            # ----------------------------------------------------------------
             # 2) UPDATE statement
-            # ----------------------------------
+            # (unchanged from before, except if you also want ORDER in UPDATE 
+            #  then you'd add a similar optional piece. Typically not used in SQL.)
+            # ----------------------------------------------------------------
             r"UPDATE\s+(?P<updateObjectType>\w+)"
-            # setClause with a lazy capture up to WHERE|LIMIT|OFFSET|end,
-            # but in that clause each assignment must accept numeric or string or boolean
-            r"\s+SET\s+(?P<setClause>[\w\s,=.'%\-\(\)\:\+0-9\.truefalse]+?(?=\s+(?:WHERE|LIMIT|OFFSET)|$))"
+            r"\s+SET\s+(?P<setClause>[\w\s,=.'%\-\(\)\:\+0-9\.truefals]+?(?=\s+(?:WHERE|LIMIT|OFFSET)|$))"
             r"(?:\s+WHERE\s+(?P<updateWhere>"
               r"(?:[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))"
               r"(?:\s+(?:AND|OR)\s+[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))*"
@@ -72,6 +114,38 @@ class SQL(ToolCollection):
 
             r")\s*$"
         )
+
+        """
+        Explanation of the new SELECT portion:
+
+        SELECT <attributes>
+        FROM <objectType>
+        [WHERE <conditions>]
+        [ORDER BY <orderAttr> [ASC|DESC]]
+        [LIMIT <int>]
+        [OFFSET <int>]
+
+        We capture:
+         - selectWhere  => the conditions if present
+         - orderAttr    => the attribute to order by if present
+         - orderDir     => 'ASC' or 'DESC' if present
+         - limit        => optional limit
+         - offset       => optional offset
+
+        So an example of a valid SELECT query with ORDER would be:
+
+          SELECT name,entityToken FROM Occurrence
+          WHERE name LIKE '%gear%'
+          ORDER BY name DESC
+          LIMIT 10 OFFSET 5
+        """
+
+
+
+
+
+
+
 
 
 
@@ -93,6 +167,8 @@ class SQL(ToolCollection):
             r")"
             r"\s*$"
         )
+
+
 
 
 
@@ -118,6 +194,7 @@ class SQL(ToolCollection):
 
         }
         """
+
         app = adsk.core.Application.get()
         if not app:
             return "Error: Fusion 360 is not running."
@@ -129,60 +206,176 @@ class SQL(ToolCollection):
         design = adsk.fusion.Design.cast(product)
         root_comp = design.rootComponent
 
-        design_attrs = [
-            "allParameters",
-            "userParameters"
-            "allComponents",
-        ]
 
-        component_attrs = [ "sketches" ]
-        occurrence_attrs = [ "bRepBodies" ]
-
-        # components
-        all_components = design.allComponents
-
-        # occurrences
-        all_occurrences = root_comp.allOccurrences
-
-        all_bodies_list = []
-        for occ in all_occurrences:
-            all_bodies_list += occ.bRepBodies
-
-        allBRepBodies = adsk.core.ObjectCollection.createWithArray(all_bodies_list)
-
-        all_sketches_list = []
-        all_joints_list = []
-        all_joint_origins_list = []
-
-        for comp in all_components:
-            all_sketches_list += comp.sketches
-            all_joints_list += comp.joints
-            all_joint_origins_list += comp.jointOrigins
-        allSketches = adsk.core.ObjectCollection.createWithArray(all_sketches_list)
-        allJoints = adsk.core.ObjectCollection.createWithArray(all_joints_list)
-        allJointOrigins = adsk.core.ObjectCollection.createWithArray(all_joint_origins_list)
-
-        all_sketch_curves = []
-        for sketch in allSketches:
-            all_sketch_curves += sketch.sketchCurves
-        allSketchCurves = adsk.core.ObjectCollection.createWithArray(all_sketch_curves)
+        appearances_list = app.materialLibraries.itemByName("Fusion Appearance Library").appearances
+        materials_list = app.materialLibraries.itemByName("Fusion Material Library").materials
 
         #design.userParameters
         object_dict = {
             "Parameter": design.allParameters,
-            "Joint": allJoints,
-            "JointOrigin": allJointOrigins,
             "Occurrence": root_comp.allOccurrences,
-            "Component": all_components,
-            "BRepBody": allBRepBodies,
-            "Sketch":  allSketches,
-            "SketchCurve": allSketchCurves
+            "Component": design.allComponents ,
+            "Appearance": appearances_list,
+            "Material": materials_list,
+
+            "Joint": {},
+            "JointOrigin": {},
+
+            "Sketch":  {},
+            "SketchCurve": {},
+            "SketchProfile": {},
+
+            "BRepBody": {},
+            "BRepEdge": {},
+            "BRepFace": {},
         }
 
-        #for k,v in object_dict.items():
-        #    print(f"{k}: {v.count}")
+        # body
+        obj_mapping = {
+
+            "Component": {
+                "Sketch": "sketches",
+                "Joint": "joints",
+                "JointOrigin": "jointOrigins"
+            },
+            "Occurrence": {
+                "BRepBody": "bRepBodies"
+            },
+            "Sketch": {
+                "SketchCurve": "sketchCurves",
+                "SketchProfile": "profiles",
+                "SketchPoint": "sketchPoints",
+            },
+            "BRepBody": {
+                "BRepEdge": "edges",
+                "BRepFace": "faces",
+            },
+        }
+
+        for obj_class, obj_attrs in obj_mapping.items():
+            for name, attr in obj_attrs.items():
+                obj_lists = [getattr(ent, attr) for ent in object_dict[obj_class]]
+                obj_list = [obj for l in obj_lists for obj in l ]
+                object_dict[name] = adsk.core.ObjectCollection.createWithArray(obj_list)
+
+
+        for k,v in object_dict.items():
+            #result_data = self.describe_object(obj0)
+            print(f"{k}: {v.count}")
 
         return object_dict
+
+
+    @ToolCollection.tool_call
+    def get_object_info(self):
+        """
+        {
+          "name": "get_object_info",
+          "description": "",
+          "parameters": {
+            "type": "object",
+            "properties": { },
+            "required": [],
+          "returns": {
+            "type": "string",
+            "description": "A JSON like object containing document_object data"
+          },
+          }
+
+        }
+        """
+        objs = self.document_objects()
+
+        out_d = {}
+        for k,v in objs.items():
+            obj0 = v.item(0)
+            result_data = self.describe_object(obj0)
+            res_attrs = []
+
+            for attr_name in result_data["attributes"]:
+                attr = getattr(obj0.__class__, attr_name )
+                #print(attr)
+
+                #if hasattr(attr, "count") == True:
+                #    print(attr_name)
+                #    continue
+
+                res_attrs.append(attr_name)
+
+            out_d[k] = res_attrs
+
+
+        print(json.dumps(out_d, indent=2))
+
+
+
+    def data_dict():
+        {
+            "Component": [ 
+                "name", "opacity", "isBodiesFolderLightBulbOn", "isCanvasFolderLightBulbOn",
+                "isConstructionFolderLightBulbOn", "isDecalFolderLightBulbOn", "isJointsFolderLightBulbOn",
+                "isOriginFolderLightBulbOn", "isSketchFolderLightBulbOn", "description",
+                          ],
+            "Occurrence": [
+                "name", "isLightBulbOn", "opacity", "isGrounded", "isIsolated", "Appearance"
+            ],
+
+            "Parameter": [
+                "name", "value", "expression"
+            ],
+
+            "BRepBody": [
+                "name", "opacity", "isLightBulbOn", "area", "length"
+            ],
+
+            "BRepEdge": [
+                "body","length",
+                "boundingBox.minPoint.x",
+                "boundingBox.minPoint.y",
+                "boundingBox.minPoint.z"
+                "boundingBox.maxPoint.x",
+                "boundingBox.maxPoint.y",
+                "boundingBox.maxPoint.z"
+            ],
+
+            "BRepFace": [
+                "body","area"
+            ],
+
+            "Sketch": [
+                "name", "opacity", "isLightBulbOn",
+            ],
+            "SketchProfile": [
+                "parentSketch","entityToken", "face.area"
+            ],
+            "SketchCurve": [
+                "length",
+                "entityToken",
+                "sketchArcs",
+                "sketchCircles",
+                "sketchConicCurves",
+                "sketchControlPointSplines",
+                "sketchEllipses",
+                "sketchEllipticalArcs",
+                "sketchFittedSplines",
+                "sketchFixedSplines",
+                "sketchLines"
+
+            ],
+
+            "TimelineObject": [
+                "name", "isCollapsed", "isSuppressed"
+            ],
+            "Joint": [
+                "name", "isLightBulbOn", "isGrounded", "isSuppressed", "isLocked"
+            ],
+            "JointOrigin": [
+                "name", "isLightBulbOn",
+            ],
+
+        }
+
+
 
 
 
@@ -433,61 +626,30 @@ class SQL(ToolCollection):
                 val_lower = new_val.lower()
                 if val_lower in BOOL_MAP:
                     new_val = BOOL_MAP[val_lower]  # a Python bool
-                else:
-                    # fallback to the raw string if not recognized
-                    new_val = new_val
 
-            # We'll do a naive approach:
-            # If 'attr_name' has a dot, e.g. "appearance.name", we handle sub-attribute
-            # We'll get the sub-object except the last part, then set the last part via setattr if possible.
-            parts = attr_name.split(".")
+                hash_obj = self.ent_dict.get(new_val, None)
+                if hash_obj != None:
+                    new_val = hash_obj
 
-            #print()
-
-            if len(parts) == 1:
-                # direct attribute
-                try:
-                    setattr(obj, parts[0], new_val)
-                    details[attr_name] = f"Set to {new_val}"
-                    updated_something =True
-                except Exception as e:
-                    details[attr_name] = f"Error: {str(e)}"
+            current_val, errors = self.get_sub_attr(obj, attr_name)
+            if errors:
+                details[attr_name] = f"{errors}"
             else:
-                # sub-attribute
-                # e.g. "appearance.name" => first get obj.appearance, then set .name
-                cur_obj = obj
-                for p in parts[:-1]:
-                    if not hasattr(cur_obj, p):
-                        details[attr_name] = "Error: sub-attribute not found."
-                        break
-                    cur_obj = getattr(cur_obj, p)
-                    if cur_obj is None:
-                        details[attr_name] = "Error: sub-attribute is None."
-                        break
-                else:
-                    # now we set the last part
-                    final_part = parts[-1]
-                    try:
-                        setattr(cur_obj, final_part, new_val)
-                        details[attr_name] = f"Set to {new_val}"
-                        updated_something = True
-                    except Exception as e:
-                        details[attr_name] = f"Error: {str(e)}"
+                success, errors = self.set_sub_attr(obj, attr_name, new_val )
+                details[attr_name] = f"{attr_name} updated"
+                updated_something = True
 
         return {
             "updated": updated_something,
             "details": details
         }
 
-
-
-
     @ToolCollection.tool_call
     def run_sql_query(self, query_str: str = "SELECT name,entityToken FROM Occurrence WHERE name LIKE 'screw'") -> str:
         """
             {
               "name": "run_sql_query",
-              "description": "Executes a naive, SQL-like query on the current Fusion 360 design. Supports standard SQL syntax: SELECT, UPDATE, SET, FROM, WHERE, AND, OR, LIKE, LIMIT, OFFSET, for the following object: [Occurrence, Component, BRepBody, Sketch, Joint, JointOrigin, SketchLine]. Supports . syntax to access sub attributes.Examples:\
+              "description": "Executes a naive, SQL-like query on the current Fusion 360 design. Supports standard SQL syntax: SELECT, UPDATE, SET, FROM, WHERE, AND, OR, LIKE, ORDER BY, ASC, DESC, LIMIT, OFFSET, for the following object: [Occurrence, Component, BRepBody, Sketch, Joint, JointOrigin, SketchLine]. Supports . syntax to access sub attributes.Examples:\
             SELECT name,entityToken FROM Component\
             Return the name an entityTokens for all components in the design\
             SELECT appearance.name,entityToken FROM Occurrence WHERE appearance.name LIKE '%Aluminum%'\
@@ -521,6 +683,7 @@ class SQL(ToolCollection):
             # Distinguish SELECT vs. UPDATE
             # SELECT target object
             object_type = match.group("objectType")
+
             if object_type:
                 statement_type = "SELECT"
                 attributes_str = match.group("attributes")  # for SELECT
@@ -536,8 +699,8 @@ class SQL(ToolCollection):
                 limit_str = match.group("updateLimit")
                 offset_str = match.group("updateOffset")
 
-            print(f"where_str {where_str}")
-
+            order_attr = match.group("orderAttr")  # might be None if no ORDER BY
+            order_dir = match.group("orderDir")   # might be "ASC", "DESC", or None
 
             limit_val = int(limit_str) if limit_str else None
             offset_val = int(offset_str) if offset_str else None
@@ -551,17 +714,45 @@ class SQL(ToolCollection):
             # validate object_type
             if all_objs is None:
                 return f"Error: '{object_type}' is not a valid object type, valid objects are: {list(doc_objs.keys())} "
+            # handle no objects
+            if all_objs.count == 0:
+                return f"Error: No '{object_type}' objects in the current design"
+
+            # check ORDER BY attribute is valid
+            if order_attr != None:
+                sort_val, errors = self.get_sub_attr(all_objs.item(0), order_attr)
+                if errors:
+                    return f"Error: ORDER BY field '{order_attr}' is not a valid attribute for '{object_type}': {errors}"
+
 
             # filter objects them
             filtered_objs = []
             for o in all_objs:
-
                 match, errors = self.match_object_against_conditions(o, conditions)
                 if errors != None:
                     return errors
 
                 if match == True:
-                    filtered_objs.append(o)
+                    obj_dict = {
+                        'obj': o,
+                    }
+                    if order_attr != None:
+                        sort_val, errors = self.get_sub_attr(o, order_attr)
+                        obj_dict["sort_val"] = sort_val
+
+                    filtered_objs.append(obj_dict)
+
+
+            # sort
+            if order_attr != None:
+                reverse = False
+                if order_dir == "DESC":
+                    reverse = True
+
+                filtered_objs = sorted(filtered_objs, key=lambda item: item["sort_val"], reverse=reverse)
+
+            # convert back to list of objects
+            filtered_objs = [i["obj"] for i in filtered_objs]
 
 
             # apply offset/limit
@@ -573,10 +764,10 @@ class SQL(ToolCollection):
             if limit_val and limit_val < len(filtered_objs):
                 filtered_objs = filtered_objs[:limit_val]
 
-
             return_dict = {
                 "statementType": statement_type,
                 "objectType": object_type,
+                "errors": {}
             }
 
             # If we have update_object_type => it's an UPDATE statement
@@ -601,7 +792,7 @@ class SQL(ToolCollection):
                 return_dict.update( {
                     "foundCount": len(filtered_objs),
                     "updatedCount": updated_count,
-                    #"assignmentDetails": assignment_results
+                    "assignmentDetails": assignment_results
                 })
 
 
@@ -610,13 +801,33 @@ class SQL(ToolCollection):
                 # parse the attributes
                 attribute_list = [a.strip() for a in attributes_str.split(",")]
 
+                # check if all attributes exist
+                for attr_name in attribute_list:
+                    if len(filtered_objs) == 0:
+                        break
+                        #return json.dumps(return_dict)
+
+                    val, errors = self.get_sub_attr(filtered_objs[0], attr_name)
+                    if errors != None:
+                        return_dict["errors"][attr_name] = errors
+
+                if len(return_dict["errors"]) > 0:
+                    return json.dumps(return_dict)
+
                 # build result
                 # for each object, we gather the requested attributes
                 results = []
                 for obj in filtered_objs:
                     row_data = {}
                     for attr in attribute_list:
+
                         val, errors = self.get_sub_attr(obj, attr)
+
+                        if hasattr(val, "objectType"):
+                            val = str(val)
+                        if callable(val):
+                            val = str(val)
+
                         row_data[attr] = val
 
                     results.append(row_data)
@@ -625,6 +836,7 @@ class SQL(ToolCollection):
                     "count": len(results),
                     "results": results
                 })
+
 
 
             return json.dumps(return_dict)
@@ -1028,614 +1240,6 @@ class GetStateData(ToolCollection):
         return json.dumps(results)
 
 
-
-    def __get_recursive(self, entity, levels, total_levels):
-        app = adsk.core.Application.get()
-        if not app:
-            return "Error: Fusion 360 is not running."
-
-        product = app.activeProduct
-        if not product or not isinstance(product, adsk.fusion.Design):
-            return "Error: No active Fusion 360 design found."
-
-        design = adsk.fusion.Design.cast(product)
-
-        # return value
-        results = {
-
-            "methods": {},
-            "objects": {},
-        }
-
-        #space = "   " * (4-levels)
-
-        exclude_list = [
-            "cast","nativeObject", "this", "thisown",
-            "parent", "component",
-            "parentDesign", "attributes", "baseFeatures"
-        ]
-        # attributes in entity
-        #print()
-        include_list = [
-            "allComponents",
-            #"components",
-            "occurrence",
-            "occurrences",
-            "childOccurrences",
-            #"component",
-            "asBuiltJoints",
-            "bRepBody",
-            "bRepBodies",
-            "sketches",
-            "sketch",
-            "joints",
-            "joint",
-            "jointOrigins",
-            "constructionAxes",
-            "constructionPlanes",
-            "constructionPoints",
-
-            "name",
-            "entityToken",
-            #"objectType",
-            "sketchDimensions",
-            "sketchCurves",
-            "sketchTexts",
-            "sketchPoints",
-            "profiles",
-            "bRepEdges",
-            "bRepEdge",
-            "faces",
-            "edges",
-            "edge",
-            "face",
-                        ]
-
-
-        attrs = dir(entity)
-        #attrs = ["name", "objectType"]
-        for attr_name in attrs:
-            if attr_name not in include_list:
-                continue
-            # skip internal methods
-            #if (attr_name[0] == "_") or (attr_name in exclude_list):
-            #    continue
-            try:
-                attr_val = getattr(entity, attr_name)
-            except Exception as e:
-                print(f"Error: attr_name: {attr_name} occurred:\n" + traceback.format_exc())
-                continue
-
-            #space = "  " * (total_levels-levels)
-            #print(f"{space}{levels}:{attr_name}")
-
-            if attr_name == "entityToken":
-                results[attr_name] = self.set_obj_hash(entity)
-                continue
-
-            elif any([ isinstance(attr_val, attrType) for attrType in [str, int, float, bool]] ):
-                #if attr_name not in ["name", "objectType"]:
-                #    continue
-                results[attr_name] = attr_val
-
-
-            elif callable(attr_val) == True:
-                results["methods"][attr_name] = attr_name
-
-            # methods
-            elif hasattr(attr_val, "count") == True:
-
-                #results["iterables"][attr_name] = {"items":[]}
-                #results[] = self._get_recursive(attr_val, levels-1, total_levels)
-
-                results[attr_name] = {}
-                if attr_val.count == 0:
-                    continue
-
-                results[attr_name]["items"] = []
-                for item in attr_val:
-                    results[attr_name]["items"].append(
-                        self._get_recursive(item, levels-1, total_levels)
-                    )
-
-            elif isinstance(attr_val, object) == True:
-                results["objects"][attr_name] = attr_val
-
-            elif levels <= 0:
-                results[attr_name] = str(attr_val)
-            else:
-                pass
-
-
-        for key in ["objects", "methods"]:
-            if len(results[key]) == 0:
-                results.pop(key)
-
-
-        return results
-
-
-    #@ToolCollection.tool_call
-    def __get_recursive(self, entity_token: str="", levels: int=1):
-
-        """
-        {
-              "name": "get_recursive",
-              "description": "Returns information about any Fusion 360 entity and its sub endities. Including components, bodies, sketches, joints, profiles, etc... Returns a JSON-encoded string describing the entire structure. This function should be called when more detailed information is needed about an entity/object or it's children",
-              "parameters": {
-                "type": "object",
-
-                "properties": {
-                  "entity_token_list": {
-                    "type": "array",
-                    "description": "A list of strings representing the entity names sub entities will be returned for",
-                    "items": { "type": "string" }
-                  }
-                },
-
-                "required": ["entity_token_list"],
-                "returns": {
-                  "type": "string",
-                  "description": "A JSON-encoded string representing the structure of the current design, including name, bodies, sketches, joints, and nested occurrences for each component."
-                }
-              }
-            }
-        """
-
-        app = adsk.core.Application.get()
-        if not app:
-            return "Error: Fusion 360 is not running."
-
-        product = app.activeProduct
-        if not product or not isinstance(product, adsk.fusion.Design):
-            return "Error: No active Fusion 360 design found."
-        # get locally stored ent
-        entity = self.get_hash_obj(entity_token)
-
-            #if entity 
-        #design = adsk.fusion.Design.cast(product)
-        #root_comp = design.rootComponent
-
-        ent_data = self._get_recursive(entity, levels, total_levels=levels)
-
-        return json.dumps(ent_data)
-
-
-    # TODO probably rename
-    def _get_ent_attrs(self, entity, attr_list):
-        """
-        get entity info, return as dict 
-        """
-
-        app = adsk.core.Application.get()
-        product = app.activeProduct
-        design = adsk.fusion.Design.cast(product)
-        root_comp = design.rootComponent
-
-        ent_info = { }
-        # get list of attr here becaue 'hasattr' throughs error when check for entityToken
-        entity_attrs = dir(entity)
-
-        for attr in attr_list:
-            target_entity = entity
-            target_attr = attr
-
-            #try:
-            #    #print(f"isRef: { entity.isReferencedComponent}")
-            #except Exception as e:
-                #continue
-                #pass
-            #if isinstance(target_entity, adsk.fusion.Occurrence):
-
-            try:
-                attr_val = None
-
-               # non direct attribute passed
-                if "." in attr:
-                    attr0, attr = attr.split(".")
-
-                    try:
-                        target_entity = getattr(entity, attr0, None)
-
-                    except Exception as e:
-                        print(f"Error: {attr0} target_entity {e}")
-                        continue
-                    if target_entity is None:
-                        continue
-
-
-                if attr not in entity_attrs:
-                    continue
-
-
-                if attr == "entityToken":
-                    attr_val = self.set_obj_hash(target_entity)
-                    ent_info[target_attr] = attr_val
-                    continue
-
-                attr_val = getattr(target_entity, attr, None)
-                if attr_val == None:
-                    continue
-
-                elif attr == "objectType":
-                    attr_val = target_entity.__class__.__name__
-                elif hasattr(attr_val, "asArray") == True:
-                    attr_val = attr_val.asArray()
-
-                if not any([isinstance(attr_val, attrType) for attrType in [str, int, float, bool, tuple, list, dict]] ):
-                    attr_val = str(attr_val)
-
-                ent_info[target_attr] = attr_val
-
-            except Exception as e:
-                print(f"Error: entity: ent: {entity} _get_ent_attr An unexpected exception occurred: {e} \n" + traceback.format_exc())
-
-
-        return ent_info
-
-    # called get_by design_as_json
-    def _get_all_components(self) -> str:
-        """
-        {
-          "name": "get_all_components",
-          "description": "Retrieves all components in the current design and returns their basic information in a JSON array.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-            },
-            "required": [],
-            "returns": {
-              "type": "string",
-              "description": "A JSON array of component info. Each item may include componentName, isRoot, and other metadata."
-            }
-          }
-        }
-        """
-
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            # The design's 'allComponents' property retrieves every component in the design
-            all_comps = design.allComponents
-            comp_list = []
-
-            for comp in all_comps:
-                # Basic info about each component
-
-                #material_name = getattr(comp.material, "name", None)
-                    #"material": material_name,
-
-                attr_list = [
-                    "entityToken",
-                    "isBodiesFolderLightBulbOn",
-                    "isCanvasFolderLightBulbOn",
-                    "isConstructionFolderLightBulbOn",
-                    "isDecalFolderLightBulbOn",
-                    "isJointsFolderLightBulbOn",
-                    "isOriginFolderLightBulbOn",
-                    "isSketchFolderLightBulbOn",
-                    "description",
-                    "opacity",
-
-                    "xConstructionAxis",
-                    "yConstructionAxis",
-                    "zConstructionAxis",
-                    "xYConstructionPlane",
-                    "xZConstructionPlane",
-                    "yZConstructionPlane",
-                    "material",
-
-                    "occurrences",
-                    "bRepBodies",
-                    "sketches",
-                    "jointOrigins",
-                    "joints",
-                    "constructionPlanes",
-                    "constructionPoints",
-
-                    "saveCopyAs"
-
-                    #"modelParameters",
-                ]
-
-                # iterable attr attributes
-                iter_attrs_attrs = [
-                    "name",
-                    "entityToken"
-                ]
-
-                comp_data = {
-                    "name": comp.name,
-                    "attributes": {},
-                    "methods": [],
-                    "objects": {},
-                    "sub_entities": {}
-                    #"parentDesign": comp.parentDesign.rootComponent.name
-                    # Add any additional info if needed
-                }
-
-                for attr in attr_list:
-
-                    attr_val =  getattr(comp, attr, None)
-
-                    if attr == "entityToken":
-                        attr_val = self.set_obj_hash(comp)
-                        comp_data["attributes"][attr] = attr_val
-                        continue
-
-                    # primitive vals
-                    elif any([isinstance(attr_val, attrType) for attrType in [str, int, float, bool]] ):
-                        comp_data["attributes"][attr] = attr_val
-                        continue
-
-                    # iterable
-                    elif hasattr(attr_val, "count") == True:
-
-                        if attr_val == None:
-                            continue
-                        #if len(attr_val) == 0:
-                        #    continue
-
-                        sub_object_dict ={
-                            "entityToken": self.set_obj_hash(attr_val, f"{comp.name}{attr}"),
-                            "items": []
-                        }
-                        for sub_obj in attr_val:
-                            ent_info = self._get_ent_attrs(sub_obj, iter_attrs_attrs)
-                            sub_object_dict["items"].append(ent_info)
-
-                        comp_data["sub_entities"][attr] = sub_object_dict
-                        continue
-
-
-                    elif callable(attr_val) == True:
-                        comp_data["methods"].append(attr)
-                        continue
-
-                    elif attr_val != None:
-
-                        object_dict = {
-                            "entityToken": self.set_obj_hash(attr_val, f"{comp.name}{attr_val.name}"),
-                            "objectType": attr_val.objectType
-                        }
-                        comp_data["objects"][attr] = object_dict
-                        continue
-
-
-                comp_list.append(comp_data)
-
-            root_comp = design.rootComponent
-            root_comp_data = {
-                "name": root_comp.name,
-                "id": root_comp.id,
-            }
-
-            #return json.dumps(return_data)
-            return comp_list
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-
-    #@ToolCollection.tool_call
-    def __get_entity_entities(self, entity_token_list: str=[], sub_entity_names: str=[]) -> str:
-        """
-            {
-              "name": "get_entity_entities",
-              "description": "Returns information about any Fusion 360 entity and its sub endities. Including components, bodies, sketches, joints, profiles, etc... Returns a JSON-encoded string describing the entire structure. This function should be called when more detailed information is needed about an entity/object or it's children",
-              "parameters": {
-                "type": "object",
-
-                "properties": {
-
-                  "entity_token_list":{
-                    "type": "array",
-                    "description": "A list of strings representing the entity names sub entities will be returned for",
-                    "items": { "type": "string" }
-                  },
-                  "sub_entity_names":{
-                    "type": "array",
-                    "description": "A list of sub entity names, to inlcude in the response, if the parameter is left empty all sub entities will be included in the response.",
-                    "items": { "type": "string" }
-                  }
-
-                },
-
-                "required": ["entity_token_list", "sub_entity_names"],
-                "returns": {
-                  "type": "string",
-                  "description": "A JSON-encoded string representing the structure of the current design, including name, bodies, sketches, joints, and nested occurrences for each component."
-                }
-              }
-            }
-        """
-
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            # return value
-            results = {}
-
-            for token in entity_token_list:
-
-                # retrieve entity from local dict
-                entity = self.get_hash_obj(token)
-                if entity is None:
-                    results[token] = f"Error: No entity found for entityToken {token}"
-                    continue
-
-                entity_type = entity.__class__.__name__
-                entity_name = getattr(entity, "name", None)
-
-                entityToken = None
-                try:
-                    if hasattr(entity, "entityToken"):
-                        #attr_val =  getattr(entity, "entityToken")
-                        entityToken = self.set_obj_hash(entity)
-                except Exception as e:
-                    print(f"Error: Failed to check entityToken attr on {entity}")
-
-                results[token] = {
-                    "name": entity_name,
-                    "entityToken": entityToken,
-                    "objectType": entity_type,
-                    "methods":[],
-                    "attributes": {},
-                    "entities": {},
-                }
-
-                exclude_list = ["this", "thisown", "attributes", "documentReference", "nativeObject"]
-
-                ent_attr_names = [
-                    "name",
-                    "entityToken",
-                    "objectType",
-                    "isDeletable",
-                    "isConstruction",
-                    "isLinked",
-                    "isReference",
-                    "isFixed",
-                    "opacity",
-                    "length",
-                    "geometry",
-                    "area",
-                    "radius",
-                    "origin",
-                    "centroid",
-                    "center",
-                    "startPoint",
-                    "endPoint",
-                    "startVertex.geometry",
-                    "endVertex.geometry",
-                    "startSketchPoint.geometry",
-                    "endSketchPoint.geometry",
-                    "physicalProperties.centerOfMass",
-                ]
-
-                entity_results = {}
-                # attributes in entity
-                for attr_name in dir(entity):
-
-                    # skip internal methods
-                    if attr_name[0] == "_":
-                        continue
-
-                    if attr_name in exclude_list:
-                        continue
-
-                    # TODO somtimes getattr/hasattr fails 
-                    try:
-                        # calling hasattr/getattr will fail if "isReference" is False
-                        if attr_name == "referencedEntity":
-                            if getattr(entity, "isReference", None) != True:
-                                continue
-
-                        attr_exists = hasattr(entity, attr_name)
-
-                    except Exception as e:
-                        print(f"Error: checking hasattr {attr_name} on {entity}:\n" + traceback.format_exc())
-                        continue
-
-                    if attr_exists == False:
-                        error = f"Error: {entity_type} '{entity_name}' ({token}) has not attribute {attr_name}"
-                        results[token][attr_name] = error
-                        continue
-
-                    attr_dict = {}
-                    try:
-
-                        # get attribute value on the top level entity
-                        attr = getattr(entity, attr_name)
-
-                        # add only value for primitive data types
-                        if any([ isinstance(attr, attrType) for attrType in [str, int, float, bool]] ):
-                            attr_dict["value"] = attr
-
-                            if attr_name == "entityToken":
-                                attr = self.set_obj_hash(entity)
-
-                            results[token]["attributes"][attr_name] = attr
-                            #is_iterable = False
-                            continue
-
-                        elif callable(attr) == True:
-                            if attr_name in ["cast", "classType"]:
-                                continue
-                            #method_data = {""}#self.describe_fusion_method(attr)
-                            #results[token]["methods"].append(method_data)
-                            results[token]["methods"].append(attr_name)
-                            continue
-
-                        is_iterable = True
-
-                        if token != "design":
-                            # check if iterable object array
-                            if hasattr(attr, "count") == False:
-                                is_iterable = False
-                        else:
-                            is_iterable = False
-
-                        if isinstance(attr, str):
-                            is_iterable = False
-
-                        if is_iterable == True:
-                            # filter
-
-                            if len(sub_entity_names) != 0:
-
-                                if attr_name not in sub_entity_names:
-                                    continue
-
-                            sketch_token_seed = f"{entityToken}{attr_name}"
-
-                            attr_dict["entityToken"] = self.set_obj_hash(attr, sketch_token_seed)
-                            attr_dict["children"] =  []
-
-                            # iterate over entity of iterable
-                            for sub_entity in attr:
-                                sub_ent_attrs_dict = self._get_ent_attrs(sub_entity, ent_attr_names)
-                                attr_dict["children"].append(sub_ent_attrs_dict)
-
-                            if attr_dict["children"] == []:
-                                attr_dict.pop("children")
-
-
-                        else:
-                            ent_attrs_dict = self._get_ent_attrs(attr, ent_attr_names)
-                            attr_dict.update(ent_attrs_dict)
-
-                        if len(attr_dict) != 0:
-                            #print(f"{attr_name}: {len(attr_dict)}")
-                            results[token]["entities"][attr_name] = attr_dict
-
-
-                    except Exception as e:
-                        return "Error: An unexpected exception occurred: {e}\n" + traceback.format_exc()
-
-
-            #print(results)
-            return json.dumps(results)
-
-
-        except Exception as e:
-            return "Error: Failed to retrieve entity information. Exception:\n" + traceback.format_exc()
-
     @ToolCollection.tool_call
     def get_root_component_name(self):
         """
@@ -1663,155 +1267,6 @@ class GetStateData(ToolCollection):
 
         except Exception as e:
             return None
-
-    #@ToolCollection.tool_call
-    def __get_design_as_json(self, attributes_list=[]) -> str:
-        """
-            {
-              "name": "get_design_as_json",
-              "description": "Collects information about the active Fusion 360 design (including components, bodies, sketches, joints, and nested occurrences) and returns a JSON-encoded string describing the entire structure.",
-              "parameters": {
-                "type": "object",
-                "properties": { },
-                "required": [],
-                "returns": {
-                  "type": "string",
-                  "description": "A JSON-encoded string representing the structure of the current design, including name, bodies, sketches, joints, and nested occurrences for each component."
-                }
-              }
-            }
-        """
-
-        app = adsk.core.Application.get()
-        ui = app.userInterface
-        design = adsk.fusion.Design.cast(app.activeProduct)
-
-        if not app:
-            return "{}"  # Return empty JSON object if no Application is found
-
-        product = app.activeProduct
-        if not product or not isinstance(product, adsk.fusion.Design):
-            return "{}"  # Return empty JSON object if no active design
-
-        design = adsk.fusion.Design.cast(product)
-
-
-        # Recursively gather data for each component
-        def get_component_data(occ, component):
-
-            object_types = [
-                "bRepBodies",
-                "joints",
-                #"rigidGroups"
-            ]
-
-            # entities in component
-            occ_dict = {
-                "associated_component": component.name,
-            }
-
-            # from root comp
-            global_attrs = [
-                "name",
-                "entityToken",
-                "objectType",
-                "appearance.name",
-                "isLightBulbOn",
-                "isVisible",
-                "isSuppressed",
-                "isLocked",
-                "isIsolated",
-                "isGrounded",
-                "isReferencedComponent",
-                "opacity",
-                "visibleOpacity",
-                "transform2",
-                "transform2.translation",
-            ]
-
-            if occ != None:
-                #occurrence level attributes
-                ent_info = self._get_ent_attrs(occ, global_attrs)
-                occ_dict.update(ent_info)
-
-                # try theese attrbutes on multiple objects
-                for index, object_name in enumerate(object_types):
-                    # joints that reside in the root component fail even though attr exists
-                    try:
-                        # body, joint, sketch etc
-                        objectArray = getattr(occ, object_name)
-                    except Exception as e:
-                        try:
-                            root_comp = design.rootComponent
-                            objectArray = getattr(root_comp, object_name)
-                            print(f"  {object_name} found in root comp!")
-                        except Exception as e:
-                            print(f"  Error 1: <{object_name}> {e}")
-                            print(f" Error 2: {object_name} {e}\n{traceback.format_exc()}")
-                            continue
-
-
-                    object_type_dict ={
-                        "entityToken": self.set_obj_hash(objectArray, occ),
-                        "items": []
-                    }
-                    for obj in objectArray:
-                        ent_info = self._get_ent_attrs(obj, global_attrs)
-                        object_type_dict["items"].append(ent_info)
-
-                    if object_type_dict["items"] == []:
-                        object_type_dict.pop("items")
-
-                    if occ_dict.get(object_name) == None:
-                        occ_dict[object_name] = object_type_dict
-
-
-            if occ == None:
-                ent_list = enumerate(component.occurrences)
-            else:
-                ent_list = enumerate(occ.childOccurrences)
-
-            for index, occ in ent_list:
-                sub_comp = occ.component
-
-                if sub_comp:
-                    occ_data = get_component_data(occ, sub_comp)
-                    object_type = "occurrences"
-                    if occ_dict.get(object_type) == None:
-                        occ_dict["occurrences"] = []
-                    occ_dict["occurrences"].append(occ_data)
-
-            return occ_dict
-
-
-        # Build a dictionary that holds the entire design structure
-        design_data = {
-            "rootComponent_name": design.rootComponent.name,
-           # "components": self._get_all_components(),
-            "occurrences": get_component_data(None, design.rootComponent).get("occurrences", None)
-        }
-
-        # Convert dictionary to a JSON string with indentation
-        return json.dumps(design_data)
-
-    def _parse_function_call(self, func_call):
-        """used by get_object_data """
-        match = re.match(r'(\w+)\s*\((.*?)\)', func_call)
-        if match:
-            function_name = match.group(1)  # Extract function name
-            raw_args = [arg.strip() for arg in match.group(2).split(',')] if match.group(2) else []
-
-            # Convert numeric arguments to int or float
-            def convert_arg(arg):
-                if re.fullmatch(r'-?\d+', arg):  # Matches integers
-                    return int(arg)
-                elif re.fullmatch(r'-?\d*\.\d+', arg):  # Matches floats
-                    return float(arg)
-                return arg  # Return as string if not numeric
-
-            parsed_args = [convert_arg(arg) for arg in raw_args]
-
-            return function_name, parsed_args
 
     @ToolCollection.tool_call
     def get_timeline_entities(self) -> str:
@@ -1888,668 +1343,12 @@ class GetStateData(ToolCollection):
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
-    @ToolCollection.tool_call
-    def get_model_parameters_by_component(self) -> str:
-        """
-        {
-            "name": "get_model_parameters_by_component",
-            "description": "Gathers model parameters from each component in the current Fusion 360 design, organizing them in a hierarchical structure that matches the assembly structure. Model parameters include any input parameter to features or construction geometry (e.g., hole diameters, extrusion distances, etc.). Returns a JSON-encoded string with design and parameter details such as name, expression, unit, value, and comment, grouped by component and sub-component.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": [],
-                "returns": {
-                    "type": "string",
-                    "description": "A JSON-encoded string representing the hierarchical structure of the current design’s components and their associated model parameters."
-                }
-            }
-        }
-        """
-        app = adsk.core.Application.get()
-        if not app:
-            return json.dumps({})
 
-        product = app.activeProduct
-        if not product or not isinstance(product, adsk.fusion.Design):
-            return json.dumps({})
-
-        design = adsk.fusion.Design.cast(product)
-        root_comp = design.rootComponent
-
-        def gather_component_parameters(component):
-            """
-            Recursively gathers model parameters for the specified component and its children.
-            Returns a dictionary with the component name, its model parameters, and its children.
-            """
-            comp_dict = {
-                "componentName": component.name,
-                "modelParameters": [],
-                "children": []
-            }
-
-            # Collect all ModelParameters from this component
-            for model_param in component.modelParameters:
-                param_info = {
-                    "name": model_param.name,
-                    "associatedComponentName": component.name,
-                    "createdBy": model_param.createdBy.name,
-                    "role": model_param.role,
-                    "unit": model_param.unit or "",
-                    "expression": model_param.expression or "",
-                    "value": model_param.value,      # The resolved numeric value
-                    "enityToken": self.set_obj_hash(model_param),
-                    "comment": model_param.comment or ""
-                }
-                comp_dict["modelParameters"].append(param_info)
-
-            # Recursively gather data for child occurrences (sub-components)
-            for occurrence in component.occurrences:
-                # Each occurrence references a component
-                sub_comp = occurrence.component
-                if sub_comp:
-                    # Gather parameters for the child component
-                    child_comp_dict = gather_component_parameters(sub_comp)
-                    comp_dict["children"].append(child_comp_dict)
-
-            return comp_dict
-
-        # Build a dictionary that represents the entire design structure
-        design_data = {
-            "designName": design.rootComponent.name,
-            "rootComponent": gather_component_parameters(root_comp)
-        }
-
-        # Convert dictionary to a JSON string
-        return json.dumps(design_data)
-
-    @ToolCollection.tool_call
-    def list_available_appearances(self) -> str:
-        """
-        {
-            "name": "list_available_appearances",
-            "description": "Generates a JSON list of all appearances available in the current Fusion 360 design, including local appearances and those in all appearance libraries.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                },
-                "required": [],
-                "returns": {
-                    "type": "string",
-                    "description": "A JSON array of appearances. Each element contains at least the name, id, and source library (or 'Design' if local)."
-                }
-            }
-        }
-        """
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            appearance_list = []
-
-            # ------------------------------------------------------------
-            # 1) Get the local (design) appearances
-            # ------------------------------------------------------------
-            local_appearances = design.appearances
-            for appearance in local_appearances:
-
-                appearance_info = {
-                    "name": appearance.name,
-                    "id": appearance.id,
-                    #"appearanceType": appearance.appearanceType,
-                    "source": "Design"
-                }
-                appearance_list.append(appearance_info)
-
-            # ------------------------------------------------------------
-            # 2) Get the appearances from all appearance libraries
-            # ------------------------------------------------------------
-            material_libs = app.materialLibraries  # returns all material libraries, which can include appearance libraries
-            for library in material_libs:
-                # We only want libraries of type AppearanceLibraryType
-
-                #if library.objectType == adsk.core.LibraryTypes.AppearanceLibraryType:
-
-                if library.name not in ["Fusion Appearance Library"]:
-                    continue
-
-                for j in range(library.appearances.count):
-                    lib_appearance = library.appearances.item(j)
-
-                    appearance_id = lib_appearance.id
-
-                    # save reference to appearance object
-                    appearance_hash_token = self.set_obj_hash(lib_appearance, appearance_id)
-
-                    appearance_info = {
-                        "name": lib_appearance.name,
-                        "entityToken": appearance_hash_token,
-                        #"id": lib_appearance.id,
-                        #"appearanceType": lib_appearance.objectType,
-                        #"source": library.name,
-
-                    }
-
-                    appearance_list.append(appearance_info)
-
-            # Convert the collected appearance data to a JSON string
-            return json.dumps(appearance_list)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-    #@ToolCollection.tool_call
-    def get_sketch_profiles(self, entity_token: str = "") -> str:
-        """
-        {
-          "name": "get_sketch_profiles",
-          "description": "Retrieves data for all sketch profiles in the sketch referenced by a token, and returns basic info about each child object in JSON format.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "entity_token": {
-                "type": "string",
-                "description": "A entityToken referencing a Fusion 360 Component sketch object  (using your internal hashing system)."
-              }
-            },
-            "required": ["entity_token"],
-            "returns": {
-              "type": "string",
-              "description": "A JSON string describing the requested attributes and their items (if they are collections)."
-            }
-          }
-        }
-        """
-
-        try:
-            if not entity_token:
-                return "Error: No entity_token provided."
-
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            # Retrieve the component from your hashing system (or findEntityByToken if you prefer)
-            sketch_obj = self.get_hash_obj(entity_token)
-            if not sketch_obj or not isinstance(sketch_obj, adsk.fusion.Sketch):
-                return f"Error: The token '{entity_token}' does not reference a Fusion Sketch."
-
-            profile_attrs = [
-                "radius",
-                "length",
-                "face.area",
-                "face.centroid",
-                "face.edges",
-            ]
-            results = {
-                "profiles": []
-            }
-
-            for profile in sketch_obj.profiles:
-                profile_dict = {
-                    "entityToken": self.set_obj_hash(profile),
-                    "objectType": profile.__class__.__name__
-                }
-
-                for attr in profile_attrs:
-                    val, errors = self.get_sub_attr(profile, attr)
-                    if val == None:
-                        continue
-
-                    elif any([ isinstance(val, attrType) for attrType in [str, int, float, bool]] ):
-                        profile_dict[attr] = val
-
-                    elif hasattr(val, "asArray"):
-                        profile_dict[attr] = val.asArray()
-                        continue
-
-                results["profiles"].append(profile_dict)
-
-            return json.dumps(results)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-    #@ToolCollection.tool_call
-    def get_sketch_curves(self, entity_token: str = "") -> str:
-        """
-        {
-          "name": "get_sketch_curves",
-          "description": "Retrieves data for all sketch curved in the  sketch referenced by a token, and returns basic info about each child object in JSON format.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "entity_token": {
-                "type": "string",
-                "description": "A token referencing a Fusion 360 Sketch object  (using your internal hashing system)."
-              }
-            },
-            "required": ["entity_token"],
-            "returns": {
-              "type": "string",
-              "description": "A JSON string describing the requested attributes and their items (if they are collections)."
-            }
-          }
-        }
-        """
-
-        try:
-            if not entity_token:
-                return "Error: No entity_token provided."
-            #if not attributes_list or not isinstance(attributes_list, list):
-            #    return "Error: attributes_list must be a list of attribute names."
-
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            # Retrieve the component from your hashing system (or findEntityByToken if you prefer)
-            sketch_obj = self.get_hash_obj(entity_token)
-            if not sketch_obj or not isinstance(sketch_obj, adsk.fusion.Sketch):
-                return f"Error: The token '{entity_token}' does not reference a Fusion Sketch."
-
-            top_level_keys = ["sketchCurves"]
-
-            results = {}
-
-            exclude_list = []
-            for attr_name in top_level_keys:
-
-                # Check if the component has this attribute
-                if not hasattr(sketch_obj, attr_name):
-                    continue
-
-                attr_value = getattr(sketch_obj, attr_name, None)
-                if attr_value is None:
-                    continue
-
-                # sketch curve types
-                for sub_attr in dir(attr_value):
-                    sub_attr_value = getattr(attr_value, sub_attr, None)
-                    if callable(sub_attr_value):
-                        continue
-                    elif hasattr(sub_attr_value, "count") == False:
-                        continue
-                    elif isinstance(sub_attr_value, str) == True:
-                        continue
-
-                    sub_attr_class = sub_attr_value.__class__.__name__
-                    if sub_attr_value.count != 0:
-                        results[sub_attr_class] = []
-
-                    b_attrs = [
-                        "startSketchPoint.geometry",
-                        "endSketchPoint.geometry",
-                        "radius",
-                        "length",
-                        "face.area",
-                        "face.centroid"
-                    ]
-
-                    for curve in sub_attr_value:
-
-                        curve_dict = {
-                            "entityToken": self.set_obj_hash(curve),
-                            "objectType": curve.__class__.__name__
-                        }
-
-                        for a in b_attrs:
-                            a_val, errors = self.get_sub_attr(curve,a)
-                            if a_val == None:
-                                continue
-                            elif any([ isinstance(a_val, attrType) for attrType in [str, int, float, bool]] ):
-                                curve_dict[a] = a_val
-                            elif hasattr(a_val, "asArray"):
-                                curve_dict[a] = a_val.asArray()
-                                continue
-
-                        results[sub_attr_class].append(curve_dict)
-
-
-            return json.dumps(results)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-    #@ToolCollection.tool_call
-    def list_available_materials(self) -> str:
-        """
-            {
-              "name": "list_available_materials",
-              "description": "Lists all available material types in the Fusion 360 material libraries. Returns a JSON structure where each library includes its materials.",
-              "parameters": {
-                "type": "object",
-                "properties": {
-                },
-                "required": [],
-                "returns": {
-                  "type": "string",
-                  "description": "A JSON array. Each element represents a material library, containing its name and a list of materials (with name and id)."
-                }
-              }
-            }
-        """
-
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            # The material libraries are accessed via app.materialLibraries
-            mat_libraries = app.materialLibraries
-            all_libraries_info = []
-
-            for library in mat_libraries:
-
-                # Check if it's a Material Library (rather than Appearance Library)
-                if library.name in ["Fusion Material Library"]:
-
-                    library_info = {
-                        #"libraryName": library.name,
-                        "materials": []
-                    }
-
-                    # Enumerate materials in this library
-                    for j in range(library.materials.count):
-                        mat = library.materials.item(j)
-                        library_info["materials"].append({
-                            "name": mat.name,
-                            #"id": mat.id
-                        })
-
-                    all_libraries_info.append(library_info)
-
-            # If you also want to list the materials in the design's local material collection,
-            # you can add something like:
-            #
-            # product_design = adsk.fusion.Design.cast(product)
-            # design_mats = product_design.materials
-            # design_mats_info = {
-            #   "libraryName": "local design materials",
-            #   "materials": []
-            # }
-            # for k in range(design_mats.count):
-            #   dm = design_mats.item(k)
-            #   design_mats_info["materials"].append({"name": dm.name, "id": dm.id})
-            # all_libraries_info.append(design_mats_info)
-
-            return json.dumps(all_libraries_info)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-
-
-
-    #@ToolCollection.tool_call
-    def __list_all_occurrences(self) -> str:
-        """
-        {
-          "name": "list_all_occurrences",
-          "description": "Retrieves all components in the current design and returns their basic information in a JSON array.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-            },
-            "required": []
-          },
-          "returns": {
-            "type": "string",
-            "description": "A JSON array of component info. Each item may include componentName and isRoot."
-          }
-        }
-        """
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            # design.allComponents returns a collection of every component in the design
-            all_occs = design.rootComponent.allOccurrences
-            occ_list = []
-
-            for occ in all_occs:
-                # Basic info about each component
-
-                token = self.set_obj_hash(occ)
-
-                occ_data = {
-                    "tame": occ.name,
-                    "token": token,
-                    "fullPathName": occ.fullPathName,
-                }
-
-
-                occ_list.append(occ_data)
-
-
-
-            print(f"occ_list: {len(occ_list)}")
-            print(f"key_list: {len(self.ent_dict.keys())}")
-
-            return json.dumps(occ_list, indent=2)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-
-    #@ToolCollection.tool_call
-    def __list_all_components(self) -> str:
-        """
-        {
-          "name": "list_all_components",
-          "description": "Retrieves all components in the current design and returns their basic information in a JSON array.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-            },
-            "required": []
-          },
-          "returns": {
-            "type": "string",
-            "description": "A JSON array of component info. Each item may include componentName"
-          }
-        }
-        """
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            # design.allComponents returns a collection of every component in the design
-            all_comps = design.allComponents
-            comp_list = []
-
-            for comp in all_comps:
-                # Basic info about each component
-
-                token = self.set_obj_hash(comp)
-                comp_data = {
-                    "tame": comp.name,
-                    "token": token,
-                }
-                comp_list.append(comp_data)
-
-            print(f"comp_list: {len(comp_list)}")
-            print(f"key_list: {len(self.ent_dict.keys())}")
-
-            return json.dumps(comp_list, indent=2)
-
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
 class SetStateData(ToolCollection):
 
     #@ToolCollection.tool_call
-    def __set_entity_values(self,
-                         entity_token_list: list = [],
-                         attribute_name: str = "isLightBulbOn",
-                         attribute_value=True) -> str:
-        """
-        {
-          "name": "set_entity_values",
-          "description": "Sets a single property on each referenced entity by token. The function sets entity.<attribute_name> = attribute_value for all tokens in entity_token_list, if it is writable.",
-          "parameters": {
-            "type": "object",
-
-            "properties": {
-              "entity_token_list": {
-                "type": "array",
-                "description": "A list of strings, each referencing an entity token to update.",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "attribute_name": {
-                "type": "string",
-                "description": "The name of the attribute/property to set on each entity.",
-                "enum": [
-                    "name",
-                    "value",
-                    "isLightBulbOn",
-                    "opacity",
-                    "isGrounded",
-                    "isIsolated",
-                    "isLocked",
-                    "isFlipped",
-                    "isCollapsed",
-                    "isSuppressed",
-                    "isBodiesFolderLightBulbOn",
-                    "isCanvasFolderLightBulbOn",
-                    "isConstructionFolderLightBulbOn",
-                    "isDecalFolderLightBulbOn",
-                    "isJointsFolderLightBulbOn",
-                    "isOriginFolderLightBulbOn",
-                    "isSketchFolderLightBulbOn",
-                    "isFavorite",
-                    "description",
-                    "areProfilesShown",
-                    "arePointsShown",
-                    "isConstruction"
-                ]
-              },
-              "attribute_value": {
-                "type": ["boolean","number","string","null"],
-                "description": "The new value to assign to the specified attribute on each entity. This can also be an EntityToken referring to another object."
-              }
-            },
-            "required": ["entity_token_list", "attribute_name", "attribute_value"],
-            "returns": {
-              "type": "string",
-              "description": "A JSON object mapping each entity token to the final property value, or null if an error occurred."
-            }
-          }
-        }
-        """
-
-
-        try:
-            if not entity_token_list or not isinstance(entity_token_list, list):
-                return "Error: entity_token_list must be a non-empty list of strings."
-            if not attribute_name:
-                return "Error: attribute_name is required."
-
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            # Final results mapped: token -> final value or None
-            results = {}
-
-            # if entity token passed as argument, retreive its associated object
-            if isinstance(attribute_value, str) == True:
-                attribute_value_obj = self.get_hash_obj(attribute_value)
-                if attribute_value_obj != None:
-                    attribute_value = attribute_value_obj
-
-
-            for token in entity_token_list:
-                if not token:
-                    continue
-
-                final_val = None
-
-                entity = self.get_hash_obj(token)
-                if not entity:
-                    results[token] = f"Error: no object found for entity_token: {token}"
-                    continue
-
-                #object_type = entity.objectType.split(":")[-1]
-                object_type = entity.__class__.__name__
-
-                object_name = getattr(entity, "name", None)
-                if object_name is None:
-                    object_name = f"nameless_{object_type}"
-
-
-                attr_exists = hasattr(entity, attribute_name)
-                if attr_exists == False:
-                    results[token] = f"Error: {object_type} '{object_name}' ({token}) has no attribute '{attribute_name}'"
-                    continue
-
-                try:
-                    setattr(entity, attribute_name, attribute_value)
-                    # Read back the property
-                    new_val = getattr(entity, attribute_name, None)
-
-                    if attribute_value != new_val:
-                        final_val = f"Error: value not set on attribute '{attribute_name}' on {object_type} '{object_name}' ({token})."
-                    else:
-                        final_val = f"Success: attribute '{attribute_name}' set to '{new_val}' on {object_type} '{object_name}' ({token})."
-
-                except Exception as e:
-                    # If attribute is read-only or invalid
-                    final_val = f"Error: failed to set attribute '{attribute_name}' on {object_type} '{object_name}' ({token}): {e}."
-
-                results[token] = final_val
-
-            return json.dumps(results)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
     def describe_fusion_method(self, method) -> str:
         """
         {
@@ -2612,7 +1411,6 @@ class SetStateData(ToolCollection):
             return json.dumps({
                 "error": f"Could not introspect method. Reason: {str(e)}"
             })
-
 
     @ToolCollection.tool_call
     def call_entity_methods(self, calls_list: list = [
@@ -2781,106 +1579,6 @@ class SetStateData(ToolCollection):
             # Return as JSON
             return json.dumps(results)
 
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
-
-
-    @ToolCollection.tool_call
-    def set_appearance_on_entities(
-        self,
-        entity_token_list: list = [],
-        appearance_entity_token: str = ""
-
-    ) -> str:
-        """
-        {
-          "name": "set_appearance_on_entities",
-          "description": "Sets the given appearance on each entity referenced by token. Typically, these entities are occurrences. The function searches design and libraries to find/copy the appearance.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "entity_token_list": {
-                "type": "array",
-                "description": "A list of entity tokens referencing the occurrences or other valid objects in Fusion 360.",
-                "items": { "type": "string" }
-              },
-              "appearance_entity_token": {
-                "type": "string",
-                "description": "entity_token for the appearance eobject."
-              }
-            },
-            "required": ["entity_token_list", "appearance_entity_token"],
-            "returns": {
-              "type": "string",
-              "description": "A summary of the updates or any errors encountered."
-            }
-          }
-        }
-        """
-
-        try:
-            if not entity_token_list or not isinstance(entity_token_list, list):
-                return "Error: entity_token_list must be a non-empty list of strings."
-            if not appearance_entity_token:
-                return "Error: appearance_entity_token is required."
-
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-
-            app_libraries = app.materialLibraries
-            app_library = app_libraries.itemByName("Fusion Appearance Library")
-
-            appearance = self.get_hash_obj(appearance_entity_token)
-
-            if not appearance:
-                return f"Error: No Appearance for entity token '{appearance_entity_token}'"
-
-            app_name = appearance.name
-
-            local_appearance = design.appearances.itemByName(app_name)
-            if not local_appearance:
-                # You typically need to copy the library appearance into the design before applying
-                design.appearances.addByCopy(appearance, app_name)
-
-
-            # We'll store messages for each token processed
-            results = []
-
-
-            # Process each entity token
-            for token in entity_token_list:
-                if not token:
-                    results.append("Error: Empty token encountered.")
-                    continue
-
-                entity = self.get_hash_obj(token)
-                if not entity:
-                    results.append(f"Error: No entity found for token '{token}'.")
-                    continue
-
-                enttity_type = entity.__class__.__name__
-
-                # Typically, only Occurrences have an .appearance property.
-                # Some other entities (e.g., bodies) do as well, but many do not.
-                if hasattr(entity, "appearance"):
-                    try:
-                        entity.appearance = appearance
-                        results.append(f"Success: Set appearance '{app_name}' (token={appearance_entity_token}) on {enttity_type} (token={token}).")
-                    except Exception as e:
-                        results.append(f"Error: setting appearance on token={token}: {str(e)}")
-                else:
-                    results.append(f"Error: {entity_type} entity (token={token}) does not support .appearance.")
-
-            return "\n".join(results)
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()

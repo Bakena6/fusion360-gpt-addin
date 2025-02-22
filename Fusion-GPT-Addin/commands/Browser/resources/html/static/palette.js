@@ -447,7 +447,7 @@ class Control{
         //window.addEventListener('load', (event) => { })
 
        this.stateValues();
-
+        this.createSql();
     }; // end constructor
 
 
@@ -791,6 +791,84 @@ class Control{
 
     };// end get_current_cb
 
+    execute_sql(textArea){
+
+        const queryString  = textArea.value.trim();
+
+        const args = {"function_name": "run_sql_query", "function_args": {"query_str": queryString} };
+
+        adsk.fusionSendData("execute_tool_call", JSON.stringify(args))
+        .then((result) =>{ }); // end then
+
+
+    } // end execute sql
+
+    createSql(){
+
+        let querysContainer = document.getElementById('sqlContent');
+        const queryStrings = [
+"SELECT name FROM BRepBody",
+
+"SELECT name,entityToken\nFROM BRepBody LIMIT 10",
+
+"SELECT length,endVertex,startVertex,faces,geometry\nFROM BRepEdge LIMIT 10",
+
+    "SELECT length,endVertex,startVertex,faces,geometry\nFROM BRepEdge ORDER BY length DESC LIMIT 100",
+
+"SELECT length,body.parentComponent.name\n\
+FROM BRepEdge ORDER BY length DESC LIMIT 100",
+
+"SELECT length,objectType, boundingBox.minPoint.x, boundingBox.minPoint.y, boundingBox.minPoint.z\n\
+FROM BRepEdge\n\
+ORDER BY length DESC LIMIT 10",
+
+"SELECT length,objectType, boundingBox.minPoint.x, boundingBox.minPoint.y, boundingBox.minPoint.z, boundingBox.maxPoint.x, boundingBox.maxPoint.y, boundingBox.maxPoint.z\n\
+FROM BRepEdge\n\
+ORDER BY boundingBox.maxPoint.z DESC LIMIT 10",
+
+"SELECT component.name, entityToken, createdBy.name, dependentParameters, expression, role\n\
+FROM Parameter",
+
+"SELECT hasTexture,name,id\n\
+FROM Appearance WHERE name LIKE '%oak%'",
+
+"UPDATE SketchCurve SET radius = 1.1 WHERE objectType LIKE '%circle%'"
+
+        ];
+
+        queryStrings.forEach(query => {
+
+            const qContainer = document.createElement("div");
+            qContainer.className = "sql-row";
+            const qText = document.createElement("textarea");
+            qText.className = "sql";
+            qText.innerHTML = query.trim();
+            const qButton = document.createElement("button");
+            qButton.innerHTML = "run";
+
+
+            qButton.onclick = (event) =>{
+                this.execute_sql(qText);
+
+            };
+
+            qContainer.appendChild(qText);
+            qContainer.appendChild(qButton);
+            querysContainer.appendChild(qContainer);
+
+            //qText.style.height = "auto"; // Reset the height
+            console.log(qText.scrollHeight );
+            //qText.style.height = qText.scrollHeight + "px"; // Set height to scroll height
+
+
+        });
+
+
+
+
+    }
+
+
     createToolElements() {
         let toolTestContainer = document.getElementById('toolTestContainer');
         toolTestContainer.innerHTML = "";
@@ -941,6 +1019,10 @@ class Control{
 
 
 } // end control container
+
+
+
+
 
 
 
