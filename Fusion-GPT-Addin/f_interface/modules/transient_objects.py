@@ -164,7 +164,6 @@ class TransientObjects(ToolCollection):
                     results[f"Index_{i}"] = f"Error: {str(e)}"
 
             return json.dumps(results)
-
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 

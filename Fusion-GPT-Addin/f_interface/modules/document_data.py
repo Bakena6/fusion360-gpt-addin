@@ -2,6 +2,7 @@ import inspect
 import adsk.core
 import adsk.fusion
 import adsk.cam
+from adsk.fusion import RigidGroup
 import traceback
 import sys
 import math
@@ -36,58 +37,32 @@ class SQL(ToolCollection):
 
 
 
-        #self.SQL_PATTERN = re.compile(
-        #    r"(?i)^\s*"
-        #    r"(?:"
-
-        #    # ----------------------------------
-        #    # 1) SELECT statement
-        #    # ----------------------------------
-        #    r"SELECT\s+(?P<attributes>[\w\s,\.]+)\s+"
-        #    r"FROM\s+(?P<objectType>\w+)"
-        #    r"(?:\s+WHERE\s+(?P<selectWhere>"
-        #      # Each condition: <attrName> [NOT ] (LIKE|=) ( 'someString' | number | boolean )
-        #      # e.g. "name NOT LIKE 'gear'", "value = 10", "isLightBulbOn = true"
-        #      r"(?:[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))"
-        #      r"(?:\s+(?:AND|OR)\s+[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))*"
-        #    r"))?"
-        #    r"(?:\s+LIMIT\s+(?P<limit>\d+))?"
-        #    r"(?:\s+OFFSET\s+(?P<offset>\d+))?"
-
-        #    r"|"
-
-        #    # ----------------------------------
-        #    # 2) UPDATE statement
-        #    # ----------------------------------
-        #    r"UPDATE\s+(?P<updateObjectType>\w+)"
-        #    # setClause with a lazy capture up to WHERE|LIMIT|OFFSET|end,
-        #    # but in that clause each assignment must accept numeric or string or boolean
-        #    r"\s+SET\s+(?P<setClause>[\w\s,=.'%\-\(\)\:\+0-9\.truefalse]+?(?=\s+(?:WHERE|LIMIT|OFFSET)|$))"
-        #    r"(?:\s+WHERE\s+(?P<updateWhere>"
-        #      r"(?:[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))"
-        #      r"(?:\s+(?:AND|OR)\s+[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))*"
-        #    r"))?"
-        #    r"(?:\s+LIMIT\s+(?P<updateLimit>\d+))?"
-        #    r"(?:\s+OFFSET\s+(?P<updateOffset>\d+))?"
-
-        #    r")\s*$"
-        #)
-
-
         self.SQL_PATTERN = re.compile(
             r"(?i)^\s*"
             r"(?:"
-            # ----------------------------------------------------------------
+            # -----------------------------------------------------------
             # 1) SELECT statement
-            # ----------------------------------------------------------------
+            # -----------------------------------------------------------
             r"SELECT\s+(?P<attributes>[\w\s,\.]+)\s+"
             r"FROM\s+(?P<objectType>\w+)"
-            # optional WHERE
+            # optional WHERE with multiple conditions
             r"(?:\s+WHERE\s+(?P<selectWhere>"
-              r"(?:[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))"
-              r"(?:\s+(?:AND|OR)\s+[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))*"
+              # Each condition: <attrName> [NOT ]? (LIKE|=|<|>|<=|>=|IN)
+              # value can be:
+              #   - a single-quoted string
+              #   - numeric
+              #   - boolean
+              #   - parenthetical list for IN: ( 'foo', 10, true, ... )
+              r"(?:[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=|<=|>=|<|>|IN)\s+"
+              r"(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false"
+              r"|\(\s*(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false)(?:\s*,\s*(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))*\s*\)"
+              r"))"
+              r"(?:\s+(?:AND|OR)\s+[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=|<=|>=|<|>|IN)\s+"
+              r"(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false"
+              r"|\(\s*(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false)(?:\s*,\s*(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))*\s*\)"
+              r"))*"
             r"))?"
-            # optional ORDER BY ...
+            # optional ORDER BY <attr> [ASC|DESC]
             r"(?:\s+ORDER\s+BY\s+(?P<orderAttr>[\w\.]+)"
             r"(?:\s+(?P<orderDir>ASC|DESC))?"
             r")?"
@@ -98,16 +73,24 @@ class SQL(ToolCollection):
 
             r"|"
 
-            # ----------------------------------------------------------------
+            # -----------------------------------------------------------
             # 2) UPDATE statement
-            # (unchanged from before, except if you also want ORDER in UPDATE 
-            #  then you'd add a similar optional piece. Typically not used in SQL.)
-            # ----------------------------------------------------------------
+            # -----------------------------------------------------------
             r"UPDATE\s+(?P<updateObjectType>\w+)"
+            # setClause: lazy capture until WHERE|LIMIT|OFFSET or end
             r"\s+SET\s+(?P<setClause>[\w\s,=.'%\-\(\)\:\+0-9\.truefals]+?(?=\s+(?:WHERE|LIMIT|OFFSET)|$))"
+
+            # optional WHERE for update
             r"(?:\s+WHERE\s+(?P<updateWhere>"
-              r"(?:[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))"
-              r"(?:\s+(?:AND|OR)\s+[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=)\s+(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))*"
+              # same condition pattern as above
+              r"(?:[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=|<=|>=|<|>|IN)\s+"
+              r"(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false"
+              r"|\(\s*(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false)(?:\s*,\s*(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))*\s*\)"
+              r"))"
+              r"(?:\s+(?:AND|OR)\s+[\w\.]+\s+(?:NOT\s+)?(?:LIKE|=|<=|>=|<|>|IN)\s+"
+              r"(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false"
+              r"|\(\s*(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false)(?:\s*,\s*(?:'[^']*'|[+-]?\d+(?:\.\d+)?|true|false))*\s*\)"
+              r"))*"
             r"))?"
             r"(?:\s+LIMIT\s+(?P<updateLimit>\d+))?"
             r"(?:\s+OFFSET\s+(?P<updateOffset>\d+))?"
@@ -116,44 +99,47 @@ class SQL(ToolCollection):
         )
 
         """
-        Explanation of the new SELECT portion:
+        Explanation:
 
-        SELECT <attributes>
-        FROM <objectType>
-        [WHERE <conditions>]
-        [ORDER BY <orderAttr> [ASC|DESC]]
-        [LIMIT <int>]
-        [OFFSET <int>]
+        1) We add "|IN" in the operator set. That means the user can do:
+           "attrName IN (val1, val2, ...)" or "attrName NOT IN ( ... )"
 
-        We capture:
-         - selectWhere  => the conditions if present
-         - orderAttr    => the attribute to order by if present
-         - orderDir     => 'ASC' or 'DESC' if present
-         - limit        => optional limit
-         - offset       => optional offset
+        2) For the value after "IN", we allow a parenthetical list:
+           \( 
+             <singleValue> (string, number, bool) 
+             (,\s*<singleValue>)*
+           \)
+           This is e.g. "( 'foo', 10, true )"
 
-        So an example of a valid SELECT query with ORDER would be:
+        3) We repeat this pattern in:
+           - the first condition
+           - the subsequent conditions (the part with (?:\s+(?:AND|OR)\s+...)* )
+           - the updateWhere portion as well.
 
-          SELECT name,entityToken FROM Occurrence
-          WHERE name LIKE '%gear%'
-          ORDER BY name DESC
-          LIMIT 10 OFFSET 5
+        4) If the operator is "IN" or "NOT IN", then the user must supply a parenthetical list. 
+           If they do something like "IN 'foo'", that won't match. They need "IN ('foo')".
+
+        5) The rest (ORDER BY, LIMIT, OFFSET, multiple AND/OR conditions, etc.) is the same.
+
+        6) On the execution side, you'll parse the condition. If operator is "IN" or "NOT IN",
+           you'll parse the parenthetical list, e.g. "('foo', 10, true)" => a list of [ "foo", 10, True ]
+           then do membership checks: 
+              if "IN",  objVal in that list
+              if "NOT IN", objVal not in that list
         """
 
-
-
-
-
-
-
-
-
-
-        # Sub-pattern for each single condition in the WHERE clause, e.g.:
         self.CONDITION_PATTERN = re.compile(
             r"(?i)^\s*"
-            r"([\w\.]+)\s+(?P<maybeNot>NOT\s+)?(?P<baseOp>LIKE|=)\s+"
-            r"(?:'(?P<strVal>[^']*)'|(?P<numVal>[+-]?\d+(?:\.\d+)?)(?![^'])|(?P<boolVal>true|false))"
+            r"([\w\.]+)\s+"                        # Group(1) => attrName (e.g. "component.name")
+            r"(?P<maybeNot>NOT\s+)?"
+            r"(?P<baseOp>LIKE|=|<=|>=|<|>|IN)\s+"   # e.g. =, <, >, <=, >=, LIKE, or IN
+            r"(?:"                                 # Start a group of possible value forms
+                r"'(?P<strVal>[^']*)'|"            # a single-quoted string => group "strVal"
+                r"(?P<numVal>[+-]?\d+(?:\.\d+)?)(?![^'])|"  # a numeric => group "numVal"
+                r"(?P<boolVal>true|false)|"        # a boolean => group "boolVal"
+                # or a parenthesized list => group "inList"
+                r"\(\s*(?P<inList>[^)]*)\)"        # everything inside parentheses => group "inList"
+            r")"
             r"\s*$"
         )
 
@@ -163,12 +149,227 @@ class SQL(ToolCollection):
             r"(?:"
                 r"'(?P<strVal>[^']*)'"                # single-quoted string
                 r"|(?P<numVal>[+-]?\d+(?:\.\d+)?)"    # integer or float
-                r"|(?P<boolVal>true|false)"           # boolean
+                r"|(?P<boolVal>true|false)|"           # boolean
+                # or a parenthesized list => group "inList"
+                r"\(\s*(?P<inList>[^)]*)\)"        # everything inside parentheses => group "inList"
             r")"
             r"\s*$"
         )
 
+        self.doc_dict = self.document_objects()
 
+    def describe_fusion_classes_2(self, class_names: list = ["Sketch"]) -> str:
+        """
+        {
+          "name": "describe_fusion_classes",
+          "description": "Accepts an array of possible Fusion 360 class names (with or without full path) and returns a JSON object describing each class's methods, attributes, and basic parameter info, including an expected object type for each property if available.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "class_names": {
+                "type": "array",
+                "description": "List of classes to introspect. E.g. ['Sketch', 'adsk.fusion.ExtrudeFeature']. If no module is specified, tries adsk.fusion then adsk.core.",
+                "items": { "type": "string" }
+              }
+            },
+            "required": ["class_names"],
+            "returns": {
+              "type": "string",
+              "description": "A JSON object mapping each requested class name to method and attribute data (including expected object types) or an error."
+            }
+          }
+        }
+        """
+        all_arg_objects = set()
+
+        try:
+            if not class_names or not isinstance(class_names, list):
+                return json.dumps({"error": "class_names must be a non-empty list of strings"})
+
+            def import_class_from_path(path: str):
+                """
+                Attempt to import something like 'adsk.fusion.Sketch'.
+                Returns (cls, None) if successful, or (None, errorString) if failed.
+                """
+                tokens = path.split(".")
+                if len(tokens) < 2:
+                    return None, f"Invalid class path: '{path}'."
+                mod_str = ".".join(tokens[:-1])
+                cls_str = tokens[-1]
+                try:
+                    mod = importlib.import_module(mod_str)
+                except ModuleNotFoundError:
+                    return None, f"Could not import module '{mod_str}'."
+                cls = getattr(mod, cls_str, None)
+                if cls is None:
+                    return None, f"Class '{cls_str}' not found in '{mod_str}'."
+                return cls, None
+
+            exclude_list = [
+                "cast", "classType", "__init__", "__del__", "thisown",
+                "revisionId", "dataComponent", "decals", "activeSheetMetalRule",
+                "allAsBuiltJoints", "allJointOrigins", "allJoints", "allOccurrences",
+                "allTangentRelationships", "attributes", "canvases", "findBRepUsingRay",
+                "internalCommand", "createThumbnail","allOccurrencesByComponent",
+                "occurrencesByComponent", "configurationRow", "configuredDataFile",
+                "switchConfiguration", "setAsBallJointMotion", "setAsCylindricalJointMotion",
+                "setAsPinSlotJointMotion","setAsPlanarJointMotion", "setAsRevoluteJointMotion",
+                "setAsRigidJointMotion", "createForAssemblyContext" , "meshManager", "findByTempId",
+                "convert", "createSpunProfile", "createSpunProfileInput", "partNumber",
+                "createFlatPattern", "saveCopyAs", "replace", "setAsSliderJointMotion",
+                "importSVG", "include", "redefine" , "projectCutEdges", "project", "projectToSurface",
+                "moveToComponent", "isComputeDeferred", "intersectWithSketchPlane", "isValid", "trim",
+                "lumps","copyTo", "createBRepEdgeProfile", "documentReference", "getPhysicalProperties",
+                "setCenterlineState", "findBRepUsingPoint", "createOpenProfile"
+
+
+            ]  # skip internal
+
+            def describe_method(py_callable):
+                """
+                Attempt to parse signature with inspect.signature,
+                then return { params: [...], doc: '' }.
+                """
+                # Attempt signature
+                try:
+                    sig = inspect.signature(py_callable)
+                except ValueError:
+                    sig = None
+
+                params_info = []
+                if sig:
+                    for param_name, param in sig.parameters.items():
+                        if param_name == "self":
+                            continue
+
+                        default_val = None if param.default is param.empty else param.default
+                        annotation_str = None if param.annotation is param.empty else str(param.annotation)
+                        if isinstance(annotation_str, str):
+                            annotation_str = annotation_str.replace("\n", " ")
+
+                        all_arg_objects.add(annotation_str)
+
+                        params_info.append(f"{param_name}:{annotation_str}")
+
+                doc_str = inspect.getdoc(py_callable) or ""
+
+
+                return params_info
+
+            def gather_class_info(cls):
+                """
+                Gather info on methods (callables) and attributes (non-callable) from the class.
+                Returns a dict with 'methods' and 'attributes', including 'expectedObjectType' for attributes if possible.
+                """
+                cls_info = {
+                    "methods": {},
+                    "attributes": {}
+                }
+
+                # 1) Gather methods
+                #   isfunction => pure Python function
+                methods_found = inspect.getmembers(cls, predicate=inspect.isfunction)
+                #   ismethoddescriptor => some C++ extension or property
+                descriptors = inspect.getmembers(cls, predicate=inspect.ismethoddescriptor)
+
+                combined_method_members = dict(methods_found)
+                for name, desc in descriptors:
+                    if name not in combined_method_members:
+                        combined_method_members[name] = desc
+
+                for name, func_obj in combined_method_members.items():
+                    if name[0] == "_" or name in exclude_list:
+                        continue
+                    cls_info["methods"][name] = describe_method(func_obj)
+
+                # 2) Gather all members, separate out attributes
+                #   We'll skip private, skip known methods
+                all_members = inspect.getmembers(cls)
+                known_methods = set(combined_method_members.keys())
+
+                for name, member_obj in all_members:
+                    if name[0] == "_" or name in exclude_list:
+                        continue
+                    if name in known_methods:
+                        continue  # we've described it as a method
+
+                    # If not callable => treat as attribute
+                    if not callable(member_obj):
+
+                        attr_data = None
+
+                        # Attempt to see if this is a property descriptor
+                        # If so, we might be able to get a return annotation from fget
+                        if inspect.isdatadescriptor(member_obj):
+                            # Some descriptors may have .fget
+                            fget = getattr(member_obj, 'fget', None)
+                            if fget and callable(fget):
+                                try:
+                                    fget_sig = inspect.signature(fget)
+                                    # If there's a return annotation
+                                    if fget_sig.return_annotation is not inspect.Signature.empty:
+
+                                        if ":" in fget_sig.return_annotation:
+                                            object_type_str = fget_sig.return_annotation.split(":")[-1].strip(">").strip()
+                                        else:
+                                            object_type_str = fget_sig.return_annotation
+
+
+                                        #attr_data["objectType"] = object_type_str
+
+                                        all_arg_objects.add(object_type_str)
+                                        attr_data = object_type_str
+
+                                except ValueError:
+                                    pass
+
+                        # If we still don't have expectedObjectType, fallback to type
+                        if not attr_data:
+                            attr_data = member_obj.__class__.__name__
+
+                        cls_info["attributes"][name] = attr_data
+
+                return cls_info
+
+            results = {}
+
+            for class_name in class_names:
+                # If there's a dot, assume it's a full path (like adsk.fusion.Sketch).
+                # Otherwise, try adsk.fusion.class_name, then adsk.core.class_name
+                if "." in class_name:
+                    cls, err = import_class_from_path(class_name)
+                    if err:
+                        results[class_name] = {"error": err}
+                        continue
+                    results[class_name] = gather_class_info(cls)
+                else:
+                    # Try adsk.fusion.class_name
+                    fusion_path = f"adsk.fusion.{class_name}"
+                    cls, err = import_class_from_path(fusion_path)
+                    if not err and cls:
+                        data = gather_class_info(cls)
+                        #data["resolvedPath"] = fusion_path
+                        results[class_name] = data
+                        continue
+
+                    # Then try adsk.core.class_name
+                    core_path = f"adsk.core.{class_name}"
+                    cls2, err2 = import_class_from_path(core_path)
+                    if not err2 and cls2:
+                        data2 = gather_class_info(cls2)
+                        #data2["resolvedPath"] = core_path
+                        results[class_name] = data2
+                        continue
+
+                    # If both fail, store an error
+                    results[class_name] = {"error": f"Could not find class '{class_name}' in adsk.fusion or adsk.core."}
+
+
+
+            return results
+
+        except Exception as e:
+            return json.dumps({"Error": str(e)})
 
 
 
@@ -210,6 +411,7 @@ class SQL(ToolCollection):
         appearances_list = app.materialLibraries.itemByName("Fusion Appearance Library").appearances
         materials_list = app.materialLibraries.itemByName("Fusion Material Library").materials
 
+
         #design.userParameters
         object_dict = {
             "Parameter": design.allParameters,
@@ -217,166 +419,99 @@ class SQL(ToolCollection):
             "Component": design.allComponents ,
             "Appearance": appearances_list,
             "Material": materials_list,
-
-            "Joint": {},
-            "JointOrigin": {},
-
-            "Sketch":  {},
-            "SketchCurve": {},
-            "SketchProfile": {},
-
-            "BRepBody": {},
-            "BRepEdge": {},
-            "BRepFace": {},
+            "Joint": None,
+            "JointOrigin": None,
+            "RigidGroup": None,
+            "Sketch": None,
+            "BRepBody": None,
+            "SketchCurve": None,
+            "Profile": None,
+            "SketchPoint": None
         }
+
+        # vector object e.g JointVector have no 'count' attr, have to be handles differently
+
+        vector_attrs = {
+            "Joint": "allJoints",
+            "JointOrigin": "allJointOrigins",
+            "AsBuiltJoint": "allAsBuiltJoints",
+            "RigidGroup": "allRigidGroups"
+        }
+
+        for obj_class, root_attr in vector_attrs.items():
+            vector_list = [j for j in getattr(root_comp, root_attr)]
+            object_dict[obj_class] = adsk.core.ObjectCollection.createWithArray(vector_list)
+
 
         # body
         obj_mapping = {
 
             "Component": {
                 "Sketch": "sketches",
-                "Joint": "joints",
-                "JointOrigin": "jointOrigins"
             },
             "Occurrence": {
-                "BRepBody": "bRepBodies"
+                "BRepBody": "bRepBodies",
             },
             "Sketch": {
-                "SketchCurve": "sketchCurves",
-                "SketchProfile": "profiles",
-                "SketchPoint": "sketchPoints",
+               # "SketchCurve": "sketchCurves",
+                "Profile": "profiles",
+                #"SketchPoint": "sketchPoints",
             },
-            "BRepBody": {
-                "BRepEdge": "edges",
-                "BRepFace": "faces",
-            },
+            #"BRepBody": { "BRepEdge": "edges", "BRepFace": "faces", },
         }
 
         for obj_class, obj_attrs in obj_mapping.items():
             for name, attr in obj_attrs.items():
+                #print(name)
                 obj_lists = [getattr(ent, attr) for ent in object_dict[obj_class]]
                 obj_list = [obj for l in obj_lists for obj in l ]
                 object_dict[name] = adsk.core.ObjectCollection.createWithArray(obj_list)
 
 
-        for k,v in object_dict.items():
+        #for k,v in object_dict.items():
             #result_data = self.describe_object(obj0)
-            print(f"{k}: {v.count}")
-
+        #    print(f"{k}: {v.count}")
         return object_dict
 
 
     @ToolCollection.tool_call
-    def get_object_info(self):
+    def get_available_classes(self):
         """
         {
-          "name": "get_object_info",
-          "description": "",
+          "name": "get_available_classes",
+           "description": "Provides information about available classes their attributes, methods and data types. The returned object contains to sub-dictionaries: document_objects and transient_objects. The top levle keys in document_object represent the available classes for use with the 'run_sql_query' and 'call_entity_methods' functions. Each class-dict contains available attributes and methods, along with their data types. The  transient_objects dict follows the same format, but contains information about transient object classes.",
+
           "parameters": {
             "type": "object",
-            "properties": { },
+            "properties": {},
             "required": [],
-          "returns": {
-            "type": "string",
-            "description": "A JSON like object containing document_object data"
-          },
+              "returns": {
+                "type": "string",
+                "description": "A JSON like object containing document_object data"
+              }
           }
 
         }
         """
-        objs = self.document_objects()
+        # transient object
+        trans_objects = [
+            "Point3D",
+            "Matrix3D",
+            "Vector3D",
+            "BoundingBox3D"
+        ]
+        document_object_types = self.document_objects()
 
-        out_d = {}
-        for k,v in objs.items():
-            obj0 = v.item(0)
-            result_data = self.describe_object(obj0)
-            res_attrs = []
+        transient_objects_info =  self.describe_fusion_classes_2(trans_objects)
+        document_objects_info =  self.describe_fusion_classes_2(list(document_object_types.keys()))
 
-            for attr_name in result_data["attributes"]:
-                attr = getattr(obj0.__class__, attr_name )
-                #print(attr)
-
-                #if hasattr(attr, "count") == True:
-                #    print(attr_name)
-                #    continue
-
-                res_attrs.append(attr_name)
-
-            out_d[k] = res_attrs
-
-
-        print(json.dumps(out_d, indent=2))
-
-
-
-    def data_dict():
-        {
-            "Component": [ 
-                "name", "opacity", "isBodiesFolderLightBulbOn", "isCanvasFolderLightBulbOn",
-                "isConstructionFolderLightBulbOn", "isDecalFolderLightBulbOn", "isJointsFolderLightBulbOn",
-                "isOriginFolderLightBulbOn", "isSketchFolderLightBulbOn", "description",
-                          ],
-            "Occurrence": [
-                "name", "isLightBulbOn", "opacity", "isGrounded", "isIsolated", "Appearance"
-            ],
-
-            "Parameter": [
-                "name", "value", "expression"
-            ],
-
-            "BRepBody": [
-                "name", "opacity", "isLightBulbOn", "area", "length"
-            ],
-
-            "BRepEdge": [
-                "body","length",
-                "boundingBox.minPoint.x",
-                "boundingBox.minPoint.y",
-                "boundingBox.minPoint.z"
-                "boundingBox.maxPoint.x",
-                "boundingBox.maxPoint.y",
-                "boundingBox.maxPoint.z"
-            ],
-
-            "BRepFace": [
-                "body","area"
-            ],
-
-            "Sketch": [
-                "name", "opacity", "isLightBulbOn",
-            ],
-            "SketchProfile": [
-                "parentSketch","entityToken", "face.area"
-            ],
-            "SketchCurve": [
-                "length",
-                "entityToken",
-                "sketchArcs",
-                "sketchCircles",
-                "sketchConicCurves",
-                "sketchControlPointSplines",
-                "sketchEllipses",
-                "sketchEllipticalArcs",
-                "sketchFittedSplines",
-                "sketchFixedSplines",
-                "sketchLines"
-
-            ],
-
-            "TimelineObject": [
-                "name", "isCollapsed", "isSuppressed"
-            ],
-            "Joint": [
-                "name", "isLightBulbOn", "isGrounded", "isSuppressed", "isLocked"
-            ],
-            "JointOrigin": [
-                "name", "isLightBulbOn",
-            ],
-
+        return_dict = {
+            "document_objects": document_objects_info,
+            "transient_objects": transient_objects_info
         }
 
 
-
+        return json.dumps(return_dict)
 
 
 
@@ -389,7 +524,6 @@ class SQL(ToolCollection):
             return []
 
         tokens = re.split(r"(?i)\s+(AND|OR)\s+", where_str.strip())
-        print(tokens)
         conditions = []
 
         # parse the first condition
@@ -456,8 +590,7 @@ class SQL(ToolCollection):
         return out
 
 
-
-    def parse_single_condition(self, cond_text: str):
+    def _parse_single_condition(self, cond_text: str):
         m = self.CONDITION_PATTERN.match(cond_text.strip())
         if not m:
             return None
@@ -468,7 +601,6 @@ class SQL(ToolCollection):
         str_val   = m.group("strVal")
         num_val   = m.group("numVal")
         bool_val  = m.group("boolVal")
-        print(bool_val)
 
         # If maybe_not is present => operator = "NOT <base_op>", e.g. "NOT LIKE", "NOT ="
         if maybe_not:
@@ -498,8 +630,83 @@ class SQL(ToolCollection):
             "operator": operator,
             "value": value
         }
+    def parse_single_condition(self, cond_text: str):
+        m = self.CONDITION_PATTERN.match(cond_text.strip())
+        if not m:
+            return None
+
+        attr_name = m.group(1)
+        maybe_not = m.group("maybeNot")
+        base_op   = m.group("baseOp").upper()  # e.g. 'LIKE', 'IN', etc.
+        str_val   = m.group("strVal")
+        num_val   = m.group("numVal")
+        bool_val  = m.group("boolVal")
+        in_list   = m.group("inList")
+
+        # If maybe_not => 'NOT ' => combine with base_op => e.g. 'NOT IN', 'NOT LIKE'
+        if maybe_not:
+            operator = (maybe_not.strip() + " " + base_op).upper()  # e.g. "NOT IN"
+        else:
+            operator = base_op
+
+        # Determine the "value" part
+        if in_list is not None:
+            # It's a parenthesized list => parse "in_list" => e.g. "3.14, 'X-Large', true"
+            # We'll split on commas, parse each item. We'll store a python list of them.
+            value = self.parse_in_list(in_list)
+        elif str_val is not None:
+            value = str_val
+        elif num_val is not None:
+            # interpret numeric => int or float
+            if '.' in num_val:
+                value = float(num_val)
+            else:
+                value = int(num_val)
+        elif bool_val is not None:
+            value = (bool_val.lower() == 'true')
+        else:
+            value = None
+
+        return {
+            "attrName": attr_name,
+            "operator": operator,  # e.g. "IN", "NOT IN", "=", "<", etc.
+            "value": value         # either a single value or a list if 'IN'
+        }
 
 
+    def parse_in_list(self, list_str: str):
+        """
+        Takes something like "3.14, 'X-Large', true" 
+        and returns [3.14, "X-Large", True].
+        We'll do a naive split by commas, then parse each piece as string/number/bool.
+        """
+
+        items = [i.strip() for i in list_str.split(',')]
+        out = []
+        for it in items:
+            # check if it's quoted => e.g. "'X-Large'"
+            m_str = re.match(r"^'(.*)'$", it)
+            if m_str:
+                out.append(m_str.group(1))  # e.g. "X-Large"
+                continue
+
+            # check if numeric
+            m_num = re.match(r"(?i)^[+-]?\d+(?:\.\d+)?$", it)
+            if m_num:
+                if '.' in it:
+                    out.append(float(it))
+                else:
+                    out.append(int(it))
+                continue
+
+            # check if bool
+            if it.lower() in ("true", "false"):
+                out.append(it.lower() == "true")
+                continue
+
+            # if none matched => store raw
+            out.append(it)
+        return out
 
 
 
@@ -529,20 +736,47 @@ class SQL(ToolCollection):
 
             operator = cond["operator"].upper()
             value = cond["value"]
+            attr_name = cond["attrName"]
 
-            attr_val, errors = self.get_sub_attr(obj, cond["attrName"])
-            val, errors = self.get_sub_attr(obj, attr_name)
+            # get object atribute for comparison
+            attr_val, errors = self.get_sub_attr(obj, attr_name)
+
+            #print(f"operator: {operator},  val: {value},  attr_name: {attr_name}, attr_val: {attr_val}")
+
+
             if errors:
                 return errors
 
-            if operator == "LIKE":
-                return do_like_compare(attr_val, value, negate=False)
+            if operator == "IN":
+                return attr_val in value
+
+            elif operator == "NOT IN":
+                return attr_val not in value
+
+            elif operator == "LIKE":
+                return do_like_compare(str(attr_val), value, negate=False)
+
             elif operator == "NOT LIKE":
-                return do_like_compare(attr_val, value, negate=True)
+                return do_like_compare(str(attr_val), value, negate=True)
+
             elif operator == "=":
-                return (attr_val == str(value))
+                return (attr_val == value)
+
             elif operator == "NOT =":
-                return (attr_val != str(value))
+                return (attr_val != value)
+
+            elif operator == "<":
+                return (attr_val < value)
+
+            elif operator == "<=" or operator == "NOT >":
+                return (attr_val <= value)
+
+            elif operator == ">":
+                return (attr_val > value)
+
+            elif operator == ">=" or operator == "NOT <":
+                return (attr_val >= value)
+
             else:
                 return False
 
@@ -565,19 +799,19 @@ class SQL(ToolCollection):
             # e.g. "gear\%" => "gear.*"
             # e.g. "foo\_" => "foo."
             # We do the replacements in that order so we don't inadvertently re-replace something.
-            #print(escaped)
             escaped = escaped.replace(r'%', '.*')
             escaped = escaped.replace(r'_', '.')
-            #print(escaped)
 
             # We'll do a full search ignoring case
             match_found = bool(re.search(escaped, actual_str, re.IGNORECASE))
             return (not match_found) if negate else match_found
 
+
         # We'll iterate conditions in order, combining them with AND/OR logic
         overall_result = None
 
         for i, cond in enumerate(conditions):
+            #print(f"{i} {cond}")
 
             attr_name = cond["attrName"]
 
@@ -606,7 +840,9 @@ class SQL(ToolCollection):
 
         return overall_result, None
 
+
     def apply_assignments(self, obj, assignments):
+        """Set values  """
         updated_something = False
 
         BOOL_MAP = {
@@ -621,22 +857,39 @@ class SQL(ToolCollection):
             attr_name = assign["attrName"]
             new_val = assign["value"]
 
-            if isinstance(new_val, str):
-                # check if lower-cased value is in BOOL_MAP
-                val_lower = new_val.lower()
-                if val_lower in BOOL_MAP:
-                    new_val = BOOL_MAP[val_lower]  # a Python bool
+            # get current val check errors
+            current_val, errors = self.get_sub_attr(obj, attr_name)
+            # use current val typ to validate
+            current_type = type(current_val)
 
+            if isinstance(current_val, bool):
+
+                # convert str "true" "false" to bool
+                if isinstance(new_val, str):
+                    # check if lower-cased value is in BOOL_MAP
+                    val_lower = new_val.lower()
+                    if val_lower in BOOL_MAP:
+                        new_val = BOOL_MAP[val_lower]  # a Python bool
+
+                # convert 0, 1 to bool
+                if isinstance(new_val, int):
+                    if new_val == 0:
+                        new_val = False
+                    elif new_val == 1:
+                        new_val = True
+
+
+            elif isinstance(new_val, str):
                 hash_obj = self.ent_dict.get(new_val, None)
                 if hash_obj != None:
                     new_val = hash_obj
 
-            current_val, errors = self.get_sub_attr(obj, attr_name)
+
             if errors:
                 details[attr_name] = f"{errors}"
             else:
                 success, errors = self.set_sub_attr(obj, attr_name, new_val )
-                details[attr_name] = f"{attr_name} updated"
+                details[attr_name] = f"new_val: {new_val}"
                 updated_something = True
 
         return {
@@ -649,7 +902,7 @@ class SQL(ToolCollection):
         """
             {
               "name": "run_sql_query",
-              "description": "Executes a naive, SQL-like query on the current Fusion 360 design. Supports standard SQL syntax: SELECT, UPDATE, SET, FROM, WHERE, AND, OR, LIKE, ORDER BY, ASC, DESC, LIMIT, OFFSET, for the following object: [Occurrence, Component, BRepBody, Sketch, Joint, JointOrigin, SketchLine]. Supports . syntax to access sub attributes.Examples:\
+              "description": "Executes a naive, SQL-like query on the current Fusion 360 design. Supports standard SQL syntax: SELECT, UPDATE, SET, FROM, WHERE, LIKE, IN, AND, OR, ORDER BY, ASC, DESC, LIMIT, OFFSET, for the following object: [Occurrence, Component, BRepBody, Sketch, Joint, JointOrigin, SketchLine]. Supports . syntax to access sub attributes.Examples:\
             SELECT name,entityToken FROM Component\
             Return the name an entityTokens for all components in the design\
             SELECT appearance.name,entityToken FROM Occurrence WHERE appearance.name LIKE '%Aluminum%'\
@@ -709,7 +962,8 @@ class SQL(ToolCollection):
             conditions = self.parse_where_conditions(where_str)
 
             # gather objects of type update_object_type
-            doc_objs = self.document_objects()
+            #doc_objs = self.document_objects()
+            doc_objs = self.doc_dict
             all_objs = doc_objs.get(object_type, None)
             # validate object_type
             if all_objs is None:
@@ -729,6 +983,7 @@ class SQL(ToolCollection):
             filtered_objs = []
             for o in all_objs:
                 match, errors = self.match_object_against_conditions(o, conditions)
+
                 if errors != None:
                     return errors
 
@@ -792,7 +1047,7 @@ class SQL(ToolCollection):
                 return_dict.update( {
                     "foundCount": len(filtered_objs),
                     "updatedCount": updated_count,
-                    "assignmentDetails": assignment_results
+                    #"assignmentDetails": assignment_results
                 })
 
 
@@ -850,15 +1105,11 @@ class GetStateData(ToolCollection):
     methods used by Realtime API to retrive state of Fusion document
     """
 
-    #def __init__(self):
-    #    pass
-
-
     @ToolCollection.tool_call
-    def describe_fusion_classes(self, class_names: list = ["Sketch"]) -> str:
+    def get_fusion_classes_detail(self, class_names: list = ["Sketch"]) -> str:
         """
         {
-          "name": "describe_fusion_classes",
+          "name": "get_fusion_classes_detail",
           "description": "Accepts an array of possible Fusion 360 class names (with or without full path) and returns a JSON object describing each class's methods, attributes, and basic parameter info, including an expected object type for each property if available.",
           "parameters": {
             "type": "object",
@@ -1093,7 +1344,6 @@ class GetStateData(ToolCollection):
                 all bodies, sketches, joints, joint origins, and child occurrences.
                 """
                 comp = occ.component
-                #print(level)
 
                 # 1) Bodies
                 bodies_info = []
@@ -1215,32 +1465,6 @@ class GetStateData(ToolCollection):
 
 
     @ToolCollection.tool_call
-    def get_dict(self):
-        """
-        {
-            "name": "get_dict",
-            "description": "Gets all locally avilble entityTokens and thier associated objectTypes.",
-            "parameters": {
-                "type": "object",
-                "properties": { },
-                "required": [],
-                "returns": {
-                    "type": "string",
-                    "description": "A JSON representation of the all local entityToken, and their associated objectTypes."
-                }
-
-            }
-        }
-        """
-
-        results = {}
-        for k, v in self.ent_dict.items():
-            results[k] = str(v.__class__.__name__)
-
-        return json.dumps(results)
-
-
-    @ToolCollection.tool_call
     def get_root_component_name(self):
         """
         {
@@ -1344,73 +1568,34 @@ class GetStateData(ToolCollection):
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
 
 
+    #@ToolCollection.tool_call
+    def get_dict(self):
+        """
+        {
+            "name": "get_dict",
+            "description": "Gets all locally avilble entityTokens and thier associated objectTypes.",
+            "parameters": {
+                "type": "object",
+                "properties": { },
+                "required": [],
+                "returns": {
+                    "type": "string",
+                    "description": "A JSON representation of the all local entityToken, and their associated objectTypes."
+                }
+
+            }
+        }
+        """
+
+        results = {}
+        for k, v in self.ent_dict.items():
+            results[k] = str(v.__class__.__name__)
+
+        return json.dumps(results)
+
 
 
 class SetStateData(ToolCollection):
-
-    #@ToolCollection.tool_call
-    def describe_fusion_method(self, method) -> str:
-        """
-        {
-          "name": "describe_fusion_method",
-          "description": "Accepts a Python-callable Fusion 360 method reference and returns a JSON object describing the method's parameters and their Python types, if available. For most C++-backed Fusion 360 methods, the info will be limited.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-            },
-            "required": [],
-            "returns": {
-              "type": "string",
-              "description": "A JSON object describing each parameter: { paramName, kind, default, annotation }."
-            }
-          }
-        }
-        """
-        try:
-            # Use the built-in inspect module to retrieve the signature
-            sig = inspect.signature(method)
-            param_info = []
-
-            for name, param in sig.parameters.items():
-                # param.kind can be POSITIONAL_ONLY, VAR_POSITIONAL, KEYWORD_ONLY, VAR_KEYWORD, etc.
-                kind_str = str(param.kind)
-
-                # If there's a default, we show it. If it's param.empty, there's no default
-                default_val = param.default if param.default is not param.empty else None
-
-                # For annotation, if not param.empty, we return its string.
-                annotation_str = None
-                if param.annotation is not param.empty:
-                    annotation_str = str(param.annotation)
-
-                param_data = {
-                    "paramName": name,
-                    "annotation": annotation_str
-                }
-
-                if default_val:
-                    param_data["default"] = default_val
-
-                param_info.append(param_data)
-
-            # We can also retrieve the return annotation if present
-            return_annot = None
-            if sig.return_annotation is not inspect.Signature.empty:
-                return_annot = str(sig.return_annotation)
-
-            # Build a result dict
-            result = {
-                "methodName": getattr(method, "__name__", "unknown"),
-                "parameters": param_info,
-                "returnAnnotation": return_annot
-            }
-
-            return result
-
-        except Exception as e:
-            return json.dumps({
-                "error": f"Could not introspect method. Reason: {str(e)}"
-            })
 
     @ToolCollection.tool_call
     def call_entity_methods(self, calls_list: list = [
@@ -1536,7 +1721,6 @@ class SetStateData(ToolCollection):
                         new_obj_type = method_ret_val.__class__.__name__
                         new_objects += self.object_creation_response(method_ret_val)
 
-                        print("{new_objects}")
 
                         if hasattr(method_ret_val, "item") == True:
                             ret_val = f"Success: method '{method_name}' returned new '{new_obj_type}'"

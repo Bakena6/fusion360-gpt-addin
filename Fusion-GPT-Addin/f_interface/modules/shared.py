@@ -516,7 +516,6 @@ class ToolCollection:
 
 
     def get_comp_str(self, entity):
-
         # unique id str, not unique when copied
         id_str = getattr(entity, "id", None)
         ent_tok_str = getattr(entity, "entityToken", None)

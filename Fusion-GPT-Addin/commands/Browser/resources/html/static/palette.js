@@ -802,39 +802,20 @@ class Control{
 
 
     } // end execute sql
-
+     countChar(str, char) {
+      let count = 0;
+      for (let i = 0; i < str.length; i++) {
+        if (str[i] === char) {
+          count++;
+        }
+      }
+      return count;
+    }
     createSql(){
+        //console.log(queryStrings);
 
+        //querysContainer defined in seperate file
         let querysContainer = document.getElementById('sqlContent');
-        const queryStrings = [
-"SELECT name FROM BRepBody",
-
-"SELECT name,entityToken\nFROM BRepBody LIMIT 10",
-
-"SELECT length,endVertex,startVertex,faces,geometry\nFROM BRepEdge LIMIT 10",
-
-    "SELECT length,endVertex,startVertex,faces,geometry\nFROM BRepEdge ORDER BY length DESC LIMIT 100",
-
-"SELECT length,body.parentComponent.name\n\
-FROM BRepEdge ORDER BY length DESC LIMIT 100",
-
-"SELECT length,objectType, boundingBox.minPoint.x, boundingBox.minPoint.y, boundingBox.minPoint.z\n\
-FROM BRepEdge\n\
-ORDER BY length DESC LIMIT 10",
-
-"SELECT length,objectType, boundingBox.minPoint.x, boundingBox.minPoint.y, boundingBox.minPoint.z, boundingBox.maxPoint.x, boundingBox.maxPoint.y, boundingBox.maxPoint.z\n\
-FROM BRepEdge\n\
-ORDER BY boundingBox.maxPoint.z DESC LIMIT 10",
-
-"SELECT component.name, entityToken, createdBy.name, dependentParameters, expression, role\n\
-FROM Parameter",
-
-"SELECT hasTexture,name,id\n\
-FROM Appearance WHERE name LIKE '%oak%'",
-
-"UPDATE SketchCurve SET radius = 1.1 WHERE objectType LIKE '%circle%'"
-
-        ];
 
         queryStrings.forEach(query => {
 
@@ -842,10 +823,20 @@ FROM Appearance WHERE name LIKE '%oak%'",
             qContainer.className = "sql-row";
             const qText = document.createElement("textarea");
             qText.className = "sql";
+            query =  query.replace("FROM", "\nFROM").replace("SET", "\nSET").replace("WHERE", "\nWHERE")
+            query =  query.replace("LIMIT", "\nLIMIT")
+
+            query =  query.replace("\n\n", "\n")
+
             qText.innerHTML = query.trim();
+
+            let n_breaks = this.countChar(query, "\n");
+            //console.log(n_breaks);
+
+            qText.style.height = 35 + (35 * n_breaks) +"px"; // Reset the height
+
             const qButton = document.createElement("button");
             qButton.innerHTML = "run";
-
 
             qButton.onclick = (event) =>{
                 this.execute_sql(qText);
@@ -856,8 +847,8 @@ FROM Appearance WHERE name LIKE '%oak%'",
             qContainer.appendChild(qButton);
             querysContainer.appendChild(qContainer);
 
-            //qText.style.height = "auto"; // Reset the height
-            console.log(qText.scrollHeight );
+            //
+            //console.log(qText.scrollHeight );
             //qText.style.height = qText.scrollHeight + "px"; // Set height to scroll height
 
 
