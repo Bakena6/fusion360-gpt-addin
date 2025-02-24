@@ -3,22 +3,16 @@
 
 
 /* Hover effect for the button */
-.input-container button:hover {
+.__input-container button:hover {
     background-color: rgb(249,70,249); /* vim magenta */
 }
 
 /* Hover effect for the button */
-.input-container label {
+.__input-container label {
     color: white;
 
 }
 
-
-
-.test-content{
-    font-size: 100px
-
-}
 
 
 /* 
@@ -52,7 +46,17 @@ div, span{
 
 
 
+.help{
 
+    display: none;
+    color: red;
+    font-size: 14px;
+}
+
+#toggleHelp{
+
+    color: red;
+}
 
 
 /* 
@@ -401,6 +405,22 @@ div, span{
 }
 
 
+.input-container{
+    height: auto;
+    min-width: 100px;
+    max-width: 300px;
+    max-height: 200px;
+    overflow: auto;
+
+}
+.dropdown-label{
+    display: flex;
+}
+
+.test-content{
+    font-size: 100px
+
+}
 
 
 #submitButton{
@@ -456,12 +476,14 @@ div, span{
     margin-left: 2px; 
     margin-right: 2px; 
 }
+
 .setting-row input{
     margin-left: 0px; 
     margin-right: 20px; 
 }
 
 .setting-row button{
+
     margin-right: 20px; 
     padding-top: 2px;
     padding-bottom: 2px;
@@ -487,6 +509,8 @@ div, span{
     width: 100%;
     font-size: 14px;
     border-radius: 5px;
+
+
 
 }
 
@@ -649,7 +673,10 @@ div, span{
 
 }
 
+.display-setting{
+    color: orange;
 
+}
 
 .text-response {
     margin-left: 10px;
@@ -661,7 +688,6 @@ div, span{
 .streamOutput{
 
 }
-
 
 
 

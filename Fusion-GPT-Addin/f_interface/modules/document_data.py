@@ -36,7 +36,6 @@ class SQL(ToolCollection):
         super().__init__(ent_dict)
 
 
-
         self.SQL_PATTERN = re.compile(
             r"(?i)^\s*"
             r"(?:"
@@ -143,7 +142,7 @@ class SQL(ToolCollection):
             r"\s*$"
         )
 
-        self.ASSIGN_RE = re.compile(
+        self.ASSIGN_PATTERN = re.compile(
             r"(?i)^\s*"
             r"([\w\.]+)\s*=\s*"    # captures the attribute name (with optional dots)
             r"(?:"
@@ -156,7 +155,18 @@ class SQL(ToolCollection):
             r"\s*$"
         )
 
+        self.obj_mapping = {
+            "Component": {
+                "Sketch": "sketches",
+            },
+            "Occurrence": {
+                "BRepBody": "bRepBodies",
+            },
+        }
+
         self.doc_dict = self.document_objects()
+
+
 
     def describe_fusion_classes_2(self, class_names: list = ["Sketch"]) -> str:
         """
@@ -372,12 +382,11 @@ class SQL(ToolCollection):
             return json.dumps({"Error": str(e)})
 
 
-
     def document_objects(self) -> dict:
         """
         {
           "name": "search_document_objects",
-          "description": "SQL like query to get dats from the Fusion 360 objects in the document",
+          "description": "SQL like query to get data from the Fusion 360 objects in the document",
           "parameters": {
             "type": "object",
             "properties": {
@@ -407,10 +416,11 @@ class SQL(ToolCollection):
         design = adsk.fusion.Design.cast(product)
         root_comp = design.rootComponent
 
-
         appearances_list = app.materialLibraries.itemByName("Fusion Appearance Library").appearances
         materials_list = app.materialLibraries.itemByName("Fusion Material Library").materials
 
+        timeline_object_list = [t for t in design.timeline]
+        TimelineObjects =  adsk.core.ObjectCollection.createWithArray(timeline_object_list)
 
         #design.userParameters
         object_dict = {
@@ -419,6 +429,7 @@ class SQL(ToolCollection):
             "Component": design.allComponents ,
             "Appearance": appearances_list,
             "Material": materials_list,
+            "TimelineObject": TimelineObjects,
             "Joint": None,
             "JointOrigin": None,
             "RigidGroup": None,
@@ -428,6 +439,8 @@ class SQL(ToolCollection):
             "Profile": None,
             "SketchPoint": None
         }
+
+
 
         # vector object e.g JointVector have no 'count' attr, have to be handles differently
 
@@ -443,9 +456,30 @@ class SQL(ToolCollection):
             object_dict[obj_class] = adsk.core.ObjectCollection.createWithArray(vector_list)
 
 
+
+
+        for obj_class, obj_attrs in self.obj_mapping.items():
+            for name, attr in obj_attrs.items():
+                obj_lists = [getattr(ent, attr) for ent in object_dict[obj_class]]
+                obj_list = [obj for l in obj_lists for obj in l ]
+                object_dict[name] = adsk.core.ObjectCollection.createWithArray(obj_list)
+
+
+        for k, v in object_dict.items():
+
+            if v:
+                print(f"{k}: {v.count}")
+            else:
+                print(f"{k}: {None}")
+
+        return object_dict
+
+
+    def reload_object_dict(self):
+        """"""
+
         # body
         obj_mapping = {
-
             "Component": {
                 "Sketch": "sketches",
             },
@@ -453,25 +487,35 @@ class SQL(ToolCollection):
                 "BRepBody": "bRepBodies",
             },
             "Sketch": {
-               # "SketchCurve": "sketchCurves",
+                "SketchCurve": "sketchCurves",
                 "Profile": "profiles",
-                #"SketchPoint": "sketchPoints",
+                "SketchPoint": "sketchPoints",
+                "SketchDimension": "sketchDimensions"
             },
-            #"BRepBody": { "BRepEdge": "edges", "BRepFace": "faces", },
+            "BRepBody": {
+                "BRepEdge": "edges",
+                "BRepFace": "faces",
+            },
         }
 
-        for obj_class, obj_attrs in obj_mapping.items():
-            for name, attr in obj_attrs.items():
-                #print(name)
-                obj_lists = [getattr(ent, attr) for ent in object_dict[obj_class]]
-                obj_list = [obj for l in obj_lists for obj in l ]
-                object_dict[name] = adsk.core.ObjectCollection.createWithArray(obj_list)
+
+        if self.index_sketch_children:
+            self.obj_mapping["Sketch"] = obj_mapping["Sketch"]
+        elif not self.index_sketch_children:
+            if self.obj_mapping.get("Sketch"):
+                self.obj_mapping.pop("Sketch")
+
+        if self.index_brep_children:
+            self.obj_mapping["BRepBody"] = obj_mapping["BRepBody"]
+
+        elif not self.index_brep_children:
+            if self.obj_mapping.get("BRepBody"):
+                self.obj_mapping.pop("BRepBody")
 
 
-        #for k,v in object_dict.items():
-            #result_data = self.describe_object(obj0)
-        #    print(f"{k}: {v.count}")
-        return object_dict
+        print(self.obj_mapping)
+        self.doc_dict = self.document_objects()
+
 
 
     @ToolCollection.tool_call
@@ -514,7 +558,6 @@ class SQL(ToolCollection):
         return json.dumps(return_dict)
 
 
-
     def parse_where_conditions(self, where_str: str):
         """
         Splits 'where_str' on AND/OR, returning a list of condition dicts:
@@ -546,21 +589,21 @@ class SQL(ToolCollection):
 
     def parse_set_clause(self, clause: str):
         """
-        Parses something like:
-            name='Housing', value=10, appearance.name='Steel', isLightBulbOn=true
-        into a list of dicts:
-            [
-              {"attrName": "name", "value": "Housing"},
-              {"attrName": "value", "value": 10},
-              {"attrName": "appearance.name", "value": "Steel"},
-              {"attrName": "isLightBulbOn", "value": True}
-            ]
-        If any assignment is unrecognized, returns {"error": "..."}.
+            Parses something like:
+                name='Housing', value=10, appearance.name='Steel', isLightBulbOn=true
+            into a list of dicts:
+                [
+                  {"attrName": "name", "value": "Housing"},
+                  {"attrName": "value", "value": 10},
+                  {"attrName": "appearance.name", "value": "Steel"},
+                  {"attrName": "isLightBulbOn", "value": True}
+                ]
+            If any assignment is unrecognized, returns {"error": "..."}.
         """
         parts = [p.strip() for p in clause.split(',')]
         out = []
         for p in parts:
-            m = self.ASSIGN_RE.match(p)
+            m = self.ASSIGN_CONDITION.match(p)
             if not m:
                 return {"error": f"Unrecognized assignment: {p}"}
 
@@ -588,7 +631,6 @@ class SQL(ToolCollection):
             out.append({"attrName": attr_name, "value": final_val})
 
         return out
-
 
     def _parse_single_condition(self, cond_text: str):
         m = self.CONDITION_PATTERN.match(cond_text.strip())
@@ -630,6 +672,7 @@ class SQL(ToolCollection):
             "operator": operator,
             "value": value
         }
+
     def parse_single_condition(self, cond_text: str):
         m = self.CONDITION_PATTERN.match(cond_text.strip())
         if not m:
@@ -673,7 +716,6 @@ class SQL(ToolCollection):
             "value": value         # either a single value or a list if 'IN'
         }
 
-
     def parse_in_list(self, list_str: str):
         """
         Takes something like "3.14, 'X-Large', true" 
@@ -708,30 +750,28 @@ class SQL(ToolCollection):
             out.append(it)
         return out
 
-
-
     def match_object_against_conditions(self, obj, conditions):
         """
-        Checks whether 'obj' satisfies the list of 'conditions', each of which is
-        a dict with:
-          {
-            "attrName": str,             # e.g. "name" or "appearance.name"
-            "operator": str,             # e.g. "LIKE", "NOT LIKE", "=", or "NOT ="
-            "value": str,                # e.g. "%gear%"
-            "logicOpBefore": str|None    # "AND", "OR", or None for the first condition
-          }
+            Checks whether 'obj' satisfies the list of 'conditions', each of which is
+            a dict with:
+              {
+                "attrName": str,             # e.g. "name" or "appearance.name"
+                "operator": str,             # e.g. "LIKE", "NOT LIKE", "=", or "NOT ="
+                "value": str,                # e.g. "%gear%"
+                "logicOpBefore": str|None    # "AND", "OR", or None for the first condition
+              }
 
-        The function returns True if 'obj' meets the entire set of conditions
-        when chained by AND/OR logic in the specified order, or False otherwise.
+            The function returns True if 'obj' meets the entire set of conditions
+            when chained by AND/OR logic in the specified order, or False otherwise.
 
         """
         def condition_matches(obj, cond):
             """
-            E.g. cond might be:
-              { "attrName": "name", "operator": "LIKE", "value": "%gear%" }
-            or
-              { "attrName": "name", "operator": "NOT LIKE", "value": "_oot" }
-            We'll interpret % as multi-char, _ as single-char wildcard in a naive manner.
+                E.g. cond might be:
+                  { "attrName": "name", "operator": "LIKE", "value": "%gear%" }
+                or
+                  { "attrName": "name", "operator": "NOT LIKE", "value": "_oot" }
+                We'll interpret % as multi-char, _ as single-char wildcard in a naive manner.
             """
 
             operator = cond["operator"].upper()
@@ -742,7 +782,6 @@ class SQL(ToolCollection):
             attr_val, errors = self.get_sub_attr(obj, attr_name)
 
             #print(f"operator: {operator},  val: {value},  attr_name: {attr_name}, attr_val: {attr_val}")
-
 
             if errors:
                 return errors
@@ -811,7 +850,6 @@ class SQL(ToolCollection):
         overall_result = None
 
         for i, cond in enumerate(conditions):
-            #print(f"{i} {cond}")
 
             attr_name = cond["attrName"]
 
@@ -839,7 +877,6 @@ class SQL(ToolCollection):
             return True, None
 
         return overall_result, None
-
 
     def apply_assignments(self, obj, assignments):
         """Set values  """
@@ -962,37 +999,55 @@ class SQL(ToolCollection):
             conditions = self.parse_where_conditions(where_str)
 
             # gather objects of type update_object_type
+
+            # TODO object dict created in __init__, needs to update during runtime
             #doc_objs = self.document_objects()
             doc_objs = self.doc_dict
             all_objs = doc_objs.get(object_type, None)
             # validate object_type
+
             if all_objs is None:
                 return f"Error: '{object_type}' is not a valid object type, valid objects are: {list(doc_objs.keys())} "
             # handle no objects
             if all_objs.count == 0:
                 return f"Error: No '{object_type}' objects in the current design"
 
+            #TODO validate sort value, need to check if sort attr exists in class definition, not first object
             # check ORDER BY attribute is valid
-            if order_attr != None:
-                sort_val, errors = self.get_sub_attr(all_objs.item(0), order_attr)
-                if errors:
-                    return f"Error: ORDER BY field '{order_attr}' is not a valid attribute for '{object_type}': {errors}"
+            #if order_attr != None:
+            #    sort_val, errors = self.get_sub_attr(all_objs.item(0), order_attr)
+            #    if errors:
+            #        return f"Error: ORDER BY field '{order_attr}' is not a valid attribute for '{object_type}': {errors}"
+            sort_val = order_attr
 
+            return_dict = {
+                "statementType": statement_type,
+                "objectType": object_type,
+                "errors": {}
+            }
 
             # filter objects them
             filtered_objs = []
             for o in all_objs:
                 match, errors = self.match_object_against_conditions(o, conditions)
 
+                # TODO an object attribute whose usual type is another fusion object may be None
+                # should return a succinct error
                 if errors != None:
-                    return errors
+                    #print(f"Error: object match")
+                    continue
+                    #return errors
 
                 if match == True:
                     obj_dict = {
                         'obj': o,
                     }
                     if order_attr != None:
+                        # TODO handle None sort values better
                         sort_val, errors = self.get_sub_attr(o, order_attr)
+                        if sort_val is None:
+                            continue
+
                         obj_dict["sort_val"] = sort_val
 
                     filtered_objs.append(obj_dict)
@@ -1004,11 +1059,12 @@ class SQL(ToolCollection):
                 if order_dir == "DESC":
                     reverse = True
 
+                #filtered_objs = [o for o in filtered_objs if o != None]
+                #print(filtered_objs)
                 filtered_objs = sorted(filtered_objs, key=lambda item: item["sort_val"], reverse=reverse)
 
             # convert back to list of objects
             filtered_objs = [i["obj"] for i in filtered_objs]
-
 
             # apply offset/limit
             if offset_val:
@@ -1019,11 +1075,6 @@ class SQL(ToolCollection):
             if limit_val and limit_val < len(filtered_objs):
                 filtered_objs = filtered_objs[:limit_val]
 
-            return_dict = {
-                "statementType": statement_type,
-                "objectType": object_type,
-                "errors": {}
-            }
 
             # If we have update_object_type => it's an UPDATE statement
             # otherwise, we treat it as SELECT
@@ -1062,9 +1113,10 @@ class SQL(ToolCollection):
                         break
                         #return json.dumps(return_dict)
 
-                    val, errors = self.get_sub_attr(filtered_objs[0], attr_name)
-                    if errors != None:
-                        return_dict["errors"][attr_name] = errors
+                    #val, errors = self.get_sub_attr(filtered_objs[0], attr_name)
+                    #if errors != None:
+                    #    print(f"Error: sub_attr")
+                    #    return_dict["errors"][attr_name] = errors
 
                 if len(return_dict["errors"]) > 0:
                     return json.dumps(return_dict)
@@ -1077,6 +1129,8 @@ class SQL(ToolCollection):
                     for attr in attribute_list:
 
                         val, errors = self.get_sub_attr(obj, attr)
+                        if errors:
+                            print(f"{obj}: {errors}")
 
                         if hasattr(val, "objectType"):
                             val = str(val)
@@ -1491,82 +1545,6 @@ class GetStateData(ToolCollection):
 
         except Exception as e:
             return None
-
-    @ToolCollection.tool_call
-    def get_timeline_entities(self) -> str:
-        """
-            {
-              "name": "get_timeline_entities",
-              "description": "Returns a JSON array describing all items in the Fusion 360 timeline, including entity info, errors/warnings, healthState, etc.",
-
-              "parameters": {
-                "type": "object",
-                "properties": { },
-                "required": [],
-                "returns": {
-                  "type": "string",
-                  "description": "A JSON array; each entry includes timeline item data such as index, name, entityType, healthState, errorOrWarningMessage, and the its associated entity, whch can be any type of Fusion 360 object. The entityToken is provide for the associated entity."
-                }
-              }
-            }
-        """
-
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return "Error: Fusion 360 is not running."
-
-            product = app.activeProduct
-            if not product or not isinstance(product, adsk.fusion.Design):
-                return "Error: No active Fusion 360 design found."
-
-            design = adsk.fusion.Design.cast(product)
-            timeline = design.timeline
-
-            timeline_attr_names = [
-                "name",
-                "index",
-                "isSuppressed",
-                "errorOrWarningMessage",
-                "healthState",
-                "parentGroup",
-                "isGroup",
-                "isCollapsed",
-                "objectType",
-                "entityToken",
-                "entity.name",
-                "entity.entityToken"
-
-            ]
-
-
-            timeline_info = []
-            for t_item in timeline:
-
-                if not t_item:
-                    continue
-
-                item_data = {}
-                for attr in timeline_attr_names:
-
-                    val, error = self.get_sub_attr(t_item, attr)
-                    if val is None:
-                        continue
-
-                    if attr == "entity.entityToken":
-                        val = self.set_obj_hash(t_item.entity)
-
-                    item_data[attr] = val
-
-                item_data["entityToken"] = self.set_obj_hash(t_item, f"timline_obj{t_item.name}")
-
-                timeline_info.append(item_data)
-
-            return json.dumps(timeline_info)
-
-        except:
-            return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
-
 
     #@ToolCollection.tool_call
     def get_dict(self):

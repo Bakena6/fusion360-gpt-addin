@@ -49,7 +49,15 @@ FROM Parameter",
 "SELECT hasTexture,name,id\n\
 FROM Appearance WHERE name LIKE '%oak%'",
 
-"UPDATE SketchCurve SET radius = 1.1 WHERE objectType LIKE '%circle%'"
+"UPDATE SketchCurve SET radius = 1.1 WHERE objectType LIKE '%circle%'",
+
+"SELECT entity.entityToken, index, errorOrWarningMessage, healthState, isRolledBack FROM TimelineObject",
+
+"SELECT name,entityToken, assemblyContext, assemblyContext.name, assemblyContext.entityToken FROM BRepBody WHERE assemblyContext.name LIKE '%J0-Top-Plate:1%'",
+
+"SELECT index, name, objectType,  isGroup FROM TimelineObject",
+
+"SELECT name, physicalProperties.area, physicalProperties.volume, physicalProperties.mass, physicalProperties.centerOfMass FROM BRepBody ORDER BY physicalProperties.area DESC LIMIT 300"
 
 
 

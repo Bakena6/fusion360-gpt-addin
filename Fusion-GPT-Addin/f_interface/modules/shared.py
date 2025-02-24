@@ -392,13 +392,23 @@ class ToolCollection:
         errors = None
 
         processed_path = f"{target_entity.__class__.__name__}"
+        #print(entity.name)
+
 
         # work down through attrs
         n_attrs = len(attr_parts)
         for index, attr_str in enumerate(attr_parts):
+            #print(f"{index}, {target_entity} {target_entity.objectType} {attr_str}")
 
-            # alwas check has attr in cas attr exists but is None
-            attr_exists = hasattr(target_entity, attr_str)
+            try:
+                # alwas check has attr in cas attr exists but is None
+                attr_exists = hasattr(target_entity, attr_str)
+            except Exception as e:
+                print(entity.name)
+                errors = f"Error: get_sub_attr: {e}"
+                attr_exists = False
+                attr = None
+                break
 
             if attr_exists == False:
                 # successfully accessed attributes
@@ -413,8 +423,8 @@ class ToolCollection:
                 break
 
             attr = getattr(target_entity, attr_str)
-            if attr is None:
-                break
+            #if attr is None:
+            #    break
 
             # successfully accessed attributes
             processed_path += f".{attr_str}"
@@ -422,6 +432,7 @@ class ToolCollection:
             if index < n_attrs-1:
                 # when not last iteration
                 target_entity = attr
+
 
         # if object is entity token, make sure we store object reference
         if attr_str == "entityToken" or attr_str == "id":
@@ -540,11 +551,15 @@ class ToolCollection:
         token_str = None
         entity_type = entity.__class__.__name__
 
+        #print(f"set_obj_hash: {entity.objectType}")
+
         if isinstance(entity, adsk.fusion.Component):
             token_str = self.get_comp_str(entity)
 
         elif isinstance(entity, adsk.fusion.Occurrence):
+
             token_str = getattr(entity, "entityToken", None)
+
 
         elif isinstance(entity, adsk.fusion.BRepBodies):
 

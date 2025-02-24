@@ -55,7 +55,8 @@ CMD_NAME = "Prompt Window"
 
 CMD_ID = f'{config.COMPANY_NAME}_{config.ADDIN_NAME}_{CMD_NAME}'
 CMD_Description = "Prompt Window"
-IS_PROMOTED = False
+#IS_PROMOTED = False
+IS_PROMOTED = True
 
 # Global variables by referencing values from /config.py
 WORKSPACE_ID = config.design_workspace
@@ -134,7 +135,7 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
 
     # Connect to the events that are needed by this command.
     futil.add_handler(args.command.execute, command_execute, local_handlers=local_handlers)
-    #futil.add_handler(args.command.inputChanged, command_input_changed, local_handlers=local_handlers)
+   # futil.add_handler(args.command.inputChanged, command_input_changed, local_handlers=local_handlers)
     futil.add_handler(args.command.destroy, command_destroy, local_handlers=local_handlers)
 
 
@@ -165,16 +166,16 @@ def command_execute(args: adsk.core.CommandEventArgs):
             height=palette_height
         )
 
-        futil.add_handler(palette.closed, palette_closed)
-        futil.add_handler(palette.navigatingURL, palette_navigating)
-        futil.add_handler(palette.incomingFromHTML, palette_incoming)
-        futil.log(f'{CMD_NAME}: Created a new palette: ID = {palette.id}, Name = {palette.name}')
+    #palette.isVisible = True
 
-    palette.isVisible = True
+    futil.add_handler(palette.closed, palette_closed)
+    futil.add_handler(palette.navigatingURL, palette_navigating)
+    # created
+    futil.add_handler(palette.incomingFromHTML, palette_incoming)
+
 
     PALETTE_DOCKING = adsk.core.PaletteDockingStates.PaletteDockStateFloating
     palette.dockingState = PALETTE_DOCKING
-
     screen_width = app.activeViewport.width
     screen_height = app.activeViewport.height
 
@@ -184,9 +185,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
     palette.left = left
     palette.top = top
 
-
     server_itf.reload_interface()
-
 
 
 
@@ -195,15 +194,13 @@ def palette_closed(args: adsk.core.UserInterfaceGeneralEventArgs):
     # General logging for debug.
     futil.log(f'{CMD_NAME}: Palette was closed.')
 
+
 # Use this to handle a user navigating to a new page in your palette.
 def palette_navigating(args: adsk.core.NavigationEventArgs):
-    # General logging for debug.
-    #futil.log(f'{CMD_NAME}: Palette navigating event.')
 
     # Get the URL the user is navigating to:
     url = args.navigationURL
 
-    log_msg = f"User is attempting to navigate to {url}\n"
     futil.log(log_msg, adsk.core.LogLevels.InfoLogLevel)
 
     # Check if url is an external site and open in user's default browser.
@@ -283,9 +280,9 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
         # call function through the server interface class
         server_itf.call_function(function_name, function_args, tool_call_id)
         html_args.returnData = ""
+
     else:
         html_args.returnData = ""
-
 
 
 
@@ -294,9 +291,6 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
 # This function will be called when the user completes the command.
 def command_destroy(args: adsk.core.CommandEventArgs):
 
-    #palettes = ui.palettes
-    #palette = palettes.itemById(PALETTE_ID)
-    #palette.sendInfoToHTML("load_initial_settings", json.dumps({"1": 1}))
 
     futil.log(f'{CMD_NAME} Command Destroy Event')
     global local_handlers

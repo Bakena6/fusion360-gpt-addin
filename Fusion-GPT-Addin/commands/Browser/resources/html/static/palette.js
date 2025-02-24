@@ -235,7 +235,6 @@ class Thread {
             var logHeader = document.createElement('div');
             logHeader.className = "log-header"
 
-
             // keep function body
             this.nFunction += 1;
             var functionArgsEl = document.createElement('textarea');
@@ -410,6 +409,9 @@ function setWindowHeight() {
     let consoleOutputHeight = consoleOutput.offsetHeight;
 
     let newOutputHeight = window.innerHeight - (tabContainerHeight + inputContainerHeight + consoleOutputHeight ) ;
+
+    newOutputHeight = Math.max(5, newOutputHeight);
+
     pageContent.style.height = `${newOutputHeight}px`;
 
 
@@ -437,74 +439,100 @@ class Control{
 
         this.submitOnEnter = true;
 
-
         //this.createToolElements();
         this.tools = [];
-
 
         setWindowHeight();
 
         //window.addEventListener('load', (event) => { })
 
-       this.stateValues();
+        this.stateValues();
         this.createSql();
+        
+        // TODO
+        // send initial setting, needs a slight execution delay
+        setTimeout(() => {
+            this.getSettings();
+        }, 100);
+
+
     }; // end constructor
 
 
-     send_setting_val(element){
+    /*
+    * send setting from js to
+    */
+     send_setting_val(elements){
+
+        const settingsList = [];
+
+        elements.forEach(element => {
+
+            const setting_args = {
+                "input_type": element.type,
+                "setting_id": element.id,
+                "setting_name": element.name,
+                "setting_class": element.className,
+            }
+
+            if (element.type == "checkbox"){
+                setting_args["setting_val"] = element.checked;
+            } else{
+                setting_args["setting_val"] = element.value;
+            };
 
 
-        const function_args = {
-            "input_type": element.type,
-            "setting_id": element.id,
-            "setting_name": element.name,
-        }
+            if (element.value == "None"){
+                setting_args["setting_val"] = null;
+            };
+            
+            //console.log(input.id, input.value );
+            settingsList.push(setting_args);
 
-        if (element.type == "checkbox"){
-            function_args["setting_val"] = element.checked;
-        } else{
-            function_args["setting_val"] = element.value;
-        };
-
-
-        if (element.value == "None"){
-            function_args["setting_val"] = null;
-        };
-
-        console.log(function_args)
+        }); // end for each
 
         const args = {
             "function_name": "update_settings",
-            "function_args": {settings_dict: function_args},
+            "function_args": {settings_list: settingsList},
         };
 
         adsk.fusionSendData("function_call", JSON.stringify(args))
             .then((result) =>{ });
     };
 
+
+
     getSettings(){
+
         const settingInputs = document.querySelectorAll('.setting-input');
 
-        settingInputs.forEach(input => {
-            console.log(input.id, input.value );
-            this.send_setting_val(input);
+        var settingsList = [];
 
+        settingInputs.forEach(input => {
+            //console.log(input.id, input.value );
+            settingsList.push(input);
+            //this.send_setting_val(input);
         }); // end for each
+
+        this.send_setting_val(settingsList);
 
     }
 
 
+    /*
+    * 
+    */
     stateValues(){
+
         
-        //debugCb = document.getElementById('debugCb');
+        // set div height on window resize
         window.addEventListener("resize", (event) => {setWindowHeight()});
 
         const settingInputs = document.querySelectorAll('.setting-input');
 
         settingInputs.forEach(input => {
             console.log(input.id, input.value );
-            //this.send_setting_val(input);
-            input.addEventListener("change", (event) => this.send_setting_val(event.target));
+            input.addEventListener("change", (event) => this.send_setting_val([event.target]));
 
         }); // end for each
 
@@ -556,7 +584,10 @@ class Control{
 
         });// end submit on enter 
 
-    }; // end connect inputs
+
+
+
+    }; // end state values
 
 
     /*
@@ -573,90 +604,128 @@ class Control{
                 e.style.display = "none"; 
             }
         }) // end for each
-    }; // end showHideElement
+        }; // end showHideElement
 
 
 
 
-    /*
-     * #TODO probably find better name
-     * server interface functions
-     * =================================
-     */
+        /*
+         * #TODO probably find better name
+         * server interface functions
+         * =================================
+         */
 
-    /*
-     * playback API call/response
-     */
-     playback(){
-        const args = {function_name: "playback" };
-        adsk.fusionSendData("function_call", JSON.stringify(args))
-            .then((result) =>{ });
-        this.outputContainer.innerHTML = "";
-    };
+        /*
+         * playback API call/response
+         */
+         playback(){
+            const args = {function_name: "playback" };
+            adsk.fusionSendData("function_call", JSON.stringify(args))
+                .then((result) =>{ });
+            this.outputContainer.innerHTML = "";
+        };
 
-     clearOutputs(){
-        this.outputContainer.innerHTML = "";
+         clearOutputs(){
+            this.outputContainer.innerHTML = "";
 
-    };
+        };
 
-    reloadModules(){
-        const args = {function_name: "reload_modules" };
-        // include current checkbox settings
-        adsk.fusionSendData("function_call", JSON.stringify(args))
-            .then((result) =>{ this.get_current_cb_val(); }); // end then
-    }; // end reload modules
+        reloadModules(){
+            const args = {function_name: "reload_modules" };
+            // include current checkbox settings
+            adsk.fusionSendData("function_call", JSON.stringify(args))
+                .then((result) =>{ this.get_current_cb_val(); }); // end then
+        }; // end reload modules
 
-    resize(){
-        const args = {function_name: "resize_palette" };
-        adsk.fusionSendData("function_call", JSON.stringify(args))
-            .then((result) =>{ }); // end then
-    };
+        resize(){
+            const args = {function_name: "resize_palette" };
+            adsk.fusionSendData("function_call", JSON.stringify(args))
+                .then((result) =>{ }); // end then
+        };
 
-    reconnect(){
-        const args = {function_name: "connect" };
-        adsk.fusionSendData("function_call", JSON.stringify(args))
-            .then((result) =>{ }); // end then
-    }; // end reconnect
+        reconnect(){
+            const args = {function_name: "connect" };
+            adsk.fusionSendData("function_call", JSON.stringify(args))
+                .then((result) =>{ }); // end then
+        }; // end reconnect
 
-    reloadFusionIntf(){
-        const args = {function_name: "reload_fusion_intf" };
-        adsk.fusionSendData("function_call", JSON.stringify(args))
-            .then((result) =>{ 
-                this.get_current_cb_val();
-            }); // end then
-    };
+        reloadObjectDict(){
+            const args = {function_name: "reload_object_dict" };
+            adsk.fusionSendData("function_call", JSON.stringify(args))
+                .then((result) =>{ 
+                    this.get_current_cb_val();
+                }); // end then
+        };
 
-    uploadTools() {
-        const args = {function_name: "upload_tools" };
-        adsk.fusionSendData("function_call", JSON.stringify(args))
-            .then((result) =>{ });
-    } // end uploadTools
 
-    uploadModelSettings() {
-        this.getSettings();
-        const args = {function_name: "upload_model_settings" };
-        adsk.fusionSendData("function_call", JSON.stringify(args))
-            .then((result) =>{ });
-    } // end uploadTools
+        reloadFusionIntf(){
+            const args = {function_name: "reload_fusion_intf" };
+            adsk.fusionSendData("function_call", JSON.stringify(args))
+                .then((result) =>{ 
+                    this.get_current_cb_val();
+                }); // end then
+        };
 
-    /*
-     * list availible Models
-     */
-    getModels(){
-        const args = {function_name: "get_models" };
-        adsk.fusionSendData("function_call", JSON.stringify(args))
-            .then((str_results) =>{ 
-                const results = JSON.parse(str_results);
-                const modelsList = document.getElementById("modelsList");
-                modelsList.innerHTML = "";
-                results.forEach(option => {
-                    const newOption = document.createElement('option');
-                    newOption.value = option;
-                    newOption.text = option;
-                    modelsList.add(newOption);
-                });// end foreach
-            });
-    };
+        uploadTools() {
+            const args = {function_name: "upload_tools" };
+            adsk.fusionSendData("function_call", JSON.stringify(args))
+                .then((result) =>{ });
+        } // end uploadTools
+
+        uploadModelSettings() {
+            this.getSettings();
+            const args = {function_name: "upload_model_settings" };
+            adsk.fusionSendData("function_call", JSON.stringify(args))
+                .then((result) =>{ });
+        } // end uploadTools
+
+        /*
+         * list availible Models
+         */
+        getModels(){
+            const args = {function_name: "get_models" };
+            adsk.fusionSendData("function_call", JSON.stringify(args))
+                .then((str_results) =>{ 
+                    const results = JSON.parse(str_results);
+                    const modelsList = document.getElementById("modelsList");
+                    modelsList.innerHTML = "";
+                    results.forEach(option => {
+                        const newOption = document.createElement('option');
+                        newOption.value = option;
+                        newOption.text = option;
+                        modelsList.add(newOption);
+                    });// end foreach
+                });
+        };
+
+
+    toggleHelp(){
+
+        let elements = document.querySelectorAll(".help");
+
+        elements.forEach(e => {
+
+            const parentE = e.parentElement;
+
+            if ((e.style.display == "") |(e.style.display == "none"))  {
+                e.style.display = "block"; 
+                parentE.style.borderWidth = "1px";
+                parentE.style.padding = "5px";
+                parentE.style.borderRadius = "5px";
+                parentE.style.borderColor = "red";
+                parentE.style.borderStyle = "solid";
+            } else {
+                e.style.display = "none"; 
+                parentE.style.border = ""; 
+                parentE.style.padding = "1px";
+            }
+
+        }) // end for each
+
+        setWindowHeight();
+    }
+
+
 
     /*
      * list availible Models
@@ -667,7 +736,7 @@ class Control{
             .then((str_results) =>{ 
                 const results = JSON.parse(str_results);
                 const instructionsList = document.getElementById("instructionsList");
-                instructionsList.innerHTML = "";
+                instructionsList.innerHTML = "SketchPoint";
                 results.forEach(option => {
                     const newOption = document.createElement('option');
                     newOption.value = option;
@@ -721,6 +790,7 @@ class Control{
     }; // end start record
 
      async toggleTools() {
+
          if (this.tools.length == 0){
             this.tools = await this.getTools();
             this.createToolElements();
@@ -811,9 +881,9 @@ class Control{
       }
       return count;
     }
+
     createSql(){
         //console.log(queryStrings);
-
         //querysContainer defined in seperate file
         let querysContainer = document.getElementById('sqlContent');
 
@@ -1086,9 +1156,12 @@ window.fusionJavaScriptHandler = {
                 console.log(messageData);
                 thread.toolCallResponse(messageData);
 
+            } else if (action === "get_initial") {
+                control.getSettings();
+
             } else if (action === "connection_error") {
                 connectionError();
-                
+
             // TODO print all errors to browser console
             } else if (action === "print") {
                 console.log(messageData);
@@ -1109,6 +1182,8 @@ window.fusionJavaScriptHandler = {
         }
         //return "OK";
     },
+
+
 };
 
 

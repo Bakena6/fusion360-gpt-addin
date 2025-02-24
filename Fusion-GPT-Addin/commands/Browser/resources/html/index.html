@@ -5,8 +5,6 @@
     <meta charset="UTF-8">
     <title>STSI GPT Addin</title>
 
-    <script src="static/sql_test.js"></script>
-    <script src="static/palette.js"></script>
 
     <link rel="stylesheet" type="text/css" href="static/style.css">
 
@@ -37,15 +35,10 @@
 
 
         <div id="sqlContainer" class="content-section content-tab" style="display:none;">
-
           <div id="sqlContent" >
-
-
           </div>
-
         </div>
         <!-- end sqlContainer -->
-
 
         <!-- pageWrapper -->
       </div>
@@ -72,6 +65,7 @@
           <input type="checkbox" id="showSettings" name="showSettings" class="display-input"  checked />
           <label for="Text Size">Text Size:</label>
           <input type="number" value=20 id="textSizeInput" name="textSize" class="display-input" />
+          <button type="button" id="toggleHelp" onclick="control.toggleHelp()">Toggle Help</button>
 
 
           <button type="button" onclick="control.reloadModules()">Reload Modules</button>
@@ -98,10 +92,18 @@
         <div id=modelSettings class="setting-row">
 
 
-          <div class="select-container">
+          <div class="select-container input-container">
 
-            <label for="modelsList">Model:</label>
-            <select id="modelsList" name="model_name" class="setting-text setting-input">
+            <div class="help">Select the assistant model. Button click queries Open AI API for available models, (non assistant models filtered out ). Common models included by default. Changes not applied until "Upload Model Settings" Clicked.</div>
+
+
+           <div class=dropdown-label>
+            <label for="modelsList">model:</label>
+            <button type="button" onclick="control.getModels()">refresh</button>
+           </div>
+
+
+            <select id="modelsList" name="model_name" class="setting-input server-setting">
               <option value="o3-mini">o3-mini</option>
               <option value="o1">o1</option>
               <option value="gpt-4o">gpt-4o</option>
@@ -109,29 +111,31 @@
               <option value="gpt-4 turbo">gpt-4 turbo</option>
             </select> 
 
-          <button type="button" onclick="control.getModels()">Get Models</button>
 
           </div>
 
 
+          <div class="select-container input-container">
+            <div class="help">Lists available files in the <addin_root>/oai_container/system_instructions directory, you may want to use different base system instructions for different models. Changes not applied until "Upload Model Settings" Clicked.</div>
 
 
-
-          <div class="select-container">
-
-           <label for="instructionsList">Instructions:</label>
-           <select id="instructionsList" name="instructions_name" class="setting-text setting-input">
+           <div class=dropdown-label>
+            <label for="instructionsList">instructions: </label>
+            <button type="button" onclick="control.getInstructions()">refresh</button>
+           </div>
+           <select id="instructionsList" name="instructions_name" class="setting-input server-setting">
               <option value="system_instructions.txt">system_instructions.txt</option>
            </select> 
 
-          <button type="button" onclick="control.getInstructions()">Get Instructions</button>
-
           </div>
 
-          <div class="select-container">
 
+
+          <div class="select-container input-container">
+
+            <div class="help">Reasoning effort for the assistant model. Only valid for reasoning models (o1, o3), set to None for all other models. Changes not applied until "Upload Model Settings" Clicked.</div>
            <label for="reasoningEffort">reasoning_effort:</label>
-           <select id="reasoningEffort" name="reasoning_effort" class="setting-text setting-input">
+           <select id="reasoningEffort" name="reasoning_effort" class="setting-input server-setting">
               <option value=None >None</option>
               <option value="low">low</option>
               <option value="medium">medium</option>
@@ -142,18 +146,18 @@
 
           </div>
 
-          
 
+          <div class="input-container">
 
+            <br>
 
+            <div class="help">Uploads current settings to the OpenAI Assistant. This includes the  model type, system instructions, reasoning effort and all tool (function) definitions (see "Tools" Tab)</div>
 
+            <button type="button" class="control-button" onclick="control.uploadModelSettings()">Upload Model Settings</button>
 
-          <!--
-          <button type="button" class="control-button" onclick="control.uploadPrompt()">Upload Prompt</button>
-          <button type="button" class="control-button" onclick="control.uploadTools()">Upload Tools</button>
-          -->
+          </div>
+          <!-- end input-row-->
 
-          <button type="button" class="control-button" onclick="control.uploadModelSettings()">Upload Model Settings</button>
 
 
         </div>
@@ -162,42 +166,117 @@
         <div class="setting-row">
           <!--
             <button type="button" onclick="reconnect()">Reconnect</button>
-          -->
-          <button type="button" onclick="control.reloadModules()">Reload Modules</button>
-          <button type="button" onclick="control.reloadFusionIntf()">Reload Fusion Intf</button>
-          <button type="button" onclick="control.clearOutputs()">Clear Outputs</button>
-          <button type="button" onclick="control.playback()">Playback</button>
           <button type="button" onclick="control.resize()">Resize</button>
-          <button type="button" onclick="reloadStyle()">ReloadStyle</button>
-          <button type="button" onclick="control.resetAll()">Reset</button>
+          -->
+
+          <div class="select-container input-container">
+            <div class="help">Reloads the Fusion Interface class, useful when debugging</div>
+            <button type="button" onclick="control.reloadFusionIntf()">Reload Fusion Intf</button>
+          </div>
+
+          <div class="select-container input-container">
+            <div class="help">Clears outputs in the "Prompt Output tab"</div>
+            <button type="button" onclick="control.clearOutputs()">Clear Outputs</button>
+          </div>
+
+          <div class="select-container input-container">
+            <div class="help">When "record_playback" is selected, all Assistant messages are stored locally. When "playback" is clicked all messages will be rerun. This is useful when debugging, as you don't have waste tokens on actual API call. Note: for complex/ long runs object references may be lost, causing additional errors</div>
+            <button type="button" onclick="control.playback()">Playback</button>
+          </div>
+
+          <div class="select-container input-container">
+            <div class="help">Reloads the style sheet (css file). Useful for debugging style/formatting on dynamically generated html </div>
+            <button type="button" onclick="reloadStyle()">Reload Style</button>
+
+          </div>
+
+
+          <div class="select-container input-container">
+            <div class="help">//TODO</div>
+            <button type="button" onclick="control.resetAll()">Reset</button>
+          </div>
 
 
         </div>
         <!-- end setting row-->
 
+
+
         <div class="setting-row">
 
-          <label for="showRuns">Show Runs:</label>
-          <input type="checkbox" id="showRuns" name="show_runs" class="display-input"  checked />
-          <label for="showSteps">Show Steps:</label>
-          <input type="checkbox" id="showSteps" name="show_steps" class="display-input" checked />
+          <div class="input-container">
+            <div class="help">On start/reload, this program stores create a dictionary with references to document objects (Component, Occurrence, Sketch, BRepBody, Appearance, etc..) By default, in excludes Sketch child entities (SketchCurve, SketchPoint, etc..) Because even for simple sketch this may include hundreds or thousands of objects. In a complex assembly this will slow down performance, however modeling is rarely done in a top level assembly. Enable this when you are using the program to create and modify sketches. You must click the "Reload Index" button after changing the value</div>
 
-          <label for="showResults">Show Results:</label>
-          <input type="checkbox" id="showResults" name="show_results" class="display-input" checked />
+            <label for="indexSketchChildren">Index Sketch Child:</label>
+            <input type="checkbox" id="indexSketchChildren" name="index_sketch_children" class="setting-input fusion-setting"   />
+
+          </div>
+
+
+          <div class="input-container">
+            <div class="help">(See Index Sketch Child Objects help text) By default, in excludes  BRepBody child entities (Vertex, Edge, Face, etc..) Because even for simple BRepBody this may include hundreds or thousands of objects. In a complex assembly this will slow down performance, however modeling is rarely done in a top level assembly. Enable this when you are using the program to create and modify BRepBody. You must click the "Reload Index" button after changing the value.</div>
+
+            <label for="indexBrepChildren">Index Brep Children:</label>
+            <input type="checkbox" id="indexBrepChildren" name="index_brep_children" class="setting-input fusion-setting"   />
+
+          </div>
+
+
+          <div class="input-container">
+            <div class="help">Reloads the internal object reference dictionary.</div>
+            <button type="button" onclick="control.reloadObjectDict()">ReloadIndex</button>
+          </div>
+
 
         </div>
-        <!-- end input row-->
+      <!-- end settings row-->
 
+
+
+        <!-- end display-setting: values for settings/ js html display-->
         <div class="setting-row">
 
-          <label for="logResults">Log Results:</label>
-          <input type="checkbox" id="logResults" name="log_results" class="setting-cb setting-input"  checked />
 
-          <label for="logErrors">Log Errors:</label>
-          <input type="checkbox" id="logErrors" name="log_errors" class="setting-cb setting-input"   checked />
+          <div class="input-container">
 
-          <label for="submitOnEnter">Submit on Enter:</label>
-          <input type="checkbox" id="submitOnEnter" name="submitOnEnter" class="display-input"   checked />
+            <div class="help"> Print function results in the Text Commands Window.</div>
+            <label for="logResults"> Log Results: </label>
+            <input type="checkbox" id="logResults" name="log_results" class="setting-input fusion-setting"  checked />
+
+          </div>
+
+          <div class="input-container">
+
+            <div class="help">Sends the text prompt to the model when the enter key is pressed.</div>
+            <label for="submitOnEnter"> Submit on Enter:</label>
+            <input type="checkbox" id="submitOnEnter" name="submitOnEnter" class="display-input"   checked />
+
+          </div>
+
+          <div class="input-container">
+
+            <div class="help">Shows "run" object response in console.</div> 
+            <label for="showRuns">Show Runs:</label>
+            <input type="checkbox" id="showRuns" name="show_runs" class="display-setting"  checked />
+
+          </div>
+
+          <div class="input-container">
+            <div class="help">Shows "step" object response in console.</div> 
+            <label for="showSteps">Show Steps:</label>
+            <input type="checkbox" id="showSteps" name="show_steps" class="display-setting" checked />
+          </div>
+         
+
+
+          <div class="input-container">
+            <div class="help">Shows "results" object response in console.</div> 
+            <label for="showResults">Show Results:</label>
+            <input type="checkbox" id="showResults" name="show_results" class="display-setting" checked />
+          </div>
+
+
+
 
 
         </div>
@@ -232,5 +311,10 @@
     <!--end body-->
   </body>
 
+    <script src="static/sql_test.js"></script>
+    <script src="static/palette.js"></script>
 
 </html>
+
+
+

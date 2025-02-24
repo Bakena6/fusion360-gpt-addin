@@ -1,5 +1,4 @@
 
-
 import adsk.core
 import adsk.fusion
 import adsk.cam
@@ -92,30 +91,45 @@ class GptClient:
         # current connection status
         self.connected = False
 
+        self.has_initial_settings = False
+
         # store call history for mock playback
         self.use_mock_server = False
         self.record_calls = True
+
         self.mock_server = MockServer()
 
         # tool call history
         self.user_messages = []
 
 
-    def update_settings(self, settings_dict):
+    # TODO sort setting type better
+    def update_settings(self, settings_list: list):
+
         """
         update state settings from js/html interface
         """
-        input_type = settings_dict["input_type"]
-        setting_name = settings_dict["setting_name"]
-        setting_val = settings_dict["setting_val"]
 
-        client_settings = ["instructions_name", "model_name", "reasoning_effort"]
-        if setting_name in client_settings:
-            current_val = getattr(self, setting_name, None)
-            setattr(self, setting_name, setting_val)
-            print(f"client: {setting_name}:  {current_val} => {setting_val}")
-        else:
-            self.fusion_itf.set_class_attr({"setting_name": setting_name, "setting_val": setting_val})
+        for settings_dict in settings_list:
+
+            input_type = settings_dict["input_type"]
+            setting_name = settings_dict["setting_name"]
+            setting_val = settings_dict["setting_val"]
+            setting_class = settings_dict["setting_class"].split(" ")
+
+            # must match with html classes
+            if "server-setting" in setting_class:
+                current_val = getattr(self, setting_name, None)
+                setattr(self, setting_name, setting_val)
+                print(f"client: {setting_name}:  {current_val} => {setting_val}")
+
+            elif "fusion-setting" in setting_class:
+                self.fusion_itf.set_class_attr({"setting_name": setting_name, "setting_val": setting_val})
+
+            else:
+                print(f"Error: Unlcassified setting : {settings_dict}")
+
+
 
 
 
@@ -129,12 +143,16 @@ class GptClient:
         importlib.reload(fusion_interface)
         self.fusion_itf._reload_modules()
         self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
+        # Get settings from js
+        self.get_initial_settings()
         print("Modules Reloaded")
 
+    def reload_object_dict(self):
+        """reload fusion document objects"""
+        return self.fusion_itf.reload_object_dict()
 
     def reload_fusion_intf(self):
         importlib.reload(fusion_interface)
-        #self.fusion_itf._reload_modules()
         self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
         print("Fusion Interface Reloded")
 
@@ -143,31 +161,35 @@ class GptClient:
         self.palette = self.ui.palettes.itemById(self.PALETTE_ID)
         importlib.reload(fusion_interface)
         self.fusion_itf = fusion_interface.FusionInterface(self.app, self.ui)
+        # Get settings from js
+        self.get_initial_settings()
 
         print("fusion_interface reloded")
 
+    # TODO
+    def get_initial_settings(self):
+        data = {"get_initial": "get_initial"}
+        self.palette.sendInfoToHTML("get_initial", json.dumps(data))
+
     def sendToBrowser(self, function_name, data):
         """send event data to js"""
-
         json_data = json.dumps(data)
         # create run output section in html
         self.palette.sendInfoToHTML(function_name, json_data)
 
+    # TODO add 
     def playback(self):
         """run recorded calls"""
         print(f"start playback")
-
 
         self.use_mock_server = True
         self.record_calls = False
         self.conn = self.mock_server
         self.mock_server.set_index(0)
-
         self.connected = True;
 
         for message in self.user_messages:
             self.send_message(message)
-
         self.use_mock_server = False
         self.record_calls = True
 
@@ -177,7 +199,6 @@ class GptClient:
         self.palette.setSize(900, 900)
 
     ### ====== server calls ====== ###
-
 
     def connect(self):
         """
@@ -454,9 +475,7 @@ class GptClient:
 
 
 
-
-
-
+# TODO put json validation code somewhere else
 def validate_and_repair_json(json_str: str) -> str:
     """
     Tries to load the given json_str as JSON. If it fails due to structural errors

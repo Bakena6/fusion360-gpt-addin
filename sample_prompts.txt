@@ -84,3 +84,9 @@ Hello, Please hide every occurrence other than fastening hardware or their conta
 # hardware isolation
 I would like to set all bodies relating to hardware visible, specificly: hardware, screws, bolts, nuts, washers, etc... Also components with the terms Thread, or M8 show be included. Can you first query the names of all the components. Then run a query that make all bodies visible whose parent component name includes relevent hardware related terms
 
+# display based on location
+hello, can you hide all bodies which are to the left of the yz center plane
+
+# physical properties
+can you hide the 10 largest bodies by volume
+
