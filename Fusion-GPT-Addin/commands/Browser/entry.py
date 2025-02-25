@@ -166,7 +166,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
             height=palette_height
         )
 
-    #palette.isVisible = True
+    palette.isVisible = True
 
     futil.add_handler(palette.closed, palette_closed)
     futil.add_handler(palette.navigatingURL, palette_navigating)

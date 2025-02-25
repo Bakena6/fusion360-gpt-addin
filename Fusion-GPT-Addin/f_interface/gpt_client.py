@@ -46,7 +46,6 @@ class MockServer:
         time.sleep(.0001)
         return True;
 
-
     def recv(self):
         time.sleep(.0001)
         msg = self.call_history[self.msg_index]
@@ -103,13 +102,13 @@ class GptClient:
         self.user_messages = []
 
 
+
     # TODO sort setting type better
     def update_settings(self, settings_list: list):
 
         """
         update state settings from js/html interface
         """
-
         for settings_dict in settings_list:
 
             input_type = settings_dict["input_type"]
@@ -126,6 +125,12 @@ class GptClient:
             elif "fusion-setting" in setting_class:
                 self.fusion_itf.set_class_attr({"setting_name": setting_name, "setting_val": setting_val})
 
+            elif "client-setting" in setting_class:
+                current_val = getattr(self, setting_name, None)
+                setattr(self, setting_name, setting_val)
+                print(f"client: {setting_name}:  {current_val} => {setting_val}")
+
+
             else:
                 print(f"Error: Unlcassified setting : {settings_dict}")
 
@@ -138,6 +143,11 @@ class GptClient:
         return tool to js from fusion interface
         """
         return self.fusion_itf.get_tools()
+
+    def print_response_messages(self):
+        calls = self.mock_server.call_history = []
+        for call in call:
+            print(call)
 
     def reload_modules(self):
         importlib.reload(fusion_interface)

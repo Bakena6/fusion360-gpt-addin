@@ -553,7 +553,6 @@ class Control{
 
         // checkbox input an associeated element to hide
         const displayToggleElements = [
-            {id: "showSettings", toggleElement: "#settingsContainer"},
             {id: "showRuns", toggleElement: ".response-container"},
             {id: "showSteps", toggleElement: ".tool-container"},
             {id: "showResults", toggleElement: ".function-results" },
@@ -607,6 +606,30 @@ class Control{
         }; // end showHideElement
 
 
+         toggleSettings(){
+
+            const button = document.getElementById("toggleSettings");
+            this.toggleElement("#settingsContainer", button);
+        };
+
+
+
+        toggleElement(elementSelector, button){
+            let elements = document.querySelectorAll(`${elementSelector}`);
+            elements.forEach(element => { 
+                if (element.style.display != "none") {
+                    element.style.display = "none"; 
+                    button.textContent = button.textContent.replace("Hide", "Show");
+                } else {
+                    element.style.display = "block"; 
+                    button.textContent = button.textContent.replace("Show", "Hide");
+
+                } // end if else
+
+            });
+            setWindowHeight();
+        };
+
 
 
         /*
@@ -625,9 +648,15 @@ class Control{
             this.outputContainer.innerHTML = "";
         };
 
+         printResponseMessages(){
+            const args = {function_name: "print_response_messages" };
+            adsk.fusionSendData("function_call", JSON.stringify(args))
+                .then((result) =>{ });
+            //this.outputContainer.innerHTML = "";
+        };
+
          clearOutputs(){
             this.outputContainer.innerHTML = "";
-
         };
 
         reloadModules(){
@@ -703,6 +732,17 @@ class Control{
 
         let elements = document.querySelectorAll(".help");
 
+        const button = document.getElementById("toggleHelp");
+
+        if (button.textContent.includes("Show") == true ) {
+            button.textContent = button.textContent.replace("Show", "Hide");
+        } else {
+
+            button.textContent = button.textContent.replace("Hide", "Show");
+
+        }
+
+
         elements.forEach(e => {
 
             const parentE = e.parentElement;
@@ -714,10 +754,14 @@ class Control{
                 parentE.style.borderRadius = "5px";
                 parentE.style.borderColor = "red";
                 parentE.style.borderStyle = "solid";
+                //parentE.style.display = "block";
+
             } else {
                 e.style.display = "none"; 
                 parentE.style.border = ""; 
                 parentE.style.padding = "1px";
+                //parentE.style.display = "flex";
+
             }
 
         }) // end for each

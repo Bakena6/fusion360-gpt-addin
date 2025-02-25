@@ -22,16 +22,14 @@ The use of dot notation is important because it allows you to access detailed in
  Your query statements should follow standard SQL format, for example:
 "SELECT parentComponent.name,parentComponent.entityToken FROM BRepBody WHERE appearance.name LIKE 'Steel' LIMIT 5 OFFSET 10" Returns: the parent Component name and entity token for the first 5 BRepBody objects (starting at 10) whose appearance contains the string steel.
 
-
 APPEARANCE
 You should always include the 'name' attribute when querying 'Appearance' and 'Material', the name provides details about the appearance/material type.
-
 
 JOINT TYPE
 The user may refer to a joint by its motion type, you can access this through a Joints jointMotion.jointType attribute, wich return an integer representing: 6:Ball, 3:Cylindrical, 4:PinSlot, 5:Planar, 1:Revolute, 2:Slider. You may also want to call jointMotion.objectType,which will return the full joint type string name.
 
 COMPARISON OPERATORS:
-When referring to null values in SQL expressions, use 'None' or NOT = 'None'
+You have access to the following operators: [=, <, >, <=, >=, LIKE]. When referring to null values in SQL expressions, use 'None' or NOT = 'None'
 
 This function returns a JSON like array containing the selected object information. 
 
@@ -59,6 +57,11 @@ If you receive an error during an operation, querying timeline data may provide 
 PHYSICAL PROPERTIES:
 Sometime you will need physical property data (area, volumne, mass, centerOfMass) about an Component, Occurrence or BRepBody, you can use the 'physicalProperties' attribute, here is a sample query Expression:
 <SELECT name, physicalProperties.volume, physicalProperties.mass, physicalProperties.centerOfMass FROM BRepBody ORDER BY physicalProperties.area>
+
+PROFILES
+When performing operations that involve sketch profiles, you should include the parameter 'face.area'.
+You can access the area of a Profile object through its 'face' attribute.
+
 
 Only use the LIMIT clause if you think it's necessary, or the user tells you to.
 
@@ -127,7 +130,7 @@ When creating a new sketch you call the "add" method on a component's "sketches"
 
 When creating a "sketchPoint" you will call the "add" method on a "sketch" objects "sketchPoints" object.
 IMPORTANT: Even though a sketch has to be associated with a 2D plane, sketch geometry such as points and lines, require 3d input points. This mean you can create 3d design inside a sketch.
-When creating sketch geometry you will often use the following path.
+When creating sketch geometry you will often use the following methods:
 
 {
 	"sketchCurves": {
@@ -144,7 +147,7 @@ When creating sketch geometry you will often use the following path.
 		"sketchFixedSplines": ["addByNurbsCurve"],
 		"sketchLines": [
 			"addAngleChamfer", "addByTwoPoints", "addCenterPointRectangle",
-			"addDistanceChamfer", "addThreePointRectangle", "addTwoPointRectangle"
+			"addDistanceChamfer", "addEdgePolygon", "addScribedPolygon", "addThreePointRectangle", "addTwoPointRectangle",
 		]
 
 }

@@ -13,7 +13,7 @@ import re
 from array import array
 import time
 import hashlib
-
+import random
 import base64
 import functools
 
@@ -124,126 +124,7 @@ class ToolCollection:
 
         return methods
 
-    def _find_component_by_name(self, component_name:str="comp1"):
-        """
-        called from methods, not Assistant directly
-        """
-
-        # Access the active design
-        app = adsk.core.Application.get()
-        design = adsk.fusion.Design.cast(app.activeProduct)
-        rootComp = design.rootComponent
-
-        if component_name == rootComp.name:
-            return rootComp, None
-
-        # Find the target component
-        targetComponent = None
-        for occ in rootComp.allOccurrences:
-            if occ.component.name == component_name:
-                targetComponent = occ.component
-                break
-
-
-        # return non errors when comp is found
-        errors = None
-        if not targetComponent:
-            # include list of availble comp names
-            componentNameList = set()
-            componentNameList.add(rootComp.name)
-
-            for occ in rootComp.allOccurrences:
-                componentNameList.add(occ.component.name)
-
-            errors =  f'Error: Component "{component_name}" not found. Available Components: \n{componentNameList}'
-
-
-        return targetComponent, errors
-
-    def _find_occurrence_by_name(self, occurrence_name: str="comp1:1"):
-        """
-        called from methods, not Assistant directly
-        """
-
-        # Access the active design
-        app = adsk.core.Application.get()
-        design = adsk.fusion.Design.cast(app.activeProduct)
-        rootComp = design.rootComponent
-
-        errors = None
-
-        try:
-
-            # Search all occurrences (including nested).
-            targetOccurrence = None
-            for occ in rootComp.allOccurrences:
-                if occ.name == occurrence_name:
-                    targetOccurrence = occ
-
-            # check beck occ path
-            if targetOccurrence is None:
-                for occ in rootComp.allOccurrences:
-                    if occ.fullPathName == occurrence_name:
-                        targetOccurrence = occ
-
-            if targetOccurrence is None:
-                occ_parts = occurrence_name.split(":")
-                occurrence_name = ''.join([ occ_parts[-2], ":", occ_parts[-1]])
-                for occ in rootComp.allOccurrences:
-                    if occ.name == occurrence_name:
-                        targetOccurrence = occ
-
-        except Exception as e:
-            print(e)
-
-        if not targetOccurrence:
-            errors = f"Error: No occurrence found for '{occurrence_name}'."
-
-        return targetOccurrence, errors
-
-    def _find_sketch_by_name(self, component, sketch_name):
-        """
-        called from methods, not Assistant directly, selects sketch in component
-        """
-        # Find the target sketch
-        targetSketch = None
-        for sketch in component.sketches:
-            if sketch.name == sketch_name:
-                targetSketch = sketch
-                break
-
-        errors = None
-        if not targetSketch:
-            sketch_names = []
-            for sketch in component.sketches:
-                sketch_names.append(sketch.name)
-
-            errors =  f'Error: Sketch "{sketch_name}" not found in component {component.name}. Available sketches in Component {component.name}: \n{sketch_names}'
-
-
-        return targetSketch, errors
-
-    def _find_body_by_name(self, component, body_name):
-        """
-        called from methods, not Assistant directly, selects sketch in component
-        """
-        body = None
-
-        body_names = []
-        for b in component.bRepBodies:
-            body_names.append(b.name)
-            if b.name == body_name:
-                body = b
-                break
-
-        errors = None
-        if not body:
-            errors =  f'Error: Body "{body_name}" not found in component {component.name}. Available bodies in Component {component.name}: \n{body_names}'
-
-
-        return body, errors
-
-    def _hash_string_to_fixed_length(self, input_string: str, length: int = 10) -> str:
+    def hash_string_to_fixed_length(self, input_string: str, length: int = 10) -> str:
         """
         Returns a stable, unique, alphanumeric hash string of the specified length
         for the given input_string. Uses SHA-256, then Base64, removing non-alphanumeric
@@ -562,7 +443,6 @@ class ToolCollection:
 
 
         elif isinstance(entity, adsk.fusion.BRepBodies):
-
             if ref_occ != None:
                 comp_token_str = self.get_comp_str(ref_occ.component)
                 token_str = f"{entity_type}_{comp_token_str}_{ref_occ.name}"
@@ -583,18 +463,16 @@ class ToolCollection:
 
         elif hasattr(entity, "name") == True:
             token_str = getattr(entity, "name", None)
+
+        elif isinstance(entity, adsk.core.Point3D):
+            token_str = f"{entity.objectType}_{entity.x}_{entity.y}_{entity.z}"
+
         else:
-            token_str = f"{entity_type}_{id(entity_type)}"
-            pass
-
-        if token_str == None:
-            print(f"NO TOKEN STRING")
-            print(entity)
-            print(dir(entity))
-            raise Exception("Token Is None")
+            token_str = f"{entity_type}_{id(entity)}"
 
 
-        hash_val = self._hash_string_to_fixed_length(str(token_str), length)
+
+        hash_val = self.hash_string_to_fixed_length(str(token_str), length)
         hash_val = f"{hash_val}"
 
         # check token exists
@@ -604,9 +482,7 @@ class ToolCollection:
             # if token refers to different entities
             if existing_entity != entity:
                 print("---")
-
                 print_string = f"Token exists: {hash_val}, token_str: {token_str}"
-
                 spacing = " " *  10
 
                 e0_id = id(existing_entity)

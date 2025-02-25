@@ -30,7 +30,28 @@ def print(string):
     futil.log(str(string))
 print(f"RELOADED: {__name__.split("%2F")[-1]}")
 
+
+
+
 class SQL(ToolCollection):
+
+    def get_error_hash(self, errors_dict, error_str):
+
+        #error_hash = f"error_id_" + self.hash_string_to_fixed_length(error_str, 5)
+
+        n_errors = len(errors_dict.keys())
+
+        rev_errors_dict = {v:k for k,v in errors_dict.items()}
+
+        existing_error = rev_errors_dict.get(error_str, None)
+
+        if existing_error is None:
+            errors_dict[f"error_{n_errors}"] = error_str
+
+        error_hash = rev_errors_dict.get(error_str)
+
+        return errors_dict, error_hash
+
 
     def __init__(self, ent_dict):
         super().__init__(ent_dict)
@@ -127,33 +148,86 @@ class SQL(ToolCollection):
               if "NOT IN", objVal not in that list
         """
 
+        #self.CONDITION_PATTERN = re.compile(
+        #    r"(?i)^\s*"
+        #    r"([\w\.]+)\s+"                        # Group(1) => attrName (e.g. "component.name")
+        #    r"(?P<maybeNot>NOT\s+)?"
+        #    r"(?P<baseOp>LIKE|=|<=|>=|<|>|IN)\s+"   # e.g. =, <, >, <=, >=, LIKE, or IN
+        #    r"(?:"                                 # Start a group of possible value forms
+        #        r"'(?P<strVal>[^']*)'|"            # a single-quoted string => group "strVal"
+        #        r"(?P<numVal>[+-]?\d+(?:\.\d+)?)(?![^'])|"  # a numeric => group "numVal"
+        #        r"(?P<boolVal>true|false)|"        # a boolean => group "boolVal"
+        #        # or a parenthesized list => group "inList"
+        #        r"\(\s*(?P<inList>[^)]*)\)"        # everything inside parentheses => group "inList"
+        #    r")"
+        #    r"\s*$"
+        #)
+
         self.CONDITION_PATTERN = re.compile(
             r"(?i)^\s*"
-            r"([\w\.]+)\s+"                        # Group(1) => attrName (e.g. "component.name")
-            r"(?P<maybeNot>NOT\s+)?"
-            r"(?P<baseOp>LIKE|=|<=|>=|<|>|IN)\s+"   # e.g. =, <, >, <=, >=, LIKE, or IN
-            r"(?:"                                 # Start a group of possible value forms
-                r"'(?P<strVal>[^']*)'|"            # a single-quoted string => group "strVal"
-                r"(?P<numVal>[+-]?\d+(?:\.\d+)?)(?![^'])|"  # a numeric => group "numVal"
-                r"(?P<boolVal>true|false)|"        # a boolean => group "boolVal"
-                # or a parenthesized list => group "inList"
-                r"\(\s*(?P<inList>[^)]*)\)"        # everything inside parentheses => group "inList"
+            r"([\w\.]+)"                          # Group(1): the attribute name (e.g. "component.name")
+            r"\s*(?P<maybeNot>NOT\s+)?"
+            r"(?P<baseOp>LIKE|=|<=|>=|<|>|IN)"    # the operator (e.g. LIKE, =, <=, etc.)
+            r"\s*"                                # allow zero or more spaces after the operator
+            r"(?:"                                # start of the value group
+              # Option 1: single-quoted string
+              r"'(?P<strVal>[^']*)'"
+              r"|"
+              # Option 2: numeric literal
+              r"(?P<numVal>[+-]?\d+(?:\.\d+)?)(?![^'])"
+              r"|"
+              # Option 3: boolean
+              r"(?P<boolVal>true|false)"
+              r"|"
+              # Option 4: parenthesized list => e.g. ( 'foo', 10, true )
+              r"\(\s*(?P<inList>[^)]*)\)"
+            r")"
+            r"\s*$"
+        )
+        #CONDITION_PATTERN = re.compile(
+        #    r"(?i)^\s*"
+        #    r"([\w\.]+)\s*"                      # attribute
+        #    r"(?P<maybeNot>NOT\s+)?"
+        #    r"(?P<baseOp>LIKE|=|<=|>=|<|>|IN)\s*"
+        #    r"(?:"
+        #      r"'(?P<strVal>[^']*)'"
+        #      r"|(?P<numVal>[+-]?\d+(?:\.\d+)?)"
+        #      r"|(?P<boolVal>true|false)"
+        #      r"|\(\s*(?P<inList>[^)]*)\)"
+        #    r")"
+        #    r"\s*$"
+        #)
+
+
+
+
+
+        #self.ASSIGN_PATTERN = re.compile(
+        #    r"(?i)^\s*"
+        #    r"([\w\.]+)\s*=\s*"    # captures the attribute name (with optional dots)
+        #    r"(?:"
+        #        r"'(?P<strVal>[^']*)'"                # single-quoted string
+        #        r"|(?P<numVal>[+-]?\d+(?:\.\d+)?)"    # integer or float
+        #        r"|(?P<boolVal>true|false)|"           # boolean
+        #        # or a parenthesized list => group "inList"
+        #        r"\(\s*(?P<inList>[^)]*)\)"        # everything inside parentheses => group "inList"
+        #    r")"
+        #    r"\s*$"
+        #)
+
+        self.ASSIGN_PATTERN =  re.compile(
+            r"(?i)^\s*"
+            r"([\w\.]+)\s*"                       # attribute (possibly "component.name")
+            r"=\s*"                                # equals sign with optional spaces around
+            r"(?:"
+              r"'(?P<strVal>[^']*)'"              # single-quoted string => group 'strVal'
+              r"|(?P<numVal>[+-]?\d+(?:\.\d+)?)"  # numeric => group 'numVal'
+              r"|(?P<boolVal>true|false)|"         # boolean => group 'boolVal'
+              r"\(\s*(?P<inList>[^)]*)\)"        # everything inside parentheses => group "inList"
             r")"
             r"\s*$"
         )
 
-        self.ASSIGN_PATTERN = re.compile(
-            r"(?i)^\s*"
-            r"([\w\.]+)\s*=\s*"    # captures the attribute name (with optional dots)
-            r"(?:"
-                r"'(?P<strVal>[^']*)'"                # single-quoted string
-                r"|(?P<numVal>[+-]?\d+(?:\.\d+)?)"    # integer or float
-                r"|(?P<boolVal>true|false)|"           # boolean
-                # or a parenthesized list => group "inList"
-                r"\(\s*(?P<inList>[^)]*)\)"        # everything inside parentheses => group "inList"
-            r")"
-            r"\s*$"
-        )
 
         self.obj_mapping = {
             "Component": {
@@ -164,8 +238,8 @@ class SQL(ToolCollection):
             },
         }
 
-        self.doc_dict = self.document_objects()
 
+        self.object_dict = self.document_objects()
 
 
     def describe_fusion_classes_2(self, class_names: list = ["Sketch"]) -> str:
@@ -475,8 +549,10 @@ class SQL(ToolCollection):
         return object_dict
 
 
+    # TODO handle more object types, make better
     def reload_object_dict(self):
-        """"""
+        """
+        """
 
         # body
         obj_mapping = {
@@ -514,9 +590,15 @@ class SQL(ToolCollection):
 
 
         print(self.obj_mapping)
-        self.doc_dict = self.document_objects()
+        self.object_dict = self.document_objects()
 
+    def get_object_dict(self):
 
+        if self.reload_object_index == True:
+            self.object_dict = self.document_objects()
+            print(f"object dict reloaded")
+
+        return self.object_dict
 
     @ToolCollection.tool_call
     def get_available_classes(self):
@@ -587,7 +669,46 @@ class SQL(ToolCollection):
 
         return conditions
 
-    def parse_set_clause(self, clause: str):
+    def parse_set_clause(self, set_clause_str: str):
+        """
+        e.g. "name='Housing', isLightBulbOn=true, value=10"
+        => [
+             { "attrName": "name", "value": "Housing" },
+             { "attrName": "isLightBulbOn", "value": True },
+             { "attrName": "value", "value": 10 }
+           ]
+        """
+        parts = [p.strip() for p in set_clause_str.split(',')]
+        out = []
+        for p in parts:
+            m = self.ASSIGN_PATTERN.match(p)
+            if not m:
+                return {"error": f"Unrecognized assignment: {p}"}
+
+            attr_name = m.group(1)
+            str_val   = m.group("strVal")
+            num_val   = m.group("numVal")
+            bool_val  = m.group("boolVal")
+
+            if str_val is not None:
+                final_val = str_val
+            elif num_val is not None:
+                if '.' in num_val:
+                    final_val = float(num_val)
+                else:
+                    final_val = int(num_val)
+            elif bool_val is not None:
+                final_val = (bool_val.lower() == 'true')
+            else:
+                final_val = None
+
+            out.append({"attrName": attr_name, "value": final_val})
+
+        return out
+
+
+
+    def _parse_set_clause(self, clause: str):
         """
             Parses something like:
                 name='Housing', value=10, appearance.name='Steel', isLightBulbOn=true
@@ -603,7 +724,7 @@ class SQL(ToolCollection):
         parts = [p.strip() for p in clause.split(',')]
         out = []
         for p in parts:
-            m = self.ASSIGN_CONDITION.match(p)
+            m = self.ASSIGN_PATTERN.match(p)
             if not m:
                 return {"error": f"Unrecognized assignment: {p}"}
 
@@ -632,48 +753,55 @@ class SQL(ToolCollection):
 
         return out
 
-    def _parse_single_condition(self, cond_text: str):
+    def parse_single_condition(self,cond_text: str):
+        """
+        Example usage to parse a single condition string like:
+          "name='body1'"
+          "value >= 10"
+          "component.nameNOTLIKE'%temp%'"
+          "flagNOTIN(true,false,'maybe')"
+        """
         m = self.CONDITION_PATTERN.match(cond_text.strip())
         if not m:
             return None
 
-        attr_name = m.group(1)
-        maybe_not = m.group("maybeNot")
-        base_op   = m.group("baseOp").upper()
-        str_val   = m.group("strVal")
-        num_val   = m.group("numVal")
-        bool_val  = m.group("boolVal")
+        attr_name = m.group(1)               # "name" or "component.name"
+        maybe_not = m.group("maybeNot")      # e.g. "NOT " or None
+        base_op   = m.group("baseOp").upper()# e.g. LIKE, =, <, >, <=, >=, IN
+        str_val   = m.group("strVal")        # string content if user typed 'foo'
+        num_val   = m.group("numVal")        # numeric if user typed 3.14 or 10
+        bool_val  = m.group("boolVal")       # "true" or "false" if user typed that
+        in_list   = m.group("inList")        # e.g. "10,'foo',true" inside parentheses
 
-        # If maybe_not is present => operator = "NOT <base_op>", e.g. "NOT LIKE", "NOT ="
+        # Combine "NOT" with the base operator if present
         if maybe_not:
-            operator = (maybe_not.strip() + " " + base_op).upper()
+            operator = (maybe_not.strip() + base_op).upper()  # e.g. "NOT LIKE", "NOT IN"
         else:
             operator = base_op
 
-        # Determine final value
-        if str_val is not None:
-            # It's a string
+        # Decide final value
+        value = None
+        if in_list is not None:
+            # parse the in_list e.g. "10, 'foo', true"
+            value = parse_in_list(in_list)
+        elif str_val is not None:
             value = str_val
         elif num_val is not None:
-            # interpret as int or float
+            # interpret as float or int
             if '.' in num_val:
                 value = float(num_val)
             else:
                 value = int(num_val)
         elif bool_val is not None:
-            # interpret as Python bool
-            # ignoring case because of (?i) => the actual matched text might be "TRUE", "False" ...
-            value = (bool_val.lower() == "true")
-        else:
-            value = None
+            value = (bool_val.lower() == 'true')
 
         return {
             "attrName": attr_name,
-            "operator": operator,
-            "value": value
+            "operator": operator,  # e.g. "LIKE", "NOT LIKE", "IN", "NOT IN", "<", etc.
+            "value": value         # either a single value or list (for IN)
         }
 
-    def parse_single_condition(self, cond_text: str):
+    def _parse_single_condition(self, cond_text: str):
         m = self.CONDITION_PATTERN.match(cond_text.strip())
         if not m:
             return None
@@ -716,7 +844,42 @@ class SQL(ToolCollection):
             "value": value         # either a single value or a list if 'IN'
         }
 
+
     def parse_in_list(self, list_str: str):
+        """
+        A simple function that splits a parenthesized list on commas
+        and interprets each item as a string, number, or bool.
+        e.g. "10, 'foo', true" => [10, "foo", True]
+        """
+        items = [x.strip() for x in list_str.split(',')]
+        out = []
+        for it in items:
+            # if it is quoted => string
+            m_str = re.match(r"^'(.*)'$", it)
+            if m_str:
+                out.append(m_str.group(1))
+                continue
+
+            # if numeric
+            m_num = re.match(r"^[+-]?\d+(?:\.\d+)?$", it, re.IGNORECASE)
+            if m_num:
+                if '.' in it:
+                    out.append(float(it))
+                else:
+                    out.append(int(it))
+                continue
+
+            # if bool
+            if it.lower() in ("true", "false"):
+                out.append(it.lower() == "true")
+                continue
+
+            # fallback => raw
+            out.append(it)
+        return out
+
+
+    def _parse_in_list(self, list_str: str):
         """
         Takes something like "3.14, 'X-Large', true" 
         and returns [3.14, "X-Large", True].
@@ -962,6 +1125,10 @@ class SQL(ToolCollection):
         """
 
         try:
+
+
+
+
             if not query_str or not isinstance(query_str, str):
                 return json.dumps({"error": "query_str must be a non-empty string"})
 
@@ -1002,9 +1169,16 @@ class SQL(ToolCollection):
 
             # TODO object dict created in __init__, needs to update during runtime
             #doc_objs = self.document_objects()
-            doc_objs = self.doc_dict
+            doc_objs = self.get_object_dict()
             all_objs = doc_objs.get(object_type, None)
             # validate object_type
+
+            return_dict = {
+                "statementType": statement_type,
+                "objectType": object_type,
+            }
+
+            errors_dict = {}
 
             if all_objs is None:
                 return f"Error: '{object_type}' is not a valid object type, valid objects are: {list(doc_objs.keys())} "
@@ -1012,29 +1186,24 @@ class SQL(ToolCollection):
             if all_objs.count == 0:
                 return f"Error: No '{object_type}' objects in the current design"
 
-            #TODO validate sort value, need to check if sort attr exists in class definition, not first object
             # check ORDER BY attribute is valid
-            #if order_attr != None:
-            #    sort_val, errors = self.get_sub_attr(all_objs.item(0), order_attr)
-            #    if errors:
-            #        return f"Error: ORDER BY field '{order_attr}' is not a valid attribute for '{object_type}': {errors}"
-            sort_val = order_attr
-
-            return_dict = {
-                "statementType": statement_type,
-                "objectType": object_type,
-                "errors": {}
-            }
+            if order_attr != None:
+                _, errors = self.get_sub_attr(all_objs.item(0), order_attr)
+                # if ORDER BY fields fails return objects un-ordered
+                if errors:
+                    error_dict, error_hash = self.get_error_hash(errors_dict, errors)
+                    order_attr = None
 
             # filter objects them
             filtered_objs = []
-            for o in all_objs:
+            for index, o in enumerate(all_objs):
                 match, errors = self.match_object_against_conditions(o, conditions)
 
                 # TODO an object attribute whose usual type is another fusion object may be None
                 # should return a succinct error
                 if errors != None:
-                    #print(f"Error: object match")
+                    error_dict, error_hash = self.get_error_hash(errors_dict, errors)
+                    #print(f"Error: objet match")
                     continue
                     #return errors
 
@@ -1043,12 +1212,14 @@ class SQL(ToolCollection):
                         'obj': o,
                     }
                     if order_attr != None:
-                        # TODO handle None sort values better
-                        sort_val, errors = self.get_sub_attr(o, order_attr)
-                        if sort_val is None:
-                            continue
 
-                        obj_dict["sort_val"] = sort_val
+                        sort_val, errors = self.get_sub_attr(o, order_attr)
+
+                        # if no value for order by field leave blank
+                        if sort_val is None:
+                            error_dict, error_hash = self.get_error_hash(errors_dict, errors)
+                        else:
+                            obj_dict["sort_val"] = sort_val
 
                     filtered_objs.append(obj_dict)
 
@@ -1056,10 +1227,13 @@ class SQL(ToolCollection):
             # sort
             if order_attr != None:
                 reverse = False
+
                 if order_dir == "DESC":
                     reverse = True
 
+                # TODO may need to handle if some None in order by fields
                 #filtered_objs = [o for o in filtered_objs if o != None]
+                #print(order_attr)
                 #print(filtered_objs)
                 filtered_objs = sorted(filtered_objs, key=lambda item: item["sort_val"], reverse=reverse)
 
@@ -1080,10 +1254,12 @@ class SQL(ToolCollection):
             # otherwise, we treat it as SELECT
             if statement_type == "UPDATE":
                 # 2) We parse the setClause into assignments: e.g. "name='Gear', appearance.name='Steel'"
+                # TODO
                 assignments = self.parse_set_clause(set_clause_str)
 
                 if "error" in assignments:
-                    return json.dumps({"error": f"Error in SET clause: {assignments['error']}"})
+                    error_dict, error_hash = self.get_error_hash(errors_dict, assignments)
+                    #return json.dumps({"error": f"Error in SET clause: {assignments['error']}"})
 
                 # 6) apply assignments
                 updated_count = 0
@@ -1098,7 +1274,6 @@ class SQL(ToolCollection):
                 return_dict.update( {
                     "foundCount": len(filtered_objs),
                     "updatedCount": updated_count,
-                    #"assignmentDetails": assignment_results
                 })
 
 
@@ -1113,25 +1288,28 @@ class SQL(ToolCollection):
                         break
                         #return json.dumps(return_dict)
 
-                    #val, errors = self.get_sub_attr(filtered_objs[0], attr_name)
-                    #if errors != None:
-                    #    print(f"Error: sub_attr")
-                    #    return_dict["errors"][attr_name] = errors
+                    val, errors = self.get_sub_attr(filtered_objs[0], attr_name)
+                    if errors != None:
 
-                if len(return_dict["errors"]) > 0:
-                    return json.dumps(return_dict)
+                        error_dict, error_hash = self.get_error_hash(errors_dict, errors)
+                        continue
+
+                #if len(return_dict["errors"]) > 0:
+                #    return json.dumps(return_dict)
 
                 # build result
                 # for each object, we gather the requested attributes
                 results = []
-                for obj in filtered_objs:
+                for index, obj in enumerate(filtered_objs):
                     row_data = {}
                     for attr in attribute_list:
 
                         val, errors = self.get_sub_attr(obj, attr)
                         if errors:
-                            print(f"{obj}: {errors}")
+                            error_dict, error_hash = self.get_error_hash(errors_dict, errors)
+                            val = error_hash
 
+                            #continue
                         if hasattr(val, "objectType"):
                             val = str(val)
                         if callable(val):
@@ -1147,8 +1325,10 @@ class SQL(ToolCollection):
                 })
 
 
+            return_dict["errors"] = errors_dict
 
             return json.dumps(return_dict)
+
 
         except:
             return "Error: An unexpected exception occurred:\n" + traceback.format_exc()
@@ -1656,6 +1836,7 @@ class SetStateData(ToolCollection):
                 entity_type = entity.__class__.__name__
 
                 method, errors = self.get_sub_attr(entity, method_name)
+
                 if errors:
                     results[index][entity_token] = errors
                     continue
@@ -1676,6 +1857,7 @@ class SetStateData(ToolCollection):
                             parsed_arguments.append(arg)
 
 
+                print(parsed_arguments)
                 # Attempt to call the method with the provided arguments
                 ret_val = None
                 new_objects = []

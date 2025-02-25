@@ -405,29 +405,7 @@ div, span{
 }
 
 
-.input-container{
-    height: auto;
-    min-width: 100px;
-    max-width: 300px;
-    max-height: 200px;
-    overflow: auto;
 
-}
-.dropdown-label{
-    display: flex;
-}
-
-.test-content{
-    font-size: 100px
-
-}
-
-
-#submitButton{
-    border: 3px solid magenta;
-    padding-right: 10px;
-    padding-left: 10px;
-}
 
 #submitRow{
 
@@ -441,6 +419,11 @@ div, span{
 }
 
 
+#submitButton{
+    border: 3px solid magenta;
+    padding-right: 10px;
+    padding-left: 10px;
+}
 
 #submitRow button{
     padding-top: 2px;
@@ -463,36 +446,81 @@ div, span{
     margin-right: 10px;
 }
 
+.submit-button-row {
+    display: flex;        /* Use Flexbox to arrange buttons in a row */
+    justify-content: flex-start; /* Align buttons to the start of the container */
+    margin-bottom: 15px; /* Space between the textarea and the button row */
+    gap: 10px;            /* Space between the buttons */
+}
 
+
+
+.input-container{
+    display: flex;
+    box-sizing: border-box;
+    justify-content: flex-start; /* Align buttons to the start of the container */
+    min-width: 100px;
+    max-width: 300px;
+    max-height: 200px;
+    min-height: 30px;
+    overflow: auto;
+    border: 0px solid magenta;
+    place-items:center;
+}
+
+
+.test-content{
+    font-size: 100px
+
+}
 
 .setting-row {
     display: flex;        /* Use Flexbox to arrange buttons in a row */
+    box-sizing: border-box;
     justify-content: flex-start; /* Align buttons to the start of the container */
     margin-bottom: 5px; /* Space between the textarea and the button row */
-    gap: 5px;
+    gap: 10px;
+    margin-right: 5px;
+    margin-left: 5px;
 }
 
-.setting-row label{
-    margin-left: 2px; 
-    margin-right: 2px; 
-}
 
-.setting-row input{
-    margin-left: 0px; 
-    margin-right: 20px; 
-}
-
-.setting-row button{
-
-    margin-right: 20px; 
-    padding-top: 2px;
-    padding-bottom: 2px;
+.input-container button{
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0px;
+    margin: 0px;
     padding-right: 5px;
     padding-left: 5px;
     border-radius: 5px;
     font-size: 14px;
     cursor: pointer;
     transition: background-color 0.3s;
+    border: 1px solid pink;
+    min-height: 30px;
+
+}
+
+.input-container label{
+    margin: 0px;
+    padding: 0px;
+    text-align: center;
+
+
+}
+
+.input-container input[type="checkbox"]{
+    width:20px;
+    height:20px;
+    margin-right:20px;
+    background-color:blue;
+
+}
+
+.input-container input[type="number"]{
+    width:20px;
+    height:20px;
+    margin: 0px;
 }
 
 .select-container{
@@ -510,24 +538,29 @@ div, span{
     font-size: 14px;
     border-radius: 5px;
 
-
-
 }
 
 .select-container button{
     width: 100%;
     margin: 0px;
+    padding: 0px;
+}
+
+.dropdown-label{
+    display: flex;
+    place-items:center;
+    height: 30px;
+}
+
+.dropdown-label button{
+    min-height:20px;
+    font-size: 12px;
+    padding: 0px;
+    margin: 0px;
+
 }
 
 
-
-
-.submit-button-row {
-    display: flex;        /* Use Flexbox to arrange buttons in a row */
-    justify-content: flex-start; /* Align buttons to the start of the container */
-    margin-bottom: 15px; /* Space between the textarea and the button row */
-    gap: 10px;            /* Space between the buttons */
-}
 
 
 

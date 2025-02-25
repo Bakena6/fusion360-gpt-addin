@@ -90,3 +90,4 @@ hello, can you hide all bodies which are to the left of the yz center plane
 # physical properties
 can you hide the 10 largest bodies by volume
 
+can you create a 80mm wide, 8 sided octagon at the origin point, then add a 20mm circle at the center point of each octagon edge
