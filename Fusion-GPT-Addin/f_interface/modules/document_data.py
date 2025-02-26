@@ -242,6 +242,7 @@ class SQL(ToolCollection):
         self.object_dict = self.document_objects()
 
 
+    # TODO rename, maybe combine with other function of the same name
     def describe_fusion_classes_2(self, class_names: list = ["Sketch"]) -> str:
         """
         {
@@ -706,53 +707,6 @@ class SQL(ToolCollection):
 
         return out
 
-
-
-    def _parse_set_clause(self, clause: str):
-        """
-            Parses something like:
-                name='Housing', value=10, appearance.name='Steel', isLightBulbOn=true
-            into a list of dicts:
-                [
-                  {"attrName": "name", "value": "Housing"},
-                  {"attrName": "value", "value": 10},
-                  {"attrName": "appearance.name", "value": "Steel"},
-                  {"attrName": "isLightBulbOn", "value": True}
-                ]
-            If any assignment is unrecognized, returns {"error": "..."}.
-        """
-        parts = [p.strip() for p in clause.split(',')]
-        out = []
-        for p in parts:
-            m = self.ASSIGN_PATTERN.match(p)
-            if not m:
-                return {"error": f"Unrecognized assignment: {p}"}
-
-            attr_name = m.group(1)           # e.g. "name", "appearance.name"
-            str_val   = m.group("strVal")    # matched if the user wrote e.g. 'Steel'
-            num_val   = m.group("numVal")    # matched if the user wrote a numeric literal
-            bool_val  = m.group("boolVal")   # matched if the user wrote true/false
-
-            # Convert the captured group to the correct Python type
-            if str_val is not None:
-                final_val = str_val
-            elif num_val is not None:
-                # interpret as float or int
-                if '.' in num_val:
-                    final_val = float(num_val)
-                else:
-                    final_val = int(num_val)
-            elif bool_val is not None:
-                # case-insensitive => "true", "false"
-                final_val = (bool_val.lower() == "true")
-            else:
-                # should not happen, but just in case
-                final_val = None
-
-            out.append({"attrName": attr_name, "value": final_val})
-
-        return out
-
     def parse_single_condition(self,cond_text: str):
         """
         Example usage to parse a single condition string like:
@@ -801,49 +755,6 @@ class SQL(ToolCollection):
             "value": value         # either a single value or list (for IN)
         }
 
-    def _parse_single_condition(self, cond_text: str):
-        m = self.CONDITION_PATTERN.match(cond_text.strip())
-        if not m:
-            return None
-
-        attr_name = m.group(1)
-        maybe_not = m.group("maybeNot")
-        base_op   = m.group("baseOp").upper()  # e.g. 'LIKE', 'IN', etc.
-        str_val   = m.group("strVal")
-        num_val   = m.group("numVal")
-        bool_val  = m.group("boolVal")
-        in_list   = m.group("inList")
-
-        # If maybe_not => 'NOT ' => combine with base_op => e.g. 'NOT IN', 'NOT LIKE'
-        if maybe_not:
-            operator = (maybe_not.strip() + " " + base_op).upper()  # e.g. "NOT IN"
-        else:
-            operator = base_op
-
-        # Determine the "value" part
-        if in_list is not None:
-            # It's a parenthesized list => parse "in_list" => e.g. "3.14, 'X-Large', true"
-            # We'll split on commas, parse each item. We'll store a python list of them.
-            value = self.parse_in_list(in_list)
-        elif str_val is not None:
-            value = str_val
-        elif num_val is not None:
-            # interpret numeric => int or float
-            if '.' in num_val:
-                value = float(num_val)
-            else:
-                value = int(num_val)
-        elif bool_val is not None:
-            value = (bool_val.lower() == 'true')
-        else:
-            value = None
-
-        return {
-            "attrName": attr_name,
-            "operator": operator,  # e.g. "IN", "NOT IN", "=", "<", etc.
-            "value": value         # either a single value or a list if 'IN'
-        }
-
 
     def parse_in_list(self, list_str: str):
         """
@@ -875,41 +786,6 @@ class SQL(ToolCollection):
                 continue
 
             # fallback => raw
-            out.append(it)
-        return out
-
-
-    def _parse_in_list(self, list_str: str):
-        """
-        Takes something like "3.14, 'X-Large', true" 
-        and returns [3.14, "X-Large", True].
-        We'll do a naive split by commas, then parse each piece as string/number/bool.
-        """
-
-        items = [i.strip() for i in list_str.split(',')]
-        out = []
-        for it in items:
-            # check if it's quoted => e.g. "'X-Large'"
-            m_str = re.match(r"^'(.*)'$", it)
-            if m_str:
-                out.append(m_str.group(1))  # e.g. "X-Large"
-                continue
-
-            # check if numeric
-            m_num = re.match(r"(?i)^[+-]?\d+(?:\.\d+)?$", it)
-            if m_num:
-                if '.' in it:
-                    out.append(float(it))
-                else:
-                    out.append(int(it))
-                continue
-
-            # check if bool
-            if it.lower() in ("true", "false"):
-                out.append(it.lower() == "true")
-                continue
-
-            # if none matched => store raw
             out.append(it)
         return out
 
@@ -1325,7 +1201,8 @@ class SQL(ToolCollection):
                 })
 
 
-            return_dict["errors"] = errors_dict
+            if len(errors_dict) != 0:
+                return_dict["errors"] = errors_dict
 
             return json.dumps(return_dict)
 

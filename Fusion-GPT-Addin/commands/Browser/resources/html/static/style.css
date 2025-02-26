@@ -505,28 +505,26 @@ div, span{
     margin: 0px;
     padding: 0px;
     text-align: center;
-
-
 }
 
 .input-container input[type="checkbox"]{
     width:20px;
     height:20px;
     margin-right:20px;
-    background-color:blue;
 
 }
 
 .input-container input[type="number"]{
-    width:20px;
-    height:20px;
+    width: 30px;
+    font-size: 14px;
+    height:30px;
     margin: 0px;
 }
 
 .select-container{
     width: auto;
     display: block;
-    max-width: 250px;
+    max-width: 350px;
 
 }
 

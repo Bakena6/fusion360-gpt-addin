@@ -731,8 +731,10 @@ class Control{
     toggleHelp(){
 
         let elements = document.querySelectorAll(".help");
+        //let elements = document.querySelectorAll(".dropdown-label");
 
         const button = document.getElementById("toggleHelp");
+
 
         if (button.textContent.includes("Show") == true ) {
             button.textContent = button.textContent.replace("Show", "Hide");
@@ -754,13 +756,21 @@ class Control{
                 parentE.style.borderRadius = "5px";
                 parentE.style.borderColor = "red";
                 parentE.style.borderStyle = "solid";
-                //parentE.style.display = "block";
+                parentE.style.display = "block";
 
             } else {
                 e.style.display = "none"; 
                 parentE.style.border = ""; 
                 parentE.style.padding = "1px";
-                //parentE.style.display = "flex";
+
+                if (parentE.className.includes("select-container") == true){
+
+                    parentE.style.display = "block";
+
+                } else {
+
+                    parentE.style.display = "flex";
+                };
 
             }
 

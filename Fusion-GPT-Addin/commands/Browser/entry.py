@@ -47,10 +47,8 @@ PALETTE_URL = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resource
 PALETTE_URL = PALETTE_URL.replace('\\', '/')
 
 # Set a default docking behavior for the palette
-#PALETTE_DOCKING = adsk.core.PaletteDockingStates.PaletteDockStateRight
 PALETTE_DOCKING = adsk.core.PaletteDockingStates.PaletteDockStateFloating
 
-#CMD_NAME = os.path.basename(os.path.dirname(__file__))
 CMD_NAME = "Prompt Window"
 
 CMD_ID = f'{config.COMPANY_NAME}_{config.ADDIN_NAME}_{CMD_NAME}'
@@ -180,6 +178,7 @@ def command_execute(args: adsk.core.CommandEventArgs):
     screen_height = app.activeViewport.height
 
     left = (screen_width - palette_width)-5
+    # clear the tool row
     top = +120
 
     palette.left = left
@@ -287,10 +286,8 @@ def palette_incoming(html_args: adsk.core.HTMLEventArgs):
 
 
 
-
 # This function will be called when the user completes the command.
 def command_destroy(args: adsk.core.CommandEventArgs):
-
 
     futil.log(f'{CMD_NAME} Command Destroy Event')
     global local_handlers

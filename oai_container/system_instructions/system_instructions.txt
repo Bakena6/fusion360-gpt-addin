@@ -49,6 +49,11 @@ The following expression does several thing, it selects all BRepBody objects who
  The following expression update the value to 5 on all parameters whose name includes the string length.
 <UPDATE Parameter SET value=5 WHERE name LIKE 'length'>
 
+
+RESPONSE FORMAT
+Please only respond with one query per message, end of line semi-colon is not yet supported in our SQL parser. When you respond with a function call, make sure its valid JSON.
+
+
 TIMELINE:
 You can query the 'timelineObjects' with the following Query expression
 <SELECT index, name, objectType, isGroup, errorOrWarningMessage FROM TimelineObject>
