@@ -148,20 +148,6 @@ class SQL(ToolCollection):
               if "NOT IN", objVal not in that list
         """
 
-        #self.CONDITION_PATTERN = re.compile(
-        #    r"(?i)^\s*"
-        #    r"([\w\.]+)\s+"                        # Group(1) => attrName (e.g. "component.name")
-        #    r"(?P<maybeNot>NOT\s+)?"
-        #    r"(?P<baseOp>LIKE|=|<=|>=|<|>|IN)\s+"   # e.g. =, <, >, <=, >=, LIKE, or IN
-        #    r"(?:"                                 # Start a group of possible value forms
-        #        r"'(?P<strVal>[^']*)'|"            # a single-quoted string => group "strVal"
-        #        r"(?P<numVal>[+-]?\d+(?:\.\d+)?)(?![^'])|"  # a numeric => group "numVal"
-        #        r"(?P<boolVal>true|false)|"        # a boolean => group "boolVal"
-        #        # or a parenthesized list => group "inList"
-        #        r"\(\s*(?P<inList>[^)]*)\)"        # everything inside parentheses => group "inList"
-        #    r")"
-        #    r"\s*$"
-        #)
 
         self.CONDITION_PATTERN = re.compile(
             r"(?i)^\s*"
@@ -184,36 +170,6 @@ class SQL(ToolCollection):
             r")"
             r"\s*$"
         )
-        #CONDITION_PATTERN = re.compile(
-        #    r"(?i)^\s*"
-        #    r"([\w\.]+)\s*"                      # attribute
-        #    r"(?P<maybeNot>NOT\s+)?"
-        #    r"(?P<baseOp>LIKE|=|<=|>=|<|>|IN)\s*"
-        #    r"(?:"
-        #      r"'(?P<strVal>[^']*)'"
-        #      r"|(?P<numVal>[+-]?\d+(?:\.\d+)?)"
-        #      r"|(?P<boolVal>true|false)"
-        #      r"|\(\s*(?P<inList>[^)]*)\)"
-        #    r")"
-        #    r"\s*$"
-        #)
-
-
-
-
-
-        #self.ASSIGN_PATTERN = re.compile(
-        #    r"(?i)^\s*"
-        #    r"([\w\.]+)\s*=\s*"    # captures the attribute name (with optional dots)
-        #    r"(?:"
-        #        r"'(?P<strVal>[^']*)'"                # single-quoted string
-        #        r"|(?P<numVal>[+-]?\d+(?:\.\d+)?)"    # integer or float
-        #        r"|(?P<boolVal>true|false)|"           # boolean
-        #        # or a parenthesized list => group "inList"
-        #        r"\(\s*(?P<inList>[^)]*)\)"        # everything inside parentheses => group "inList"
-        #    r")"
-        #    r"\s*$"
-        #)
 
         self.ASSIGN_PATTERN =  re.compile(
             r"(?i)^\s*"
@@ -228,7 +184,6 @@ class SQL(ToolCollection):
             r"\s*$"
         )
 
-
         self.obj_mapping = {
             "Component": {
                 "Sketch": "sketches",
@@ -237,7 +192,6 @@ class SQL(ToolCollection):
                 "BRepBody": "bRepBodies",
             },
         }
-
 
         self.object_dict = self.document_objects()
 
@@ -594,7 +548,6 @@ class SQL(ToolCollection):
         self.object_dict = self.document_objects()
 
     def get_object_dict(self):
-
         if self.reload_object_index == True:
             self.object_dict = self.document_objects()
             print(f"object dict reloaded")
@@ -1001,7 +954,6 @@ class SQL(ToolCollection):
         """
 
         try:
-
 
 
 

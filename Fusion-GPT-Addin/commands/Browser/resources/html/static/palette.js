@@ -486,7 +486,6 @@ class Control{
                 setting_args["setting_val"] = null;
             };
             
-            //console.log(input.id, input.value );
             settingsList.push(setting_args);
 
         }); // end for each
@@ -509,7 +508,6 @@ class Control{
         var settingsList = [];
 
         settingInputs.forEach(input => {
-            //console.log(input.id, input.value );
             settingsList.push(input);
             //this.send_setting_val(input);
         }); // end for each
@@ -531,7 +529,6 @@ class Control{
         const settingInputs = document.querySelectorAll('.setting-input');
 
         settingInputs.forEach(input => {
-            console.log(input.id, input.value );
             input.addEventListener("change", (event) => this.send_setting_val([event.target]));
 
         }); // end for each
@@ -560,7 +557,6 @@ class Control{
         //
         // checkboxes that toggle element display visibility
         displayToggleElements.forEach(input => {
-            console.log(input.id, input.toggleElement );
 
             // checkbox input
             const inputElement = document.getElementById(input.id);
@@ -594,7 +590,6 @@ class Control{
     */
     showHideElement(elementSelector, vis){
         let elements = document.querySelectorAll(`${elementSelector}`);
-        console.log(elements.length);
 
         elements.forEach(e => {
             if (vis == true) {
@@ -937,7 +932,6 @@ class Control{
     }
 
     createSql(){
-        //console.log(queryStrings);
         //querysContainer defined in seperate file
         let querysContainer = document.getElementById('sqlContent');
 
@@ -955,7 +949,6 @@ class Control{
             qText.innerHTML = query.trim();
 
             let n_breaks = this.countChar(query, "\n");
-            //console.log(n_breaks);
 
             qText.style.height = 35 + (35 * n_breaks) +"px"; // Reset the height
 
@@ -970,10 +963,6 @@ class Control{
             qContainer.appendChild(qText);
             qContainer.appendChild(qButton);
             querysContainer.appendChild(qContainer);
-
-            //
-            //console.log(qText.scrollHeight );
-            //qText.style.height = qText.scrollHeight + "px"; // Set height to scroll height
 
 
         });
@@ -1060,7 +1049,6 @@ class Control{
                 for (const [param_name, param_info] of Object.entries(params)) {
                     //const paramInput = document.createElement("input");
                     const paramInput = document.createElement("textarea");
-                    //console.log(param_name,param_info);
                     const paramType = param_info.type
 
                     let paramColor = "none";
@@ -1113,14 +1101,11 @@ class Control{
             }// end for params
 
             toolClassContainer.appendChild(methodsContainer);
-
             toolTestContainer.appendChild(toolClassContainer);
 
 
         }// end for
 
-
-        //toolTestContainer.style.height = '100%';
 
         setWindowHeight();
 
@@ -1138,19 +1123,8 @@ class Control{
 
 
 
-
-
-
-
 let thread;
 let control;
-
-//document.addEventListener("DOMContentLoaded", (event) => {
-//
-//    thread = new Thread();
-//    control = new Control(thread);
-//
-//});
 
 function connectionError(){
     promptTextArea = document.getElementById('promptTextInput');
@@ -1169,12 +1143,12 @@ window.addEventListener('load', (event) => {
 function reloadStyle() {
     console.log("reload style");
 
-  const links = document.querySelectorAll('link[rel="stylesheet"]');
-  links.forEach(link => {
-    const href = link.href;
-    const newHref = href.includes('?') ? `${href}&reload=${Date.now()}` : `${href}?reload=${Date.now()}`;
-    link.href = newHref;
-  });
+    const links = document.querySelectorAll('link[rel="stylesheet"]');
+    links.forEach(link => {
+        const href = link.href;
+        const newHref = href.includes('?') ? `${href}&reload=${Date.now()}` : `${href}?reload=${Date.now()}`;
+        link.href = newHref;
+    });
 }
 
 
@@ -1207,7 +1181,6 @@ window.fusionJavaScriptHandler = {
                 thread.stepDelta(messageData);
 
             } else if (action === "toolCallResponse") {
-                console.log(messageData);
                 thread.toolCallResponse(messageData);
 
             } else if (action === "get_initial") {

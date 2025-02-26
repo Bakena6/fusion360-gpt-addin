@@ -238,7 +238,7 @@ class Assistant:
         # last run step
         self.run_steps = None
         self.thread_started = True
-        print(f'Thread created: {self.thread.id}')
+        print(f"Thread created: {self.thread.id}")
 
 
     def run(self, conn):
@@ -259,7 +259,7 @@ class Assistant:
 
             print(f"  MESSAGE RECEIVED:\n  {message_raw}")
 
-            # handle system update calls, assitant meta data
+            # handle system update calls, Assistant meta data
             # check if method exists on our Assistant class
             if message_type == "function_call":
 
@@ -403,7 +403,6 @@ class Assistant:
                     elif event_type == "thread.run.step.delta":
 
                         try:
-                            #print(event.data.delta.step_details)
                             function = event.data.delta.step_details.tool_calls[0].function
 
                             # tool call is not None on first delta  
@@ -411,6 +410,7 @@ class Assistant:
 
                             tool_call_len = len(event.data.delta.step_details.tool_calls)
 
+                            # TODO
                             if tool_call_len != 1:
                                 print( event.data.delta.step_details.tool_calls)
                                 print("CHECK TOOL CALL LEN\n\n\n\n\n")
@@ -438,8 +438,6 @@ class Assistant:
                         }
 
                         delta_count +=1
-                        #if delta_count < 500:
-                        #conn.send(json.dumps(fusion_call))
 
                     elif event_type == "thread.message.completed":
                         content = event.data.content
@@ -551,7 +549,7 @@ class Assistant:
                     print(f"WAITING FOR FUSION 360 TO CONNECT...")
                     # Fusion 360 Add-In connect here
                     with listener.accept() as conn:
-                        print('CONNECTION ACCEPTED FROM', listener.last_accepted)
+                        print("CONNECTION ACCEPTED FROM", listener.last_accepted)
                         self.run(conn)
 
             except Exception as e:
@@ -577,8 +575,8 @@ class Assistant:
         print(f'  MESSAGE ADDED: {message.id}')
 
     def parse_stream(self, stream):
-        for event in stream:
 
+        for event in stream:
             event_type = event.event
 
             if event_type == "thread.message.completed":
@@ -634,7 +632,7 @@ class Assistant:
     def send_func_response(self, response_list: list):
         """
         send tool call responses
-        response_list : list of dicts, each dict containg tool_call id and output
+        response_list : list of dicts, each dict contains tool_call id and output
         """
 
         # function reply
@@ -644,7 +642,7 @@ class Assistant:
             tool_outputs=response_list
         )
 
-        print(f'RESP RUN STATUS: run_id: {run.id}, status: {run.status}')
+        print(f"RESP RUN STATUS: run_id: {run.id}, status: {run.status}")
 
 
     def cancel_run(self):
@@ -652,7 +650,7 @@ class Assistant:
             thread_id=self.thread_id,
             run_id=self.run_id
         )
-        print('RUN CANCEL')
+        print("RUN CANCEL")
 
 
 
@@ -661,7 +659,6 @@ if __name__ == "__main__":
 
     assistant = Assistant(assistant_id =ASSISTANT_ID)
     assistant.start_server()
-    #assistant.update_tools()
 
 
 

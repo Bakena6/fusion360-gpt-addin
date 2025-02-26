@@ -5,9 +5,8 @@
 ## WARNING
 - This add-in is in the beta stage, and  under active development, it needs many improvements
 - Currently, this Add-In is intended for users with Python / Fusion 360 API experience 
-- Use at your own risk, always save backups of your Fusion 360 files.
-- Be especially careful using this Add-In on designs with referenced/linked/imported components, changes to a component in one design can affect the original component. 
-- Use at your own risk.
+- Use at your own risk, always save backups of your Fusion 360 files
+- Be especially careful using this Add-In on designs with referenced/linked/imported components, changes to a component in one design can affect the original component 
 - I recommend you learn the basics of the Fusion 360 Python API, specifically the way objects are structured in a design
 
 ## TODO

@@ -33,7 +33,6 @@ class ToolCollection:
     methods colletion
     """
 
-
     # store references to fusion object based on id
     log_results = True
     log_errors = True
@@ -266,7 +265,7 @@ class ToolCollection:
         else:
             attr_parts = attr_path.split(delimeter)
 
-        # updateed each iteration
+        # updated each iteration
         target_entity = entity
 
         # return vals
@@ -421,10 +420,9 @@ class ToolCollection:
 
     def set_obj_hash(self, entity: object, ref_occ: str= None, length=5):
         """
-        adds a fusion360 to the hash:object dict
+        adds a Fusion 360 to the hash:object dict
         """
         if isinstance(entity, str):
-            print("entity")
             raise Exception
 
         entity_attrs = dir(entity)
@@ -432,15 +430,12 @@ class ToolCollection:
         token_str = None
         entity_type = entity.__class__.__name__
 
-        #print(f"set_obj_hash: {entity.objectType}")
-
         if isinstance(entity, adsk.fusion.Component):
             token_str = self.get_comp_str(entity)
 
         elif isinstance(entity, adsk.fusion.Occurrence):
 
             token_str = getattr(entity, "entityToken", None)
-
 
         elif isinstance(entity, adsk.fusion.BRepBodies):
             if ref_occ != None:
@@ -459,7 +454,6 @@ class ToolCollection:
 
         elif hasattr(entity, "id") == True:
             token_str = getattr(entity, "id", None)
-            #setattr(entity, "entityToken", "abc" )
 
         elif hasattr(entity, "name") == True:
             token_str = getattr(entity, "name", None)
@@ -488,7 +482,6 @@ class ToolCollection:
                 e0_id = id(existing_entity)
                 e1_id = id(entity)
 
-
                 for n, v in {"prev": existing_entity, "new ": entity }.items():
 
                     class_name = v.__class__.__name__
@@ -500,8 +493,6 @@ class ToolCollection:
                 print(print_string)
                 print(f"  e0: {e0_id}, {existing_entity}")
                 print(f"  e1: {e1_id}, {entity}")
-                #print(entity.isLinked)
-                #raise Exception(f"Token error")
 
 
 
